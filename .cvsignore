@@ -11,8 +11,3 @@ cachegrind
 vg_annotate
 vg_cachegen
 default.supp
-bin
-lib
-include
-share
-cachegrind.out.*
