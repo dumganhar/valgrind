@@ -2059,13 +2059,6 @@ UCodeBlock* SK_(instrument) ( UCodeBlock* cb_in, Addr not_used )
 	    break;
 	 }
 
-         case MMX1: case MMX2: case MMX3:
-         case MMX2_MemRd: case MMX2_MemWr:
-         case MMX2_RegRd: case MMX2_RegWr:
-            VG_(skin_panic)(
-               "I don't know how to instrument MMXish stuff (yet)");
-            break;
-
          default:
 	    /* conservative tromping */
 	    if (0 && u_in->tag1 == TempReg) /* can val1 ever be dest? */
@@ -3115,6 +3108,7 @@ void SK_(pre_clo_init)(void)
 
    VG_(track_die_mem_heap)         (NULL);
    VG_(track_die_mem_stack)        (NULL);
+   VG_(track_die_mem_stack_aligned)(NULL);
    VG_(track_die_mem_stack_signal) (NULL);
    VG_(track_die_mem_brk)          (NULL);
    VG_(track_die_mem_munmap)       (NULL);
@@ -3243,6 +3237,7 @@ void SK_(post_clo_init)(void)
       stack_tracker = & eraser_new_mem_stack;
 
    VG_(track_new_mem_stack)        (stack_tracker);
+   VG_(track_new_mem_stack_aligned)(stack_tracker);
    VG_(track_new_mem_stack_signal) (stack_tracker);
 }
 

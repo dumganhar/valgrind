@@ -116,8 +116,8 @@ typedef unsigned char          Bool;
    interface;  if the core and skin major versions don't match, Valgrind
    will abort.  The minor version indicates binary-compatible changes.
 */
-#define VG_CORE_INTERFACE_MAJOR_VERSION   2
-#define VG_CORE_INTERFACE_MINOR_VERSION   0
+#define VG_CORE_INTERFACE_MAJOR_VERSION   1
+#define VG_CORE_INTERFACE_MINOR_VERSION   2
 
 extern const Int VG_(skin_interface_major_version);
 extern const Int VG_(skin_interface_minor_version);
@@ -187,11 +187,11 @@ extern void VG_(message)    ( VgMsgKind kind, Char* format, ... );
    VGP_PAIR(VgpSched,       "scheduler"),             \
    VGP_PAIR(VgpMalloc,      "low-lev malloc/free"),   \
    VGP_PAIR(VgpCliMalloc,   "client  malloc/free"),   \
+   VGP_PAIR(VgpStack,       "adjust-stack"),          \
    VGP_PAIR(VgpTranslate,   "translate-main"),        \
    VGP_PAIR(VgpToUCode,     "to-ucode"),              \
    VGP_PAIR(VgpFromUcode,   "from-ucode"),            \
    VGP_PAIR(VgpImprove,     "improve"),               \
-   VGP_PAIR(VgpESPUpdate,   "ESP-update"),            \
    VGP_PAIR(VgpRegAlloc,    "reg-alloc"),             \
    VGP_PAIR(VgpLiveness,    "liveness-analysis"),     \
    VGP_PAIR(VgpDoLRU,       "do-lru"),                \
@@ -255,7 +255,6 @@ extern Bool VG_(within_m_state_static)(Addr a);
 
 /* Check if an address is 4-byte aligned */
 #define IS_ALIGNED4_ADDR(aaa_p) (0 == (((UInt)(aaa_p)) & 3))
-#define IS_ALIGNED8_ADDR(aaa_p) (0 == (((UInt)(aaa_p)) & 7))
 
 
 /* ------------------------------------------------------------------ */
@@ -516,41 +515,6 @@ typedef
       /* FPU ops */
       FPU,           /* Doesn't touch memory */
       FPU_R, FPU_W,  /* Reads/writes memory  */
-
-      /* ------------ MMX ops ------------ */
-
-      /* 1 byte, no memrefs, no iregdefs, copy exactly to the
-	 output.  Held in val1[7:0]. */
-      MMX1,
-
-      /* 2 bytes, no memrefs, no iregdefs, copy exactly to the
-	 output.  Held in val1[15:0]. */
-      MMX2,
-
-      /* 3 bytes, no memrefs, no iregdefs, copy exactly to the
-         output.  Held in val1[15:0] and val2[7:0]. */
-      MMX3,
-
-      /* 2 bytes, reads/writes mem.  Insns of the form
-         bbbbbbbb:mod mmxreg r/m.
-         Held in val1[15:0], and mod and rm are to be replaced
-         at codegen time by a reference to the Temp/RealReg holding 
-         the address.  Arg2 holds this Temp/Real Reg.
-         Transfer is always at size 8.
-      */
-      MMX2_MemRd,
-      MMX2_MemWr,
-
-      /* 2 bytes, reads/writes an integer register.  Insns of the form
-         bbbbbbbb:11 mmxreg ireg.
-         Held in val1[15:0], and ireg is to be replaced
-         at codegen time by a reference to the relevant RealReg.
-         Transfer is always at size 4.  Arg2 holds this Temp/Real Reg.
-      */
-      MMX2_RegRd,
-      MMX2_RegWr,
-
-      /* ------------------------ */
 
       /* Not strictly needed, but improve address calculation translations. */
       LEA1,  /* reg2 := const + reg1 */
@@ -967,18 +931,14 @@ extern Int VGOFF_(helper_DAA);
 #define R_GS 5
 
 /* For pretty printing x86 code */
-extern Char* VG_(name_of_mmx_gran) ( UChar gran );
-extern Char* VG_(name_of_mmx_reg)  ( Int mmxreg );
 extern Char* VG_(name_of_seg_reg)  ( Int sreg );
 extern Char* VG_(name_of_int_reg)  ( Int size, Int reg );
 extern Char  VG_(name_of_int_size) ( Int size );
 
 /* Shorter macros for convenience */
-#define nameIReg    VG_(name_of_int_reg)
-#define nameISize   VG_(name_of_int_size)
-#define nameSReg    VG_(name_of_seg_reg)
-#define nameMMXReg  VG_(name_of_mmx_reg)
-#define nameMMXGran VG_(name_of_mmx_gran)
+#define nameIReg  VG_(name_of_int_reg)
+#define nameISize VG_(name_of_int_size)
+#define nameSReg  VG_(name_of_seg_reg)
 
 /* Randomly useful things */
 extern UInt  VG_(extend_s_8to32) ( UInt x );
@@ -1430,25 +1390,12 @@ typedef
 EV VG_(track_new_mem_startup) ( void (*f)(Addr a, UInt len, 
                                           Bool rr, Bool ww, Bool xx) );
 EV VG_(track_new_mem_heap)    ( void (*f)(Addr a, UInt len, Bool is_inited) );
+EV VG_(track_new_mem_stack)   ( void (*f)(Addr a, UInt len) );
+EV VG_(track_new_mem_stack_aligned) ( void (*f)(Addr a, UInt len) );
 EV VG_(track_new_mem_stack_signal)  ( void (*f)(Addr a, UInt len) );
 EV VG_(track_new_mem_brk)     ( void (*f)(Addr a, UInt len) );
 EV VG_(track_new_mem_mmap)    ( void (*f)(Addr a, UInt len,
                                           Bool rr, Bool ww, Bool xx) );
-
-/* The specialised ones are called in preference to the general one, if they
-   are defined.  These functions are called a lot if they are used, so
-   specialising can optimise things significantly.  If any of the
-   specialised cases are defined, the general case must be defined too. 
-   
-   Nb: they must all use the __attribute__((regparm(n))) attribute. */
-EV VG_(track_new_mem_stack_4)  ( void (*f)(Addr new_ESP) );
-EV VG_(track_new_mem_stack_8)  ( void (*f)(Addr new_ESP) );
-EV VG_(track_new_mem_stack_12) ( void (*f)(Addr new_ESP) );
-EV VG_(track_new_mem_stack_16) ( void (*f)(Addr new_ESP) );
-EV VG_(track_new_mem_stack_32) ( void (*f)(Addr new_ESP) );
-EV VG_(track_new_mem_stack)    ( void (*f)(Addr a, UInt len) );
-
-EV VG_(track_change_mem_stack)    ( void (*f)(Addr new_ESP) );
 
 EV VG_(track_copy_mem_heap)   ( void (*f)(Addr from, Addr to, UInt len) );
 EV VG_(track_copy_mem_remap)  ( void (*f)(Addr from, Addr to, UInt len) );
@@ -1460,17 +1407,11 @@ EV VG_(track_ban_mem_heap)    ( void (*f)(Addr a, UInt len) );
 EV VG_(track_ban_mem_stack)   ( void (*f)(Addr a, UInt len) );
 
 EV VG_(track_die_mem_heap)    ( void (*f)(Addr a, UInt len) );
+EV VG_(track_die_mem_stack)   ( void (*f)(Addr a, UInt len) );
+EV VG_(track_die_mem_stack_aligned) ( void (*f)(Addr a, UInt len) );
 EV VG_(track_die_mem_stack_signal)  ( void (*f)(Addr a, UInt len) );
 EV VG_(track_die_mem_brk)     ( void (*f)(Addr a, UInt len) );
 EV VG_(track_die_mem_munmap)  ( void (*f)(Addr a, UInt len) );
-
-/* See comments for VG_(track_new_mem_stack_4) et al above */
-EV VG_(track_die_mem_stack_4)  ( void (*f)(Addr die_ESP) );
-EV VG_(track_die_mem_stack_8)  ( void (*f)(Addr die_ESP) );
-EV VG_(track_die_mem_stack_12) ( void (*f)(Addr die_ESP) );
-EV VG_(track_die_mem_stack_16) ( void (*f)(Addr die_ESP) );
-EV VG_(track_die_mem_stack_32) ( void (*f)(Addr die_ESP) );
-EV VG_(track_die_mem_stack)    ( void (*f)(Addr a, UInt len) );
 
 EV VG_(track_bad_free)        ( void (*f)(ThreadState* tst, Addr a) );
 EV VG_(track_mismatched_free) ( void (*f)(ThreadState* tst, Addr a) );

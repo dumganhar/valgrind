@@ -1382,103 +1382,6 @@ static void emit_fpu_regmem ( FlagSet uses_sflags,
                   nameIReg(4,reg) );
 }
 
-static void emit_MMX2_regmem ( FlagSet uses_sflags, 
-                               FlagSet sets_sflags,
-			       UChar first_byte, 
-                               UChar second_byte, 
-                               Int ireg )
-{
-   VG_(new_emit)(True, uses_sflags, sets_sflags);
-   VG_(emitB) ( 0x0F );
-   VG_(emitB) ( first_byte );
-   second_byte &= 0x38; /* mask out mod and rm fields */
-   emit_amode_regmem_reg ( ireg, second_byte >> 3 );
-   if (dis)
-      VG_(printf)("\n\t\tmmx2-0x%x:0x%x-(%s)\n", 
-                  (UInt)first_byte, (UInt)second_byte,
-                  nameIReg(4,ireg) );
-}
-
-static void emit_MMX2_reg_to_mmxreg ( FlagSet uses_sflags, 
-                                      FlagSet sets_sflags,
-			              UChar first_byte, 
-                                      UChar second_byte, 
-                                      Int ireg )
-{
-   VG_(new_emit)(True, uses_sflags, sets_sflags);
-   VG_(emitB) ( 0x0F );
-   VG_(emitB) ( first_byte );
-   second_byte &= 0x38; /* mask out mod and rm fields */
-   second_byte |= 0xC0; /* set top two bits: mod = 11b */
-   second_byte |= (ireg & 7); /* patch in our ireg */
-   VG_(emitB) ( second_byte );
-   if (dis)
-      VG_(printf)("\n\t\tmmx2:reg-to-mmxreg--0x%x:0x%x-(%s)\n", 
-                  (UInt)first_byte, (UInt)second_byte,
-                  nameIReg(4,ireg) );
-}
-
-static void emit_MMX2_mmxreg_to_reg ( FlagSet uses_sflags, 
-                                      FlagSet sets_sflags,
-			              UChar first_byte, 
-                                      UChar second_byte, 
-                                      Int ireg )
-{
-   VG_(new_emit)(True, uses_sflags, sets_sflags);
-   VG_(emitB) ( 0x0F );
-   VG_(emitB) ( first_byte );
-   second_byte &= 0x38; /* mask out mod and rm fields */
-   second_byte |= 0xC0; /* set top two bits: mod = 11b */
-   second_byte |= (ireg & 7); /* patch in our ireg */
-   VG_(emitB) ( second_byte );
-   if (dis)
-      VG_(printf)("\n\t\tmmx2:mmxreg-to-reg--0x%x:0x%x-(%s)\n", 
-                  (UInt)first_byte, (UInt)second_byte,
-                  nameIReg(4,ireg) );
-}
-
-static void emit_MMX3_no_mem ( FlagSet uses_sflags, 
-                               FlagSet sets_sflags,
-			       UChar first_byte, 
-                               UChar second_byte,
-                               UChar third_byte )
-{
-   VG_(new_emit)(True, uses_sflags, sets_sflags);
-   VG_(emitB) ( 0x0F );
-   VG_(emitB) ( first_byte );
-   VG_(emitB) ( second_byte );
-   VG_(emitB) ( third_byte );
-   if (dis)
-      VG_(printf)("\n\t\tmmx3-0x%x:0x%x:0x%x\n", 
-                  (UInt)first_byte, (UInt)second_byte, (UInt)third_byte );
-}
-
-static void emit_MMX2_no_mem ( FlagSet uses_sflags, 
-                               FlagSet sets_sflags,
-			       UChar first_byte, 
-                               UChar second_byte )
-{
-   VG_(new_emit)(True, uses_sflags, sets_sflags);
-   VG_(emitB) ( 0x0F );
-   VG_(emitB) ( first_byte );
-   VG_(emitB) ( second_byte );
-   if (dis)
-      VG_(printf)("\n\t\tmmx2-0x%x:0x%x\n", 
-                  (UInt)first_byte, (UInt)second_byte );
-}
-
-static void emit_MMX1_no_mem ( FlagSet uses_sflags, 
-                               FlagSet sets_sflags,
-			       UChar first_byte ) 
-{
-   VG_(new_emit)(True, uses_sflags, sets_sflags);
-   VG_(emitB) ( 0x0F );
-   VG_(emitB) ( first_byte );
-   if (dis)
-      VG_(printf)("\n\t\tmmx1-0x%x\n", 
-                  (UInt)first_byte );
-}
-
 
 /*----------------------------------------------------*/
 /*--- misc instruction emitters                    ---*/
@@ -2715,66 +2618,12 @@ static void synth_setb_reg ( Bool simd, Int reg, Condcode cond )
 }
 
 
-static void synth_MMX2_regmem ( Bool uses_flags, Bool sets_flags,
- 			        UChar first_byte,
-                                UChar second_byte, 
-                                Int ireg )
-{
-   emit_MMX2_regmem ( uses_flags, sets_flags, 
-                      first_byte, second_byte, ireg );
-}
-
-
-static void synth_MMX2_reg_to_mmxreg ( Bool uses_flags, Bool sets_flags,
-                                       UChar first_byte,
-                                       UChar second_byte, 
-                                       Int ireg )
-{
-   emit_MMX2_reg_to_mmxreg ( uses_flags, sets_flags,
-                             first_byte, second_byte, ireg );
-}
-
-static void synth_MMX2_mmxreg_to_reg ( Bool uses_flags, Bool sets_flags,
-                                       UChar first_byte,
-                                       UChar second_byte, 
-                                       Int ireg )
-{
-   emit_MMX2_mmxreg_to_reg ( uses_flags, sets_flags,
-                             first_byte, second_byte, ireg );
-}
-
-static void synth_MMX2_no_mem ( Bool uses_flags, Bool sets_flags,
-			        UChar first_byte,
-                                UChar second_byte )
-{
-   emit_MMX2_no_mem ( uses_flags, sets_flags, first_byte, second_byte );
-}
-
-
-static void synth_MMX3_no_mem ( Bool uses_flags, Bool sets_flags,
-			        UChar first_byte,
-                                UChar second_byte,
-                                UChar third_byte )
-{
-   emit_MMX3_no_mem ( uses_flags, sets_flags, 
-                      first_byte, second_byte, third_byte );
-}
-
-
-static void synth_MMX1_no_mem ( Bool uses_flags, Bool sets_flags,
-			        UChar first_byte )
-{
-   emit_MMX1_no_mem ( uses_flags, sets_flags, first_byte );
-}
-
-
 static void synth_fpu_regmem ( Bool uses_flags, Bool sets_flags,
 			       UChar first_byte,
                                UChar second_byte_masked, 
                                Int reg )
 {
-   emit_fpu_regmem ( uses_flags, sets_flags, 
-                     first_byte, second_byte_masked, reg );
+   emit_fpu_regmem ( uses_flags, sets_flags, first_byte, second_byte_masked, reg );
 }
 
 
@@ -2894,7 +2743,7 @@ UInt VG_(get_thread_archreg) ( ThreadId tid, UInt arch )
 }
 
 /* Return the baseBlock index for the specified shadow register */
-static Int shadow_reg_index ( Int arch )
+Int shadow_reg_index ( Int arch )
 {
    switch (arch) {
       case R_EAX: return VGOFF_(sh_eax);
@@ -2993,6 +2842,18 @@ static void synth_WIDEN_signed ( Int sz_src, Int sz_dst, Int reg )
    }
    else
       VG_(core_panic)("synth_WIDEN");
+}
+
+
+static void synth_handle_esp_assignment ( Int i, Int reg,
+                                          RRegSet regs_live_before,
+                                          RRegSet regs_live_after )
+{
+   UInt argv[] = { reg };
+   Tag  tagv[] = { RealReg };
+
+   VG_(synth_ccall) ( (Addr) VG_(handle_esp_assignment), 1, 1, argv, tagv, 
+                      INVALID_REALREG, regs_live_before, regs_live_after);
 }
 
 
@@ -3123,12 +2984,22 @@ static void emitUInstr ( UCodeBlock* cb, Int i,
       case PUT: {
          vg_assert(u->tag2 == ArchReg || u->tag2 == SpillNo);
          vg_assert(u->tag1 == RealReg);
-         synth_mov_reg_offregmem ( 
-            u->size, 
-            u->val1, 
-            spillOrArchOffset( u->size, u->tag2, u->val2 ),
-            R_EBP
-         );
+         if (u->tag2 == ArchReg 
+             && u->val2 == R_ESP
+             && u->size == 4
+             && VG_(need_to_handle_esp_assignment)())
+         {
+            synth_handle_esp_assignment ( i, u->val1, regs_live_before,
+                                          u->regs_live_after );
+	 }
+         else {
+            synth_mov_reg_offregmem ( 
+               u->size, 
+               u->val1, 
+               spillOrArchOffset( u->size, u->tag2, u->val2 ),
+               R_EBP
+            );
+         }
          break;
       }
 
@@ -3479,92 +3350,6 @@ static void emitUInstr ( UCodeBlock* cb, Int i,
          synth_fpu_no_mem ( u->flags_r, u->flags_w,
 			    (u->val1 >> 8) & 0xFF,
                             u->val1 & 0xFF );
-         break;
-
-      case MMX2_MemWr:
-      case MMX2_MemRd:
-         vg_assert(u->size == 4 || u->size == 8);
-         vg_assert(u->tag1 == Lit16);
-         vg_assert(u->tag2 == RealReg);
-         vg_assert(u->tag3 == NoValue);
-         vg_assert(!anyFlagUse(u));
-         if (!(*fplive)) {
-            emit_get_fpu_state();
-            *fplive = True;
-         }
-         synth_MMX2_regmem ( u->flags_r, u->flags_w,
-                             (u->val1 >> 8) & 0xFF,
-                             u->val1 & 0xFF,
-                             u->val2 );
-         break;
-
-      case MMX2_RegRd:
-         vg_assert(u->tag1 == Lit16);
-         vg_assert(u->tag2 == RealReg);
-         vg_assert(u->tag3 == NoValue);
-         vg_assert(!anyFlagUse(u));
-         if (!(*fplive)) {
-            emit_get_fpu_state();
-            *fplive = True;
-         }
-         synth_MMX2_reg_to_mmxreg ( u->flags_r, u->flags_w,
-                                    (u->val1 >> 8) & 0xFF,
-                                    u->val1 & 0xFF,
-                                    u->val2 );
-         break;
-
-      case MMX2_RegWr:
-         vg_assert(u->tag1 == Lit16);
-         vg_assert(u->tag2 == RealReg);
-         vg_assert(u->tag3 == NoValue);
-         vg_assert(!anyFlagUse(u));
-         if (!(*fplive)) {
-            emit_get_fpu_state();
-            *fplive = True;
-         }
-         synth_MMX2_mmxreg_to_reg ( u->flags_r, u->flags_w,
-                                    (u->val1 >> 8) & 0xFF,
-                                    u->val1 & 0xFF,
-                                    u->val2 );
-         break;
-
-      case MMX1:
-         vg_assert(u->tag1 == Lit16);
-         vg_assert(u->tag2 == NoValue);
-         vg_assert(u->tag3 == NoValue);
-	 if (!(*fplive)) {
-	    emit_get_fpu_state();
-	    *fplive = True;
-	 }
-         synth_MMX1_no_mem ( u->flags_r, u->flags_w,
-                             u->val1 & 0xFF );
-         break;
-
-      case MMX2:
-         vg_assert(u->tag1 == Lit16);
-         vg_assert(u->tag2 == NoValue);
-         vg_assert(u->tag3 == NoValue);
-	 if (!(*fplive)) {
-	    emit_get_fpu_state();
-	    *fplive = True;
-	 }
-         synth_MMX2_no_mem ( u->flags_r, u->flags_w,
-			     (u->val1 >> 8) & 0xFF,
-                             u->val1 & 0xFF );
-         break;
-
-      case MMX3:
-         vg_assert(u->tag1 == Lit16);
-         vg_assert(u->tag2 == Lit16);
-         vg_assert(u->tag3 == NoValue);
-	 if (!(*fplive)) {
-	    emit_get_fpu_state();
-	    *fplive = True;
-	 }
-         synth_MMX3_no_mem ( u->flags_r, u->flags_w,
-			     (u->val1 >> 8) & 0xFF,
-                             u->val1 & 0xFF,
-                             u->val2 & 0xFF );
          break;
 
       default: 

@@ -252,6 +252,11 @@ extern Bool VG_(clo_chain_bb);
    Debugging and profiling stuff
    ------------------------------------------------------------------ */
 
+/* Change to 1 to get more accurate but more expensive core profiling. */
+#if 0
+#  define VGP_ACCURATE_PROFILING
+#endif
+
 /* Create a logfile into which messages can be dumped. */
 extern void VG_(startup_logging) ( void );
 extern void VG_(shutdown_logging)( void );
@@ -263,6 +268,17 @@ extern void VGP_(done_profiling) ( void );
 #undef  VGP_POPCC
 #define VGP_PUSHCC(x)   if (VG_(clo_profile)) VGP_(pushcc)(x)
 #define VGP_POPCC(x)    if (VG_(clo_profile)) VGP_(popcc)(x)
+
+/* Use this for ones that happen a lot and thus we don't want to put in
+   all the time, eg. for %esp assignment. */
+#ifdef VGP_ACCURATE_PROFILING
+#  define VGP_MAYBE_PUSHCC(x)   if (VG_(clo_profile)) VGP_(pushcc)(x)
+#  define VGP_MAYBE_POPCC(x)    if (VG_(clo_profile)) VGP_(popcc)(x)
+#else
+#  define VGP_MAYBE_PUSHCC(x)
+#  define VGP_MAYBE_POPCC(x)
+#endif
+
 
 /* ---------------------------------------------------------------------
    Skin-related types
@@ -319,16 +335,11 @@ typedef
       /* Memory events */
       void (*new_mem_startup)( Addr a, UInt len, Bool rr, Bool ww, Bool xx );
       void (*new_mem_heap)   ( Addr a, UInt len, Bool is_inited );
+      void (*new_mem_stack)  ( Addr a, UInt len );
+      void (*new_mem_stack_aligned) ( Addr a, UInt len );
       void (*new_mem_stack_signal)  ( Addr a, UInt len );
       void (*new_mem_brk)    ( Addr a, UInt len );
       void (*new_mem_mmap)   ( Addr a, UInt len, Bool rr, Bool ww, Bool xx );
-
-      void (*new_mem_stack_4)  ( Addr new_ESP );
-      void (*new_mem_stack_8)  ( Addr new_ESP );
-      void (*new_mem_stack_12) ( Addr new_ESP );
-      void (*new_mem_stack_16) ( Addr new_ESP );
-      void (*new_mem_stack_32) ( Addr new_ESP );
-      void (*new_mem_stack)    ( Addr a, UInt len );
 
       void (*copy_mem_heap)  ( Addr from, Addr to, UInt len );
       void (*copy_mem_remap) ( Addr from, Addr to, UInt len );
@@ -339,16 +350,11 @@ typedef
       void (*ban_mem_stack)  ( Addr a, UInt len );
 
       void (*die_mem_heap)   ( Addr a, UInt len );
+      void (*die_mem_stack)  ( Addr a, UInt len );
+      void (*die_mem_stack_aligned) ( Addr a, UInt len );
       void (*die_mem_stack_signal)  ( Addr a, UInt len );
       void (*die_mem_brk)    ( Addr a, UInt len );
       void (*die_mem_munmap) ( Addr a, UInt len );
-
-      void (*die_mem_stack_4)  ( Addr die_ESP );
-      void (*die_mem_stack_8)  ( Addr die_ESP );
-      void (*die_mem_stack_12) ( Addr die_ESP );
-      void (*die_mem_stack_16) ( Addr die_ESP );
-      void (*die_mem_stack_32) ( Addr die_ESP );
-      void (*die_mem_stack)    ( Addr a, UInt len );
 
       void (*bad_free)        ( ThreadState* tst, Addr a );
       void (*mismatched_free) ( ThreadState* tst, Addr a );
@@ -1292,7 +1298,7 @@ extern UInt VG_(m_state_static) [6 /* segment regs, Intel order */
 extern void VG_(copy_baseBlock_to_m_state_static) ( void );
 extern void VG_(copy_m_state_static_to_baseBlock) ( void );
 
-/* Determine if %esp adjustment must be noted */
+/* Determine if VG_(handle_esp_assignment)() will be used */
 extern Bool VG_(need_to_handle_esp_assignment) ( void );
 
 /* Called when some unhandleable client behaviour is detected.
@@ -1409,8 +1415,12 @@ extern void VG_(init_memory)            ( void );
 extern void VG_(new_exe_segment)        ( Addr a, UInt len );
 extern void VG_(remove_if_exe_segment)  ( Addr a, UInt len );
 
-extern __attribute__((regparm(1))) 
-       void VG_(unknown_esp_update)     ( Addr new_ESP );
+/* Called from generated code. */
+extern void VG_(handle_esp_assignment) ( Addr new_espA );
+
+/* Nasty kludgery to deal with applications which switch stacks,
+   like netscape. */
+#define VG_PLAUSIBLE_STACK_SIZE 8000000
 
 /* ---------------------------------------------------------------------
    Exports of vg_syscalls.c
@@ -1619,6 +1629,8 @@ extern Int VGOFF_(ldt);
 /* Nb: Most helper offsets are in include/vg_skin.h, for use by skins */
 
 extern Int VGOFF_(helper_undefined_instruction);
+
+extern Int VGOFF_(handle_esp_assignment); /* :: Addr -> void */
 
 /* For storing extension-specific helpers, determined at runtime.  The addr 
  * and offset arrays together form a (addr, offset) map that allows a 

@@ -404,13 +404,11 @@ Bool VG_(saneUInstr) ( Bool beforeRA, Bool beforeLiveness, UInstr* u )
 #  define LIT0 (u->lit32 == 0)
 #  define LIT1 (!(LIT0))
 #  define LITm (u->tag1 == Literal ? True : LIT0 )
-#  define SZ8  (u->size == 8)
 #  define SZ4  (u->size == 4)
 #  define SZ2  (u->size == 2)
 #  define SZ1  (u->size == 1)
 #  define SZ0  (u->size == 0)
 #  define SZ42 (u->size == 4 || u->size == 2)
-#  define SZ48 (u->size == 4 || u->size == 8)
 #  define SZi  (u->size == 4 || u->size == 2 || u->size == 1)
 #  define SZf  (  u->size ==  4 || u->size ==  8 || u->size ==   2     \
                || u->size == 10 || u->size == 28 || u->size == 108)
@@ -545,14 +543,6 @@ Bool VG_(saneUInstr) ( Bool beforeRA, Bool beforeLiveness, UInstr* u )
                        (u->argc > 1                   ? TR2 : N2) && 
                        (u->argc > 2 || u->has_ret_val ? TR3 : N3) &&
                        u->regparms_n <= u->argc && XCCALL;
-   /* Fields checked:     lit32   size  flags_r/w tag1   tag2   tag3    (rest) */
-   case MMX1:
-   case MMX2:       return LIT0 && SZ0  && CC0 &&  Ls1 &&  N2 &&  N3 && XOTHER;
-   case MMX3:       return LIT0 && SZ0  && CC0 &&  Ls1 && Ls1 &&  N3 && XOTHER;
-   case MMX2_MemRd: return LIT0 && SZ48 && CC0 &&  Ls1 && TR2 &&  N3 && XOTHER;
-   case MMX2_MemWr: return LIT0 && SZ48 && CC0 &&  Ls1 && TR2 &&  N3 && XOTHER;
-   case MMX2_RegRd: return LIT0 && SZ4  && CC0 &&  Ls1 && TR2 &&  N3 && XOTHER;
-   case MMX2_RegWr: return LIT0 && SZ4  && CC0 &&  Ls1 && TR2 &&  N3 && XOTHER;
    default: 
       if (VG_(needs).extended_UCode)
          return SK_(sane_XUInstr)(beforeRA, beforeLiveness, u);
@@ -566,13 +556,11 @@ Bool VG_(saneUInstr) ( Bool beforeRA, Bool beforeLiveness, UInstr* u )
 #  undef LIT0
 #  undef LIT1
 #  undef LITm
-#  undef SZ8
 #  undef SZ4
 #  undef SZ2
 #  undef SZ1
 #  undef SZ0
 #  undef SZ42
-#  undef SZ48
 #  undef SZi
 #  undef SZf
 #  undef SZ4m
@@ -854,13 +842,6 @@ Char* VG_(name_UOpcode) ( Bool upper, Opcode opc )
       case FPU_R:   return "FPU_R";
       case FPU_W:   return "FPU_W";
       case FPU:     return "FPU"  ;
-      case MMX1:       return "MMX1" ;
-      case MMX2:       return "MMX2" ;
-      case MMX3:       return "MMX3" ;
-      case MMX2_MemRd: return "MMX2_MRd" ;
-      case MMX2_MemWr: return "MMX2_MWr" ;
-      case MMX2_RegRd: return "MMX2_RRd" ;
-      case MMX2_RegWr: return "MMX2_RWr" ;
       default:
          if (VG_(needs).extended_UCode)
             return SK_(name_XUOpcode)(opc);
@@ -977,35 +958,6 @@ void pp_UInstrWorker ( Int instrNo, UInstr* u, Bool ppRegsLiveness )
       case FPU:
          VG_(printf)("\t0x%x:0x%x",
                      (u->val1 >> 8) & 0xFF, u->val1 & 0xFF );
-         break;
-
-      case MMX1:
-         VG_(printf)("\t0x%x",
-                     u->val1 & 0xFF );
-         break;
-
-      case MMX2:
-         VG_(printf)("\t0x%x:0x%x",
-                     (u->val1 >> 8) & 0xFF, u->val1 & 0xFF );
-         break;
-
-      case MMX3:
-         VG_(printf)("\t0x%x:0x%x:0x%x",
-                     (u->val1 >> 8) & 0xFF, u->val1 & 0xFF, u->val2 & 0xFF );
-         break;
-
-      case MMX2_RegWr:
-      case MMX2_RegRd:
-         VG_(printf)("\t0x%x:0x%x, ",
-                     (u->val1 >> 8) & 0xFF, u->val1 & 0xFF );
-         VG_(pp_UOperand)(u, 2, 4, False);
-         break;
- 
-      case MMX2_MemWr:
-      case MMX2_MemRd:
-          VG_(printf)("\t0x%x:0x%x",
-                     (u->val1 >> 8) & 0xFF, u->val1 & 0xFF );
-         VG_(pp_UOperand)(u, 2, 4, True);
          break;
 
       case GET: case PUT: case MOV: case LOAD: case STORE: case CMOV:
@@ -1159,10 +1111,6 @@ Int VG_(get_reg_usage) ( UInstr* u, Tag tag, Int* regs, Bool* isWrites )
       case LEA1: RD(1); WR(2); break;
       case LEA2: RD(1); RD(2); WR(3); break;
 
-      case MMX2_RegRd: RD(2); break;
-      case MMX2_RegWr: WR(2); break;
-
-      case MMX1: case MMX2: case MMX3:
       case NOP:   case FPU:   case INCEIP: case CALLM_S: case CALLM_E:
       case CLEAR: case CALLM: case LOCK: break;
 
@@ -1173,7 +1121,6 @@ Int VG_(get_reg_usage) ( UInstr* u, Tag tag, Int* regs, Bool* isWrites )
          if (u->has_ret_val) WR(3);
          break;
 
-      case MMX2_MemRd: case MMX2_MemWr:
       case FPU_R: case FPU_W: RD(2); break;
 
       case GETSEG: WR(2); break;
@@ -1310,9 +1257,6 @@ Int maybe_uinstrReadsArchReg ( UInstr* u )
       case CC2VAL:
       case JIFZ:
       case FPU: case FPU_R: case FPU_W:
-      case MMX1: case MMX2: case MMX3:
-      case MMX2_MemRd: case MMX2_MemWr:
-      case MMX2_RegRd: case MMX2_RegWr:
       case WIDEN:
       /* GETSEG and USESEG are to do with ArchRegS, not ArchReg */
       case GETSEG: case PUTSEG: 
@@ -1645,92 +1589,6 @@ static void vg_improve ( UCodeBlock* cb )
    }
 }
 
-/*------------------------------------------------------------*/
-/*--- %ESP-update pass                                     ---*/
-/*------------------------------------------------------------*/
-
-/* For skins that want to know about %ESP changes, this pass adds
-   in the appropriate hooks.  We have to do it after the skin's
-   instrumentation, so the skin doesn't have to worry about the CCALLs
-   it adds in, and we must do it before register allocation because
-   spilled temps make it much harder to work out the %esp deltas.
-   Thus we have it as an extra phase between the two. */
-static 
-UCodeBlock* vg_ESP_update_pass(UCodeBlock* cb_in)
-{
-   UCodeBlock* cb;
-   UInstr*     u;
-   Int         delta = 0;
-   UInt        t_ESP = INVALID_TEMPREG;
-   UInt        i;
-
-   cb = VG_(setup_UCodeBlock)(cb_in);
-
-   for (i = 0; i < VG_(get_num_instrs)(cb_in); i++) {
-      u = VG_(get_instr)(cb_in, i);
-
-      if (GET == u->opcode && R_ESP == u->val1) {
-         t_ESP = u->val2;
-         delta = 0;
-
-      } else if (PUT == u->opcode && R_ESP == u->val2 && 4 == u->size) {
-
-#           define DO_GENERIC                                                 \
-               if (VG_(track_events).new_mem_stack ||                         \
-                   VG_(track_events).die_mem_stack) {                         \
-                  uInstr1(cb, CCALL, 0, TempReg, u->val1);                    \
-                  uCCall(cb, (Addr) VG_(unknown_esp_update),                  \
-                         1, 1, False);                                        \
-               } 
-
-#           define DO(kind, size)                                             \
-               if (VG_(track_events).kind##_mem_stack_##size) {               \
-                  uInstr1(cb, CCALL, 0, TempReg, u->val1);                    \
-                  uCCall(cb, (Addr) VG_(track_events).kind##_mem_stack_##size,\
-                         1, 1, False);                                        \
-                                                                              \
-               } else                                                         \
-                  DO_GENERIC                                                  \
-               break
-
-         if (u->val1 == t_ESP) {
-            /* Known delta, common cases handled specially. */
-            switch (delta) {
-            case   4: DO(die, 4);
-            case  -4: DO(new, 4);
-            case   8: DO(die, 8);
-            case  -8: DO(new, 8);
-            case  12: DO(die, 12);
-            case -12: DO(new, 12);
-            case  16: DO(die, 16);
-            case -16: DO(new, 16);
-            case  32: DO(die, 32);
-            case -32: DO(new, 32);
-            default:  DO_GENERIC;   break;
-            }           
-         } else {
-            /* Unknown delta */
-            DO_GENERIC;
-         }
-         delta = 0;
-
-#        undef DO
-#        undef DO_GENERIC
-
-      } else if (Literal == u->tag1 && t_ESP == u->val2) {
-         if (ADD == u->opcode) delta += u->lit32;
-         if (SUB == u->opcode) delta -= u->lit32;
-
-      } else if (MOV == u->opcode && TempReg == u->tag1 && t_ESP == u->val1 &&
-                                     TempReg == u->tag2) {
-         t_ESP = u->val2;
-      }
-      VG_(copy_UInstr) ( cb, u );
-   }
-
-   VG_(free_UCodeBlock)(cb_in);
-   return cb;
-}
 
 /*------------------------------------------------------------*/
 /*--- The new register allocator.                          ---*/
@@ -2222,14 +2080,6 @@ void VG_(translate) ( /*IN*/  ThreadState* tst,
       VG_(pp_UCodeBlock) ( cb, "Instrumented UCode:" );
    VG_(saneUCodeBlock)( cb );
    VGP_POPCC(VgpInstrument);
-
-   /* Add %ESP-update hooks if the skin requires them */
-   /* Nb: We don't print out this phase, because it doesn't do much */
-   if (VG_(need_to_handle_esp_assignment)()) {
-      VGP_PUSHCC(VgpESPUpdate);
-      cb = vg_ESP_update_pass ( cb );
-      VGP_POPCC(VgpESPUpdate);
-   }
 
    /* Allocate registers. */
    VG_(print_codegen) = DECIDE_IF_PRINTING_CODEGEN_FOR_PHASE(4);
