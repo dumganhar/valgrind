@@ -32,7 +32,12 @@
 
 #include "vg_include.h"
 
-static void vgp_die(void)
+
+void VGP_(register_profile_event) ( Int n, Char* name )
+{
+}
+
+void VGP_(init_profiling) ( void )
 {
    VG_(printf)(
       "\nProfiling error:\n"
@@ -42,28 +47,19 @@ static void vgp_die(void)
    VG_(exit)(1);
 }
 
-void VGP_(register_profile_event) ( Int n, Char* name )
-{
-}
-
-void VGP_(init_profiling) ( void )
-{
-   vgp_die();
-}
-
 void VGP_(done_profiling) ( void )
 {
-   VG_(core_panic)("done_profiling(), but not compiled for profiling??");
+   VG_(core_panic)("done_profiling");
 }
 
 void VGP_(pushcc) ( UInt cc )
 {
-   vgp_die();
+   VG_(core_panic)("pushcc");
 }
 
 void VGP_(popcc) ( UInt cc )
 {
-   vgp_die();
+   VG_(core_panic)("popcc");
 }
 
 /*--------------------------------------------------------------------*/
