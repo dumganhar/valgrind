@@ -48,7 +48,7 @@ void SK_(setup)(VgNeeds* needs)
    needs->debug_info              = Vg_DebugNone;
    needs->precise_x86_instr_sizes = False;
    needs->pthread_errors          = False;
-   needs->suppressions            = False;
+   needs->report_errors           = False;
 
    needs->identifies_basic_blocks = False;
 
@@ -57,6 +57,8 @@ void SK_(setup)(VgNeeds* needs)
 
    needs->augments_UInstrs        = False;
    needs->extends_UCode           = False;
+
+   needs->wrap_syscalls           = False;
 
    needs->shadow_memory           = False;
    needs->track_threads           = False;
