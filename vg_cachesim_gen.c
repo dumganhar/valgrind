@@ -26,7 +26,7 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
    02111-1307, USA.
 
-   The GNU General Public License is contained in the file LICENSE.
+   The GNU General Public License is contained in the file COPYING.
 */
 
 /* Notes:
@@ -78,8 +78,7 @@ static void cachesim_initcache(cache_t config, cache_t2* c)
                                  c->size, c->line_size, c->assoc);
    }
 
-   c->tags = VG_(malloc)(VG_AR_PRIVATE, 
-                         sizeof(UInt) * c->sets * c->assoc);
+   c->tags = VG_(malloc)(sizeof(UInt) * c->sets * c->assoc);
 
    for (i = 0; i < c->sets * c->assoc; i++)
       c->tags[i] = 0;
@@ -100,9 +99,9 @@ static void print_cache(cache_t2* c)
 }
 #endif 
 
-/* XXX: This is done as a macro rather than by passing in the cache_t2 as
- * an arg because it slows things down by a small amount (3-5%) due to all that
- * extra indirection. */
+/* This is done as a macro rather than by passing in the cache_t2 as an 
+ * arg because it slows things down by a small amount (3-5%) due to all 
+ * that extra indirection. */
 
 #define CACHESIM(L, MISS_TREATMENT)                                         \
 /* The cache and associated bits and pieces. */                             \
@@ -199,7 +198,6 @@ miss_treatment:                                                             \
       if (is_miss) { MISS_TREATMENT; }                                      \
                                                                             \
    } else {                                                                 \
-       VG_(printf)("addr: %x  size: %u  sets: %d %d", a, size, set1, set2); \
        VG_(panic)("item straddles more than two cache sets");               \
    }                                                                        \
    return;                                                                  \
