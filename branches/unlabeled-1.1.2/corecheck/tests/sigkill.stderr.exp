@@ -193,4 +193,10 @@ getting signal 63: Success
 setting signal 64: Success
 getting signal 64: Success
 
+setting signal 65: Warning: bad signal number 65 in __NR_sigaction.
+Invalid argument
+getting signal 65: Warning: bad signal number 65 in __NR_sigaction.
+Invalid argument
 
+
+ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
