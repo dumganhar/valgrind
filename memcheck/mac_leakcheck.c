@@ -399,10 +399,8 @@ void MAC_(do_detect_memory_leaks) (
 
    if (lc_n_shadows == 0) {
       sk_assert(lc_shadows == NULL);
-      if (VG_(clo_verbosity) >= 1) {
-         VG_(message)(Vg_UserMsg, 
-                      "No malloc'd blocks -- no leaks are possible.");
-      }
+      VG_(message)(Vg_UserMsg, 
+                   "No malloc'd blocks -- no leaks are possible.");
       return;
    }
 

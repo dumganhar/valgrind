@@ -70,7 +70,7 @@ void VG_(free_UCodeBlock) ( UCodeBlock* cb )
 
 
 /* Ensure there's enough space in a block to add one uinstr. */
-static
+static __inline__
 void ensureUInstr ( UCodeBlock* cb )
 {
    if (cb->used == cb->size) {
@@ -1245,6 +1245,7 @@ void VG_(pp_UCodeBlock) ( UCodeBlock* cb, Char* title )
    read-modified-written, it appears first as a read and then as a write.
    'tag' indicates whether we are looking at TempRegs or RealRegs.
 */
+__inline__
 Int VG_(get_reg_usage) ( UInstr* u, Tag tag, Int* regs, Bool* isWrites )
 {
 #  define RD(ono)    VG_UINSTR_READS_REG(ono, regs, isWrites)

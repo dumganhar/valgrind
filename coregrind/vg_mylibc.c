@@ -1077,7 +1077,7 @@ Bool VG_(string_match) ( Char* pat, Char* str )
    ------------------------------------------------------------------ */
 
 __attribute__ ((noreturn))
-static void report_and_quit ( const Char* report )
+static void report_and_quit ( Char* report )
 {
    VG_(pp_sched_status)();
    VG_(printf)("\n");
@@ -1093,8 +1093,8 @@ static void report_and_quit ( const Char* report )
 }
 
 __attribute__ ((noreturn))
-static void assert_fail ( const Char* expr, const Char* name, const Char* report,
-                          const Char* file, Int line, const Char* fn )
+static void assert_fail ( Char* expr, Char* name, Char* report,
+                          Char* file, Int line,   Char* fn )
 {
    static Bool entered = False;
    if (entered) 
@@ -1105,13 +1105,13 @@ static void assert_fail ( const Char* expr, const Char* name, const Char* report
    report_and_quit(report);
 }
 
-void VG_(skin_assert_fail) ( const Char* expr, const Char* file, Int line, const Char* fn )
+void VG_(skin_assert_fail) ( Char* expr, Char* file, Int line, Char* fn )
 {
    assert_fail(expr, VG_(details).name, VG_(details).bug_reports_to, 
                file, line, fn);
 }
 
-void VG_(core_assert_fail) ( const Char* expr, const Char* file, Int line, const Char* fn )
+void VG_(core_assert_fail) ( Char* expr, Char* file, Int line, Char* fn )
 {
    assert_fail(expr, "valgrind", VG_EMAIL_ADDR, file, line, fn);
 }
@@ -1428,8 +1428,8 @@ void* VG_(get_memory_from_mmap) ( Int nBytes, Char* who )
    }
 
    VG_(printf)("\n");
-   VG_(printf)("VG_(get_memory_from_mmap): %s's request for %d bytes failed.\n", 
-               who, nBytes);
+   VG_(printf)("VG_(get_memory_from_mmap): request for %d bytes failed.\n", 
+               nBytes);
    VG_(printf)("VG_(get_memory_from_mmap): %d bytes already allocated.\n", 
                tot_alloc);
    VG_(printf)("\n");

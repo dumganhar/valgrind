@@ -90,8 +90,6 @@ Int VGOFF_(helper_shldl) = INVALID_OFFSET;
 Int VGOFF_(helper_shldw) = INVALID_OFFSET;
 Int VGOFF_(helper_shrdl) = INVALID_OFFSET;
 Int VGOFF_(helper_shrdw) = INVALID_OFFSET;
-Int VGOFF_(helper_IN) = INVALID_OFFSET;
-Int VGOFF_(helper_OUT) = INVALID_OFFSET;
 Int VGOFF_(helper_RDTSC) = INVALID_OFFSET;
 Int VGOFF_(helper_CPUID) = INVALID_OFFSET;
 Int VGOFF_(helper_BSWAP) = INVALID_OFFSET;
@@ -144,12 +142,10 @@ static void align_BaB ( UInt align )
 }
 
 /* Allocate 1 word in baseBlock and set it to the given value. */
-static Int alloc_BaB_1_set ( Addr a, const Char* what )
+static Int alloc_BaB_1_set ( Addr a )
 {
    Int off = alloc_BaB(1);
    VG_(baseBlock)[off] = (UInt)a;
-   if ( VG_( clo_verbosity ) > 1 )
-     VG_(printf)( "Allocated %d for %s\n", off*4, what );
    return off;
 }
 
@@ -187,7 +183,7 @@ void assign_helpers_in_baseBlock(UInt n, Int offsets[], Addr addrs[])
 {
    UInt i;
    for (i = 0; i < n; i++) 
-      offsets[i] = alloc_BaB_1_set( addrs[i], "helper" );
+      offsets[i] = alloc_BaB_1_set( addrs[i] );
 }
 
 Bool VG_(need_to_handle_esp_assignment)(void)
@@ -313,79 +309,75 @@ static void vg_init_baseBlock ( void )
 
    /* Helper functions. */
    VGOFF_(helper_idiv_64_32)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_idiv_64_32), "idiv_64_32" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_idiv_64_32) );
    VGOFF_(helper_div_64_32)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_div_64_32), "div_64_32" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_div_64_32) );
    VGOFF_(helper_idiv_32_16)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_idiv_32_16), "idiv_32_16" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_idiv_32_16) );
    VGOFF_(helper_div_32_16)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_div_32_16), "div_32_16" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_div_32_16) );
    VGOFF_(helper_idiv_16_8)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_idiv_16_8), "idiv_16_8" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_idiv_16_8) );
    VGOFF_(helper_div_16_8)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_div_16_8), "div_16_8" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_div_16_8) );
 
    VGOFF_(helper_imul_32_64)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_imul_32_64), "imul_32_64" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_imul_32_64) );
    VGOFF_(helper_mul_32_64)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_mul_32_64), "mul_32_64" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_mul_32_64) );
    VGOFF_(helper_imul_16_32)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_imul_16_32), "imul_16_32" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_imul_16_32) );
    VGOFF_(helper_mul_16_32)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_mul_16_32), "mul_16_32" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_mul_16_32) );
    VGOFF_(helper_imul_8_16)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_imul_8_16), "imul_8_16" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_imul_8_16) );
    VGOFF_(helper_mul_8_16)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_mul_8_16), "mul_8_16" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_mul_8_16) );
 
    VGOFF_(helper_CLD)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_CLD), "helper_CLD" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_CLD) );
    VGOFF_(helper_STD)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_STD), "helper_STD" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_STD) );
    VGOFF_(helper_get_dirflag)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_get_dirflag), "get_dirflag" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_get_dirflag) );
 
    VGOFF_(helper_CLC)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_CLC), "helper_CLC" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_CLC) );
    VGOFF_(helper_STC)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_STC), "helper_STC" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_STC) );
 
    VGOFF_(helper_shldl)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_shldl), "helper_shldl" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_shldl) );
    VGOFF_(helper_shldw)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_shldw), "helper_shldw" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_shldw) );
    VGOFF_(helper_shrdl)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_shrdl), "helper_shrdl" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_shrdl) );
    VGOFF_(helper_shrdw)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_shrdw), "helper_shrdw" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_shrdw) );
 
    VGOFF_(helper_RDTSC)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_RDTSC), "helper_RDTSC" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_RDTSC) );
    VGOFF_(helper_CPUID)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_CPUID), "helper_CPUID" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_CPUID) );
 
    VGOFF_(helper_bsf)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_bsf), "helper_bsf" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_bsf) );
    VGOFF_(helper_bsr)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_bsr), "helper_bsr" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_bsr) );
 
    VGOFF_(helper_fstsw_AX)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_fstsw_AX), "fstsw_AX" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_fstsw_AX) );
    VGOFF_(helper_SAHF)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_SAHF), "SAHF" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_SAHF) );
    VGOFF_(helper_LAHF)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_LAHF), "LAHF" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_LAHF) );
    VGOFF_(helper_DAS)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_DAS), "DAS" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_DAS) );
    VGOFF_(helper_DAA)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_DAA), "DAA" );
-   VGOFF_(helper_IN)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_IN), "IN" );
-   VGOFF_(helper_OUT)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_OUT), "OUT" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_DAA) );
 
    VGOFF_(helper_undefined_instruction)
-      = alloc_BaB_1_set( (Addr) & VG_(helper_undefined_instruction), "undefined" );
+      = alloc_BaB_1_set( (Addr) & VG_(helper_undefined_instruction) );
 
    /* Allocate slots for noncompact helpers */
    assign_helpers_in_baseBlock(VG_(n_noncompact_helpers), 
@@ -752,7 +744,7 @@ static void process_cmd_line_options ( void )
           the /proc/self/maps contents read at the start of VG_(main)(),
           and doesn't re-read /proc/self/maps. */
 
-       VG_(parse_procselfmaps)( vg_findstack_callback );
+       VG_(read_procselfmaps)( vg_findstack_callback, /*read_from_file*/False );
 
        /* Now foundstack_start and foundstack_size should delimit the stack. */
        if (VG_(foundstack_size) == 0) {
@@ -1067,8 +1059,8 @@ static void process_cmd_line_options ( void )
       else if (VG_CLO_STREQN(14, argv[i], "--num-callers=")) {
          /* Make sure it's sane. */
 	 VG_(clo_backtrace_size) = (Int)VG_(atoll)(&argv[i][14]);
-         if (VG_(clo_backtrace_size) < 1)
-            VG_(clo_backtrace_size) = 1;
+         if (VG_(clo_backtrace_size) < 2)
+            VG_(clo_backtrace_size) = 2;
          if (VG_(clo_backtrace_size) >= VG_DEEPEST_BACKTRACE)
             VG_(clo_backtrace_size) = VG_DEEPEST_BACKTRACE;
       }
@@ -1202,10 +1194,6 @@ static void process_cmd_line_options ( void )
    if (VG_(clo_verbosity) > 1) {
       if (VG_(clo_log_to) != VgLogTo_Fd)
          VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "Command line");
-      for (i = 0; i < VG_(client_argc); i++)
-         VG_(message)(Vg_UserMsg, "   %s", VG_(client_argv)[i]);
-
       VG_(message)(Vg_UserMsg, "Startup, with flags:");
       for (i = 0; i < argc; i++) {
          VG_(message)(Vg_UserMsg, "   %s", argv[i]);
@@ -1467,7 +1455,7 @@ void VG_(main) ( void )
         translation cache aren't identified as part of the client, which would
         waste > 20M of virtual address space, and be bad.
    */
-   VG_(read_procselfmaps)();
+   VG_(read_procselfmaps_contents)();
 
    /* Hook to delay things long enough so we can get the pid and
       attach GDB in another shell. */

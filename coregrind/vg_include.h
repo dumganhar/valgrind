@@ -99,9 +99,13 @@
    backtrace. */
 #define VG_DEEPEST_BACKTRACE 50
 
+/* Number of lists in which we keep track of malloc'd but not free'd
+   blocks.  Should be prime. */
+#define VG_N_MALLOCLISTS 997
+
 /* Number of lists in which we keep track of ExeContexts.  Should be
    prime. */
-#define VG_N_EC_LISTS 4999 /* a prime number */
+#define VG_N_EC_LISTS /*997*/ 4999
 
 /* Defines the thread-scheduling timeslice, in terms of the number of
    basic blocks we attempt to run each thread for.  Smaller values
@@ -728,7 +732,7 @@ typedef
    void* /*pthread_cond_t* */ associated_cv;
 
    /* If VgTs_Sleeping, this is when we should wake up, measured in
-      milliseconds as supplied by VG_(read_millisecond_timer). 
+      milliseconds as supplied by VG_(read_millisecond_counter). 
 
       If VgTs_WaitCV, this indicates the time at which
       pthread_cond_timedwait should wake up.  If == 0xFFFFFFFF,
@@ -1024,8 +1028,8 @@ extern void VG_(restore_all_host_signals)
 			           __FILE__, __LINE__,                \
                                    __PRETTY_FUNCTION__), 0)))
 __attribute__ ((__noreturn__))
-extern void VG_(core_assert_fail) ( const Char* expr, const Char* file, 
-                                    Int line, const Char* fn );
+extern void VG_(core_assert_fail) ( Char* expr, Char* file, 
+                                    Int line, Char* fn );
 __attribute__ ((__noreturn__))
 extern void  VG_(core_panic)      ( Char* str );
 
@@ -1141,7 +1145,7 @@ extern Bool  VG_(saneUCodeBlockCalls) ( UCodeBlock* cb );
 struct _ExeContext {
    struct _ExeContext * next;
    /* Variable-length array.  The size is VG_(clo_backtrace_size); at
-      least 1, at most VG_DEEPEST_BACKTRACE.  [0] is the current %eip,
+      least 2, at most VG_DEEPEST_BACKTRACE.  [0] is the current %eip,
       [1] is its caller, [2] is the caller of [1], etc. */
    Addr eips[0];
 };
@@ -1254,16 +1258,16 @@ extern UInt VG_(n_errs_found);
    Exports of vg_procselfmaps.c
    ------------------------------------------------------------------ */
 
-/* Reads /proc/self/maps into a static buffer which can be parsed by
-   VG_(parse_procselfmaps)(). */
-extern void VG_(read_procselfmaps) ( void );
+/* Reads /proc/self/maps into a static buffer. */
+void VG_(read_procselfmaps_contents) ( void );
 
 /* Parses /proc/self/maps, calling `record_mapping' for each entry.  If
    `read_from_file' is True, /proc/self/maps is read directly, otherwise
    it's read from the buffer filled by VG_(read_procselfmaps_contents)(). */
 extern 
-void VG_(parse_procselfmaps) (
-   void (*record_mapping)( Addr, UInt, Char, Char, Char, UInt, UChar* )
+void VG_(read_procselfmaps) (
+   void (*record_mapping)( Addr, UInt, Char, Char, Char, UInt, UChar* ),
+   Bool read_from_file
 );
 
 
@@ -1271,14 +1275,14 @@ void VG_(parse_procselfmaps) (
    Exports of vg_symtab2.c
    ------------------------------------------------------------------ */
 
-extern void VG_(mini_stack_dump)  ( Addr eips[], UInt n_eips );
-extern void VG_(read_all_symbols) ( void );
-extern void VG_(read_seg_symbols) ( Addr start, UInt size, 
-                                    Char rr, Char ww, Char xx,
-                                    UInt foffset, UChar* filename );
-extern void VG_(unload_symbols)   ( Addr start, UInt length );
+extern void VG_(read_symbols)         ( void );
+extern void VG_(read_symtab_callback) ( Addr start, UInt size, 
+                                        Char rr, Char ww, Char xx,
+                                        UInt foffset, UChar* filename );
+extern void VG_(unload_symbols)       ( Addr start, UInt length );
 
 extern Bool VG_(get_fnname_nodemangle)( Addr a, Char* fnname, Int n_fnname );
+extern void VG_(mini_stack_dump)      ( ExeContext* ec );
 extern Int  VG_(setup_code_redirect_table) ( void );
 
 typedef
@@ -1449,15 +1453,12 @@ extern UInt VG_(foundstack_size);
    Exports of vg_memory.c
    ------------------------------------------------------------------ */
 
-extern void VG_(init_memory)        ( void );
-extern void VG_(new_exeseg_startup) ( Addr a, UInt len, Char rr, Char ww,
-                                      Char xx, UInt foffset,
-                                      UChar* filename );
-extern void VG_(new_exeseg_mmap)    ( Addr a, UInt len );
-extern void VG_(remove_if_exeseg)   ( Addr a, UInt len );
+extern void VG_(init_memory)            ( void );
+extern void VG_(new_exe_segment)        ( Addr a, UInt len );
+extern void VG_(remove_if_exe_segment)  ( Addr a, UInt len );
 
 extern __attribute__((regparm(1))) 
-       void VG_(unknown_esp_update) ( Addr new_ESP );
+       void VG_(unknown_esp_update)     ( Addr new_ESP );
 
 /* ---------------------------------------------------------------------
    Exports of vg_syscalls.c
@@ -1565,9 +1566,6 @@ extern void VG_(helper_shldl);
 extern void VG_(helper_shldw);
 extern void VG_(helper_shrdl);
 extern void VG_(helper_shrdw);
-
-extern void VG_(helper_IN);
-extern void VG_(helper_OUT);
 
 extern void VG_(helper_RDTSC);
 extern void VG_(helper_CPUID);

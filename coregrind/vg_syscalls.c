@@ -1,6 +1,7 @@
 
 /*--------------------------------------------------------------------*/
-/*--- Handle system calls.                           vg_syscalls.c ---*/
+/*--- Update the byte permission maps following a system call.     ---*/
+/*---                                             vg_syscall_mem.c ---*/
 /*--------------------------------------------------------------------*/
 
 /*
@@ -86,7 +87,7 @@ void mmap_segment ( Addr a, UInt len, UInt prot, Int fd )
 
    /* Records segment, reads debug symbols if necessary */
    if ((prot & PROT_EXEC) && fd != -1)
-      VG_(new_exeseg_mmap) ( a, len );
+      VG_(new_exe_segment) ( a, len );
 
    rr = prot & PROT_READ;
    ww = prot & PROT_WRITE;
@@ -113,7 +114,7 @@ void munmap_segment ( Addr a, UInt len )
       symbols. */
    // This doesn't handle partial unmapping of exe segs correctly, if that
    // ever happens...
-   VG_(remove_if_exeseg) ( a, len );
+   VG_(remove_if_exe_segment) ( a, len );
 
    VG_TRACK( die_mem_munmap, a, len );
 }
@@ -954,18 +955,6 @@ void VG_(perform_assumed_nonblocking_syscall) ( ThreadId tid )
          KERNEL_DO_SYSCALL(tid,res);
          break;
 
-#     if defined(__NR_adjtimex)
-      case __NR_adjtimex: /* syscall 124 */
-        /* int adjtimex(struct timex *buf) */
-         MAYBE_PRINTF("adjtimex ( %p )\n",arg1);
-         SYSCALL_TRACK( pre_mem_write, tid, "adjtimex(buf)",
-                        arg1, sizeof(struct timex) );
-         KERNEL_DO_SYSCALL(tid,res);
-         if (!VG_(is_kerror)(res))
-            VG_TRACK( post_mem_write, arg1, sizeof(struct timex) );
-        break;
-#     endif
-
       /* !!!!!!!!!! New, untested syscalls, 14 Mar 02 !!!!!!!!!! */
 
 #     if defined(__NR_setresgid32)
@@ -1339,42 +1328,33 @@ void VG_(perform_assumed_nonblocking_syscall) ( ThreadId tid )
          break;
 
       case __NR_brk: /* syscall 45 */
-         /* libc   says: int   brk(void *end_data_segment);
-            kernel says: void* brk(void* end_data_segment);  (more or less)
-
-            libc returns 0 on success, and -1 (and sets errno) on failure.
-            Nb: if you ask to shrink the dataseg end below what it
-            currently is, that always succeeds, even if the dataseg end
-            doesn't actually change (eg. brk(0)).  Unless it seg faults.
-
-            Kernel returns the new dataseg end.  If the brk() failed, this
-            will be unchanged from the old one.  That's why calling (kernel)
-            brk(0) gives the current dataseg end (libc brk() just returns
-            zero in that case).
-
-            Both will seg fault if you shrink it back into a text segment.
-         */
+         /* Haven't a clue if this is really right. */
+         /* int brk(void *end_data_segment); */
          MAYBE_PRINTF("brk ( %p ) --> ",arg1);
          KERNEL_DO_SYSCALL(tid,res);
          MAYBE_PRINTF("0x%x\n", res);
 
-         if (res == arg1) {
-            /* brk() succeeded */
-            if (res < curr_dataseg_end) {
-               /* successfully shrunk the data segment. */
-               VG_TRACK( die_mem_brk, (Addr)arg1,
-                                      curr_dataseg_end-arg1 );
+         if (!VG_(is_kerror)(res)) {
+            if (arg1 == 0) {
+               /* Just asking where the current end is. (???) */
+               curr_dataseg_end = res;
             } else
-            if (res > curr_dataseg_end && res != 0) {
-               /* successfully grew the data segment */
-               VG_TRACK( new_mem_brk, curr_dataseg_end,
-                                      arg1-curr_dataseg_end );
+            if (arg1 < curr_dataseg_end) {
+               /* shrinking the data segment. */
+               VG_TRACK( die_mem_brk, (Addr)arg1, 
+                                      curr_dataseg_end-arg1 );
+               curr_dataseg_end = arg1;
+            } else
+            if (arg1 > curr_dataseg_end && res != 0) {
+               /* asked for more memory, and got it */
+               /* 
+               VG_(printf)("BRK: new area %x .. %x\n", 
+                           VG_(curr_dataseg_end, arg1-1 );
+               */
+               VG_TRACK( new_mem_brk, (Addr)curr_dataseg_end, 
+                                         arg1-curr_dataseg_end );
+               curr_dataseg_end = arg1;         
             }
-            curr_dataseg_end = res;
-
-         } else {
-            /* brk() failed */
-            vg_assert(curr_dataseg_end == res);
          }
          break;
 
@@ -2753,14 +2733,14 @@ void VG_(perform_assumed_nonblocking_syscall) ( ThreadId tid )
 
       case __NR_readv: { /* syscall 145 */
          /* int readv(int fd, const struct iovec * vector, size_t count); */
-         Int i;
+         UInt i;
          struct iovec * vec;
          MAYBE_PRINTF("readv ( %d, %p, %d )\n",arg1,arg2,arg3);
          SYSCALL_TRACK( pre_mem_read, tid, "readv(vector)", 
                            arg2, arg3 * sizeof(struct iovec) );
          /* ToDo: don't do any of the following if the vector is invalid */
          vec = (struct iovec *)arg2;
-         for (i = 0; i < (Int)arg3; i++)
+         for (i = 0; i < arg3; i++)
             SYSCALL_TRACK( pre_mem_write, tid, "readv(vector[...])",
                               (UInt)vec[i].iov_base,vec[i].iov_len );
          KERNEL_DO_SYSCALL(tid,res);
@@ -3364,31 +3344,16 @@ void VG_(perform_assumed_nonblocking_syscall) ( ThreadId tid )
          }
          break;
 
-      case __NR_waitpid: /* syscall 7 */
-         /* pid_t waitpid(pid_t pid, int *status, int options); */
-         
-         MAYBE_PRINTF("waitpid ( %d, %p, %d )\n",
-                        arg1,arg2,arg3);
-         if (arg2 != (Addr)NULL)
-            SYSCALL_TRACK( pre_mem_write, tid, "waitpid(status)",
-                                          arg2, sizeof(int) );
-         KERNEL_DO_SYSCALL(tid,res);
-         if (!VG_(is_kerror)(res)) {
-            if (arg2 != (Addr)NULL)
-               VG_TRACK( post_mem_write, arg2, sizeof(int) );
-         }
-         break;
-
       case __NR_writev: { /* syscall 146 */
          /* int writev(int fd, const struct iovec * vector, size_t count); */
-         Int i;
+         UInt i;
          struct iovec * vec;
          MAYBE_PRINTF("writev ( %d, %p, %d )\n",arg1,arg2,arg3);
          SYSCALL_TRACK( pre_mem_read, tid, "writev(vector)", 
                            arg2, arg3 * sizeof(struct iovec) );
          /* ToDo: don't do any of the following if the vector is invalid */
          vec = (struct iovec *)arg2;
-         for (i = 0; i < (Int)arg3; i++)
+         for (i = 0; i < arg3; i++)
             SYSCALL_TRACK( pre_mem_read, tid, "writev(vector[...])",
                               (UInt)vec[i].iov_base,vec[i].iov_len );
          KERNEL_DO_SYSCALL(tid,res);
@@ -3420,8 +3385,8 @@ void VG_(perform_assumed_nonblocking_syscall) ( ThreadId tid )
                               arg1, sizeof(vki_kstack_t) );
          }
          if (arg2 != (UInt)NULL) {
-            SYSCALL_TRACK( pre_mem_write, tid, "sigaltstack(oss)", 
-                              arg2, sizeof(vki_kstack_t) );
+            SYSCALL_TRACK( pre_mem_write, tid, "sigaltstack(ss)", 
+                              arg1, sizeof(vki_kstack_t) );
          }
 #        if SIGNAL_SIMULATION
          VG_(do__NR_sigaltstack) (tid);
@@ -3653,6 +3618,5 @@ void VG_(post_known_blocking_syscall) ( ThreadId tid,
 
 
 /*--------------------------------------------------------------------*/
-/*--- end                                            vg_syscalls.c ---*/
+/*--- end                                         vg_syscall_mem.c ---*/
 /*--------------------------------------------------------------------*/
-

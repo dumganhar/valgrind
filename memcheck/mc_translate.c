@@ -1,4 +1,4 @@
-/* -*- c-basic-offset: 3 -*- */
+
 /*--------------------------------------------------------------------*/
 /*--- Instrument UCode to perform memory checking operations.      ---*/
 /*---                                               mc_translate.c ---*/
@@ -187,7 +187,9 @@ Char* SK_(name_XUOpcode)(Opcode opc)
 void SK_(pp_XUInstr)(UInstr* u)
 {
    switch (u->opcode) {
+
       case TAG1:
+         VG_(printf)("\t");
          VG_(pp_UOperand)(u, 1, 4, False);
          VG_(printf)(" = %s ( ", nameOfTagOp( u->val3 ));
          VG_(pp_UOperand)(u, 1, 4, False);
@@ -195,6 +197,7 @@ void SK_(pp_XUInstr)(UInstr* u)
          break;
 
       case TAG2:
+         VG_(printf)("\t");
          VG_(pp_UOperand)(u, 2, 4, False);
          VG_(printf)(" = %s ( ", nameOfTagOp( u->val3 ));
          VG_(pp_UOperand)(u, 1, 4, False);
@@ -204,22 +207,26 @@ void SK_(pp_XUInstr)(UInstr* u)
          break;
 
       case STOREV: case LOADV:
+         VG_(printf)("\t");
          VG_(pp_UOperand)(u, 1, u->size, u->opcode==LOADV);
          VG_(printf)(", ");
          VG_(pp_UOperand)(u, 2, u->size, u->opcode==STOREV);
          break;
 
       case PUTVF: case GETVF:
+         VG_(printf)("\t");
          VG_(pp_UOperand)(u, 1, 0, False);
          break;
 
       case GETV: case PUTV:
+         VG_(printf)("\t");
          VG_(pp_UOperand)(u, 1, u->opcode==PUTV ? 4 : u->size, False);
          VG_(printf)(", ");
          VG_(pp_UOperand)(u, 2, u->opcode==GETV ? 4 : u->size, False);
          break;
 
       case TESTV: case SETV:
+         VG_(printf)("\t");
          VG_(pp_UOperand)(u, 1, u->size, False);
          break;
 
@@ -1052,12 +1059,10 @@ static UCodeBlock* memcheck_instrument ( UCodeBlock* cb_in )
          case MMX2_MemRd: case MMX2_MemWr:
          case FPU_R: case FPU_W: {
             Int t_size = INVALID_TEMPREG;
-            Bool is_load;
 
             if (u_in->opcode == MMX2_MemRd || u_in->opcode == MMX2_MemWr)
                sk_assert(u_in->size == 4 || u_in->size == 8);
 
-            is_load = u_in->opcode==FPU_R || u_in->opcode==MMX2_MemRd;
             sk_assert(u_in->tag2 == TempReg);
             uInstr1(cb, TESTV, 4, TempReg, SHADOW(u_in->val2));
             uInstr1(cb, SETV,  4, TempReg, SHADOW(u_in->val2));
@@ -1066,31 +1071,16 @@ static UCodeBlock* memcheck_instrument ( UCodeBlock* cb_in )
             uInstr2(cb, MOV,   4, Literal, 0, TempReg, t_size);
             uLiteral(cb, u_in->size);
             uInstr2(cb, CCALL, 0, TempReg, u_in->val2, TempReg, t_size);
-            uCCall(cb, is_load ? (Addr) & MC_(fpu_read_check) 
-                               : (Addr) & MC_(fpu_write_check),
+            uCCall(cb, 
+                   u_in->opcode==FPU_R ? (Addr) & MC_(fpu_read_check) 
+                                       : (Addr) & MC_(fpu_write_check),
                    2, 2, False);
 
             VG_(copy_UInstr)(cb, u_in);
             break;
          }
 
-	 /* SSE ins referencing registers */
-	 case SSE3g_RegWr:
-         case SSE3e_RegRd:
-         case SSE3e_RegWr: 
-            sk_assert(u_in->size == 4 || u_in->size == 8 || u_in->size == 16);
-            sk_assert(u_in->tag3 == TempReg);
-
-            /* is it a read ? Test for V */
-            if( u_in->opcode == SSE3e_RegRd )
-	       uInstr1(cb, TESTV, 4, TempReg, SHADOW(u_in->val3));
-
-	    uInstr1(cb, SETV,  4, TempReg, SHADOW(u_in->val3));
-
-            VG_(copy_UInstr)(cb, u_in);
-            break;
-
-         /* ... and the same deal for SSE insns referencing memory */
+         /* ... and the same deal for SSE insns referencing memory. */
          case SSE3a_MemRd:
          case SSE3a_MemWr:
          case SSE2a_MemWr:
@@ -1098,44 +1088,28 @@ static UCodeBlock* memcheck_instrument ( UCodeBlock* cb_in )
             Bool is_load;
             Int t_size;
 
-            sk_assert(u_in->size == 4 || u_in->size == 8 || u_in->size == 16);
+            sk_assert(u_in->size == 4 || u_in->size == 16);
 
             t_size = INVALID_TEMPREG;
-            is_load = u_in->opcode==SSE2a_MemRd || u_in->opcode==SSE3a_MemRd;
-
+            is_load = u_in->opcode==SSE2a_MemRd
+                      || u_in->opcode==SSE3a_MemRd;
             sk_assert(u_in->tag3 == TempReg);
+            uInstr1(cb, TESTV, 4, TempReg, SHADOW(u_in->val3));
+            uInstr1(cb, SETV,  4, TempReg, SHADOW(u_in->val3));
 
-	    uInstr1(cb, TESTV, 4, TempReg, SHADOW(u_in->val3));
-	    uInstr1(cb, SETV,  4, TempReg, SHADOW(u_in->val3));
-	    t_size = newTemp(cb);
-	    uInstr2(cb, MOV,   4, Literal, 0, TempReg, t_size);
-	    uLiteral(cb, u_in->size);
-	    uInstr2(cb, CCALL, 0, TempReg, u_in->val3, TempReg, t_size);
-	    uCCall(cb, is_load ? (Addr) & MC_(fpu_read_check) 
-		   : (Addr) & MC_(fpu_write_check),
-		   2, 2, False);
-
+            t_size = newTemp(cb);
+            uInstr2(cb, MOV,   4, Literal, 0, TempReg, t_size);
+            uLiteral(cb, u_in->size);
+            uInstr2(cb, CCALL, 0, TempReg, u_in->val3, TempReg, t_size);
+            uCCall(cb, is_load ? (Addr) & MC_(fpu_read_check) 
+                               : (Addr) & MC_(fpu_write_check),
+                   2, 2, False);
             VG_(copy_UInstr)(cb, u_in);
             break;
          }
-	 case SSE3ag_MemRd_RegWr:
-	 {
-	    Int t_size;
 
-            sk_assert(u_in->size == 4 || u_in->size == 8);
-	    sk_assert(u_in->tag1 == TempReg);
-	    uInstr1(cb, TESTV, 4, TempReg, SHADOW(u_in->val1));
-	    uInstr1(cb, SETV,  4, TempReg, SHADOW(u_in->val1));
-            t_size = newTemp(cb);
-	    uInstr2(cb, MOV, 4, Literal, 0, TempReg, t_size);
-	    uLiteral(cb, u_in->size);
-            uInstr2(cb, CCALL, 0, TempReg, u_in->val1, TempReg, t_size);
-            uCCall(cb, (Addr) MC_(fpu_read_check), 2, 2, False );
-	    uInstr1(cb, SETV, 4, TempReg, SHADOW(u_in->val2));
-            VG_(copy_UInstr)(cb, u_in);
-	    break;
-         }
-         /* For FPU, MMX and SSE insns not referencing memory, just copy thru. */
+         /* For FPU, MMX and SSE insns not referencing memory, just
+	    copy thru. */
          case SSE4: case SSE3:
          case MMX1: case MMX2: case MMX3:
          case FPU: 

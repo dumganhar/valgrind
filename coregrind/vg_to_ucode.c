@@ -1,4 +1,4 @@
-/* -*- c-basic-offset: 3 -*- */
+
 /*--------------------------------------------------------------------*/
 /*--- The JITter: translate x86 code to ucode.                     ---*/
 /*---                                                vg_to_ucode.c ---*/
@@ -104,7 +104,7 @@ static Char* nameGrp8 ( Int opc_aux )
    return grp8_names[opc_aux];
 }
 
-const Char* VG_(name_of_int_reg) ( Int size, Int reg )
+Char* VG_(name_of_int_reg) ( Int size, Int reg )
 {
    static Char* ireg32_names[8] 
      = { "%eax", "%ecx", "%edx", "%ebx", 
@@ -125,7 +125,7 @@ const Char* VG_(name_of_int_reg) ( Int size, Int reg )
    return NULL; /*notreached*/
 }
 
-const Char* VG_(name_of_seg_reg) ( Int sreg )
+Char* VG_(name_of_seg_reg) ( Int sreg )
 {
    switch (sreg) {
       case R_ES: return "%es";
@@ -138,23 +138,23 @@ const Char* VG_(name_of_seg_reg) ( Int sreg )
    }
 }
 
-const Char* VG_(name_of_mmx_reg) ( Int mmxreg )
+Char* VG_(name_of_mmx_reg) ( Int mmxreg )
 {
-   static const Char* mmx_names[8] 
+   static Char* mmx_names[8] 
      = { "%mm0", "%mm1", "%mm2", "%mm3", "%mm4", "%mm5", "%mm6", "%mm7" };
    if (mmxreg < 0 || mmxreg > 7) VG_(core_panic)("name_of_mmx_reg");
    return mmx_names[mmxreg];
 }
 
-const Char* VG_(name_of_xmm_reg) ( Int xmmreg )
+Char* VG_(name_of_xmm_reg) ( Int xmmreg )
 {
-   static const Char* xmm_names[8] 
+   static Char* xmm_names[8] 
      = { "%xmm0", "%xmm1", "%xmm2", "%xmm3", "%xmm4", "%xmm5", "%xmm6", "%xmm7" };
    if (xmmreg < 0 || xmmreg > 7) VG_(core_panic)("name_of_xmm_reg");
    return xmm_names[xmmreg];
 }
 
-const Char* VG_(name_of_mmx_gran) ( UChar gran )
+Char* VG_(name_of_mmx_gran) ( UChar gran )
 {
    switch (gran) {
       case 0: return "b";
@@ -165,7 +165,7 @@ const Char* VG_(name_of_mmx_gran) ( UChar gran )
    }
 }
 
-const Char VG_(name_of_int_size) ( Int size )
+Char VG_(name_of_int_size) ( Int size )
 {
    switch (size) {
       case 4: return 'l';
@@ -699,6 +699,7 @@ void codegen_XOR_reg_with_itself ( UCodeBlock* cb, Int size,
    setFlagsFromUOpcode(cb, XOR);
    uInstr2(cb, PUT, size, TempReg, tmp, ArchReg, ge_reg);
 }
+
 
 /* Handle binary integer instructions of the form
       op E, G  meaning
@@ -3577,7 +3578,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
    Int   t1, t2, t3, t4;
    UChar dis_buf[50];
    Int   am_sz, d_sz;
-   Char  loc_buf[M_VG_ERRTXT];
 
    /* Holds eip at the start of the insn, so that we can print
       consistent error messages for unimplemented insns. */
@@ -3694,19 +3694,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
                   TempReg, t1 );
       if (dis)
          VG_(printf)("%smxcsr %s\n", store ? "st" : "ld", dis_buf );
-      goto decode_success;
-   }
-
-   /* SFENCE -- flush all pending store operations to memory */
-   if (insn[0] == 0x0F && insn[1] == 0xAE 
-       && (gregOfRM(insn[2]) == 7)) {
-      vg_assert(sz == 4);
-      eip += 3;
-      uInstr2(cb, SSE3, 0,  /* ignore sz for internal ops */
-                  Lit16, (((UShort)0x0F) << 8) | (UShort)0xAE,
-                  Lit16, (UShort)insn[2] );
-      if (dis)
-         VG_(printf)("sfence\n");
       goto decode_success;
    }
 
@@ -3847,15 +3834,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
       eip = dis_SSE3_reg_or_mem_Imm8 ( cb, sorb, eip+2, 16, 
                                            "pshufd",
                                            0x66, insn[0], insn[1] );
-      goto decode_success;
-   }
-
-   /* PSHUFW */
-   if (sz == 4
-       && insn[0] == 0x0F && insn[1] == 0x70) {
-      eip = dis_SSE2_reg_or_mem_Imm8 ( cb, sorb, eip+2, 16, 
-                                           "pshufw",
-                                           insn[0], insn[1] );
       goto decode_success;
    }
 
@@ -4096,15 +4074,7 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
                                       0x66, insn[0], insn[1] );
       goto decode_success;
    }
-   /* 0xE0: PAVGB(src)xmmreg-or-mem, (dst)xmmreg, size 4 */
-   if (sz == 4
-       && insn[0] == 0x0F 
-       && insn[1] == 0xE0 ) {
-      eip = dis_SSE2_reg_or_mem ( cb, sorb, eip+2, 16, "pavg{b,w}",
-                                      insn[0], insn[1] );
-      goto decode_success;
-   }
- 
+
    /* 0x60: PUNPCKLBW (src)xmmreg-or-mem, (dst)xmmreg */
    /* 0x61: PUNPCKLWD (src)xmmreg-or-mem, (dst)xmmreg */
    /* 0x62: PUNPCKLDQ (src)xmmreg-or-mem, (dst)xmmreg */
@@ -4309,11 +4279,10 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
       goto decode_success;
    }
 
-   /* (U)COMISS (src)xmmreg-or-mem, (dst)xmmreg */
+   /* COMISS (src)xmmreg-or-mem, (dst)xmmreg */
    if (sz == 4
-       && insn[0] == 0x0F
-       && ( insn[1] == 0x2E || insn[ 1 ] == 0x2F )) {
-      eip = dis_SSE2_reg_or_mem ( cb, sorb, eip+2, 4, "{u}comiss",
+       && insn[0] == 0x0F && insn[1] == 0x2F) {
+      eip = dis_SSE2_reg_or_mem ( cb, sorb, eip+2, 4, "comiss",
                                       insn[0], insn[1] );
       vg_assert(LAST_UINSTR(cb).opcode == SSE2a_MemRd 
                 || LAST_UINSTR(cb).opcode == SSE3);
@@ -4586,29 +4555,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
          *isEnd = True;
          if (dis) VG_(printf)("call 0x%x\n",d32);
       }
-      break;
-
-   case 0xC8: /* ENTER */ 
-      d32 = getUDisp16(eip); eip += 2;
-      abyte = getUChar(eip); eip++;
-
-      vg_assert(sz == 4);           
-      vg_assert(abyte == 0);
-
-      t1 = newTemp(cb); t2 = newTemp(cb);
-      uInstr2(cb, GET,   sz, ArchReg, R_EBP, TempReg, t1);
-      uInstr2(cb, GET,    4, ArchReg, R_ESP, TempReg, t2);
-      uInstr2(cb, SUB,    4, Literal, 0,     TempReg, t2);
-      uLiteral(cb, sz);
-      uInstr2(cb, PUT,    4, TempReg, t2,    ArchReg, R_ESP);
-      uInstr2(cb, STORE,  4, TempReg, t1,    TempReg, t2);
-      uInstr2(cb, PUT,    4, TempReg, t2,    ArchReg, R_EBP);
-      if (d32) {
-         uInstr2(cb, SUB,    4, Literal, 0,     TempReg, t2);
-	 uLiteral(cb, d32);
-	 uInstr2(cb, PUT,    4, TempReg, t2,    ArchReg, R_ESP);
-      }
-      if (dis) VG_(printf)("enter 0x%x, 0x%x", d32, abyte);
       break;
 
    case 0xC9: /* LEAVE */
@@ -4953,7 +4899,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
    case 0xB9: /* MOV imm,eCX */
    case 0xBA: /* MOV imm,eDX */
    case 0xBB: /* MOV imm,eBX */
-   case 0xBC: /* MOV imm,eSP */
    case 0xBD: /* MOV imm,eBP */
    case 0xBE: /* MOV imm,eSI */
    case 0xBF: /* MOV imm,eDI */
@@ -5290,28 +5235,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
        break;
      }
 
-   case 0x1F: /* POP %DS */
-   case 0x07: /* POP %ES */
-   {
-      Int sreg = INVALID_TEMPREG;
-      vg_assert(sz == 4);
-      switch(opc) {
-      case 0x1F: sreg = R_DS; break;
-      case 0x07: sreg = R_ES; break;
-      }
-
-      t1 = newTemp(cb); t2 = newTemp(cb);
-      uInstr2(cb, GET,    4, ArchReg, R_ESP,    TempReg,  t2);
-      uInstr2(cb, LOAD,   2, TempReg, t2,       TempReg,  t1);
-      uInstr2(cb, ADD,    4, Literal, 0,        TempReg,  t2);
-      uLiteral(cb, sz);
-      uInstr2(cb, PUT,    4, TempReg, t2,       ArchReg,  R_ESP);
-      uInstr2(cb, PUTSEG, 2, TempReg, t1,       ArchRegS, sreg);
-      if (dis) 
-         VG_(printf)("pop %s\n", VG_(name_of_seg_reg)(sreg));
-      break;
-   }      
-
    /* ------------------------ PUSH ----------------------- */
 
    case 0x50: /* PUSH eAX */
@@ -5414,28 +5337,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
       if (dis)
          VG_(printf)("pusha%c\n", nameISize(sz));
       break;
-    }
-
-    case 0x06: /* PUSH %ES */
-    case 0x1E: /* PUSH %DS */
-    {
-       Int sreg = INVALID_TEMPREG;
-       switch(opc) {
-	   case 0x06: sreg = R_ES; break;
-           case 0x1E: sreg = R_DS; break;
-       }
- 
-       vg_assert(sz == 4);
-       t1 = newTemp(cb); t2 = newTemp(cb);
-       uInstr2(cb, GETSEG, 2, ArchRegS, sreg,  TempReg, t1);
-       uInstr2(cb, GET,    4, ArchReg,  R_ESP, TempReg, t2);
-       uInstr2(cb, SUB,    4, Literal,  0,     TempReg, t2);
-       uLiteral(cb, 4);
-       uInstr2(cb, PUT,    4, TempReg,  t2,    ArchReg, R_ESP);
-       uInstr2(cb, STORE,  2, TempReg,  t1,    TempReg, t2);
-       if(dis)
-          VG_(printf)("push %s\n", VG_(name_of_seg_reg)(sreg));
-       break;
     }
 
    /* ------------------------ SCAS et al ----------------- */
@@ -5634,80 +5535,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
 
       if (dis)
          VG_(printf)("xlat%c [ebx]\n", nameISize(sz));
-      break;
-
-   /* ------------------------ IN / OUT ----------------------- */
-
-   case 0xE4: /* IN ib, %al        */
-   case 0xE5: /* IN ib, %{e}ax     */
-   case 0xEC: /* IN (%dx),%al      */
-   case 0xED: /* IN (%dx),%{e}ax   */
-      t1 = newTemp(cb);
-      t2 = newTemp(cb);
-      t3 = newTemp(cb);
-
-      uInstr0(cb, CALLM_S, 0);
-      /* operand size? */
-      uInstr2(cb, MOV,   4, Literal, 0, TempReg, t1);
-      uLiteral(cb, ( opc == 0xE4 || opc == 0xEC ) ? 1 : sz);
-      uInstr1(cb, PUSH,  4, TempReg, t1);
-      /* port number ? */
-      if ( opc == 0xE4 || opc == 0xE5 ) {
-         abyte = getUChar(eip); eip++;
-         uInstr2(cb, MOV,   4, Literal, 0, TempReg, t2);
-         uLiteral(cb, abyte);
-      }
-      else
-         uInstr2(cb, GET,   4, ArchReg, R_EDX, TempReg, t2);
-
-      uInstr1(cb, PUSH,  4, TempReg, t2);
-      uInstr1(cb, CALLM, 0, Lit16,   VGOFF_(helper_IN));
-      uFlagsRWU(cb, FlagsEmpty, FlagsEmpty, FlagsEmpty);
-      uInstr1(cb, POP,   4, TempReg, t2);
-      uInstr1(cb, CLEAR, 0, Lit16,   4);
-      uInstr0(cb, CALLM_E, 0);
-      uInstr2(cb, PUT,   4, TempReg, t2, ArchReg, R_EAX);
-      if (dis) {
-         if ( opc == 0xE4 || opc == 0xE5 )
-            VG_(printf)("in 0x%x, %%eax/%%ax/%%al\n", getUChar(eip-1) );
-         else
-            VG_(printf)("in (%%dx), %%eax/%%ax/%%al\n");
-      }
-      break;
-   case 0xE6: /* OUT %al,ib       */
-   case 0xE7: /* OUT %{e}ax,ib    */
-   case 0xEE: /* OUT %al,(%dx)    */
-   case 0xEF: /* OUT %{e}ax,(%dx) */
-      t1 = newTemp(cb);
-      t2 = newTemp(cb);
-      t3 = newTemp(cb);
-
-      uInstr0(cb, CALLM_S, 0);
-      /* operand size? */
-      uInstr2(cb, MOV,   4, Literal, 0, TempReg, t1);
-      uLiteral(cb, ( opc == 0xE6 || opc == 0xEE ) ? 1 : sz);
-      uInstr1(cb, PUSH,  4, TempReg, t1);
-      /* port number ? */
-      if ( opc == 0xE6 || opc == 0xE7 ) {
-         abyte = getUChar(eip); eip++;
-         uInstr2(cb, MOV,   4, Literal, 0, TempReg, t2);
-         uLiteral(cb, abyte);
-      }
-      else
-         uInstr2(cb, GET,   4, ArchReg, R_EDX, TempReg, t2);
-      uInstr1(cb, PUSH,  4, TempReg, t2);
-      uInstr2(cb, GET,   4, ArchReg, R_EAX, TempReg, t3);
-      uInstr1(cb, PUSH,  4, TempReg, t3);
-      uInstr1(cb, CALLM, 0, Lit16,   VGOFF_(helper_OUT));
-      uFlagsRWU(cb, FlagsEmpty, FlagsEmpty, FlagsEmpty);
-      uInstr1(cb, CLEAR,  0, Lit16,  12);
-      uInstr0(cb, CALLM_E, 0);
-      if (dis) {
-         if ( opc == 0xE4 || opc == 0xE5 )
-            VG_(printf)("out %%eax/%%ax/%%al, 0x%x\n", getUChar(eip-1) );
-         else
-            VG_(printf)("out %%eax/%%ax/%%al, (%%dx)\n");
-      }
       break;
 
    /* ------------------------ (Grp1 extensions) ---------- */
@@ -6271,7 +6098,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
          break;
 
       case 0x7F: /* MOVQ (src)mmxreg, (dst)mmxreg-or-mem */
-      case 0xE7: /* MOVNTQ (src)mmxreg, (dst)mmxreg-or-mem */
          vg_assert(sz == 4);
          modrm = getUChar(eip);
          if (epartIsReg(modrm)) {
@@ -6286,7 +6112,7 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
                         (((UShort)(opc)) << 8) | ((UShort)modrm),
                         TempReg, tmpa);
             if (dis)
-               VG_(printf)("mov(nt)q %s, %s\n", 
+               VG_(printf)("movq %s, %s\n", 
                            nameMMXReg(gregOfRM(modrm)),
                            dis_buf);
          }
@@ -6439,10 +6265,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
                (Int)eip_start[1],
                (Int)eip_start[2],
                (Int)eip_start[3] );
-
-   /* Print address of failing instruction. */
-   VG_(describe_eip)((Addr)eip_start, loc_buf, M_VG_ERRTXT);
-   VG_(printf)("          at %s\n", loc_buf);
 
    uInstr0(cb, CALLM_S, 0);
    uInstr1(cb, CALLM,   0, Lit16, 
