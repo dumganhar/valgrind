@@ -31,17 +31,20 @@
 #define _FILE_OFFSET_BITS	64
 
 #include <stdio.h>
+#include <elf.h>
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
 #include <signal.h>
 #include <fcntl.h>
+#include <errno.h>
 #include <sys/resource.h>
 
-#include "core.h"
+#include "vg_include.h"
 
 #include "ume.h"
 #include "ume_arch.h"
+#include "ume_archdefs.h"
 
 static int stack[SIGSTKSZ*4];
 
@@ -206,7 +209,7 @@ static void hoops(void)
    ume_go(info.init_eip, (addr_t)esp);   
 }
 
-int main(void)
+int main(int argc, char **argv)
 {
    struct rlimit rlim;
    const char *cp = getenv(VALGRINDLIB);

@@ -28,7 +28,7 @@
   The GNU General Public License is contained in the file COPYING.
 */
 
-#include "core_asm.h"
+#include "vg_constants.h"
 
 /* ------------------ SIMULATED CPU HELPERS ------------------ */
 /* A stubs for a return which we want to catch: a signal return.

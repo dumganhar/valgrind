@@ -4,7 +4,6 @@ VALGRIND_2.1 {
 		vgSkin_*;
 		vgProf_*;
                 vgOff_*;
-                vgArch_*;
 
 	local:
 		*;		# default to hidden

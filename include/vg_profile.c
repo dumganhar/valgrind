@@ -34,13 +34,13 @@
 #ifndef __VG_PROFILE_C
 #define __VG_PROFILE_C
 
-#include "tool.h"
+#include "vg_skin.h"
 
 /* get rid of these, if possible */
 #include <signal.h>
 #include <sys/time.h>
 
-/* Override the empty definitions from tool.h */
+/* Override the empty definitions from vg_skin.h */
 #undef  VGP_PUSHCC
 #undef  VGP_POPCC
 #define VGP_PUSHCC(x)   if (VG_(clo_profile)) VGP_(pushcc)(x)

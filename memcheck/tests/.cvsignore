@@ -55,7 +55,6 @@ weirdioctl
 *.stderr.out
 badrw
 brk
-brk2
 metadata
 new_nothrow
 realloc3

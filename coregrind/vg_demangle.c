@@ -29,7 +29,7 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#include "core.h"
+#include "vg_include.h"
 #include "demangle.h"
 
 #define ADD_TO_RESULT(zzstr,zzn)                   \

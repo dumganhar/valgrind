@@ -36,7 +36,7 @@
 #ifndef __MAC_SHARED_H
 #define __MAC_SHARED_H
 
-#include "tool.h"
+#include "vg_skin.h"
 
 #define MAC_(str)    VGAPPEND(vgMAC_,str)
 

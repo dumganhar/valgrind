@@ -32,18 +32,23 @@
 #define _GNU_SOURCE
 #define _FILE_OFFSET_BITS 64
 
-#include "core.h"
+#include "vg_include.h"
 
+#include <stddef.h>
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <errno.h>
+#include <elf.h>
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <sys/stat.h>
+#include <dlfcn.h>
 #include <assert.h>
 
 #include "ume.h"
+#include "vg_include.h"
 
 struct elfinfo
 {
@@ -128,7 +133,7 @@ static int fillgap(char *segstart, char *segend, const char *perm, off_t off,
 
    if (segstart > extra->fillgap_start) {
       void* res = mmap(extra->fillgap_start, segstart - extra->fillgap_start,
-                       PROT_NONE, MAP_FIXED|MAP_PRIVATE|MAP_NORESERVE, 
+                       PROT_NONE, MAP_FIXED|MAP_PRIVATE, 
                        extra->fillgap_padfile, 0);
       check_mmap(res, extra->fillgap_start, segstart - extra->fillgap_start);
    }
@@ -169,7 +174,7 @@ void as_pad(void *start, void *end, int padfile)
    if (extra.fillgap_start < extra.fillgap_end) {
       void* res = mmap(extra.fillgap_start, 
                        extra.fillgap_end - extra.fillgap_start,
-                       PROT_NONE, MAP_FIXED|MAP_PRIVATE|MAP_NORESERVE, padfile, 0);
+                       PROT_NONE, MAP_FIXED|MAP_PRIVATE, padfile, 0);
       check_mmap(res, extra.fillgap_start, 
                  extra.fillgap_end - extra.fillgap_start);
    }
@@ -405,11 +410,10 @@ static int load_ELF(char *hdr, int len, int fd, const char *name,
 {
    struct elfinfo *e;
    struct elfinfo *interp = NULL;
-   ESZ(Addr) exeoff = 0;	/* offset between link address and load address */
-   ESZ(Addr) minaddr = ~0;	/* lowest mapped address */
-   ESZ(Addr) maxaddr = 0;	/* highest mapped address */
-   ESZ(Addr) interp_addr = 0;	/* interpreter (ld.so) address */
-   ESZ(Word) interp_size = 0;	/* interpreter size */
+   ESZ(Addr) minaddr = ~0;
+   ESZ(Addr) maxaddr = 0;
+   ESZ(Addr) interp_addr = 0;
+   ESZ(Word) interp_size = 0;
    int i;
    void *entry;
 
@@ -479,23 +483,9 @@ static int load_ELF(char *hdr, int len, int fd, const char *name,
 	       interp_size = end;
 	 }
 	 break;
-
-      default:
-         // do nothing
-         break;
       }
       }
    }
-
-   if (e->e.e_type == ET_DYN) {
-	   /* PIE executable */
-	   exeoff = info->exe_base - minaddr;
-   }
-
-   minaddr += exeoff;
-   maxaddr += exeoff;
-   info->phdr += exeoff;
-   info->entry += exeoff;
 
    if (info->exe_base != info->exe_end) {
       if (minaddr >= maxaddr ||
@@ -509,7 +499,7 @@ static int load_ELF(char *hdr, int len, int fd, const char *name,
       }
    }
 
-   info->brkbase = mapelf(e, exeoff);		/* map the executable */
+   info->brkbase = mapelf(e, 0);		/* map the executable */
 
    if (info->brkbase == 0)
       return ENOMEM;
@@ -540,7 +530,7 @@ static int load_ELF(char *hdr, int len, int fd, const char *name,
       entry = baseoff + interp->e.e_entry;
       info->interp_base = (ESZ(Addr))base;
    } else
-      entry = (void *)e->e.e_entry + exeoff;
+      entry = (void *)e->e.e_entry;
 
    info->exe_base = minaddr;
    info->exe_end = maxaddr;
@@ -611,67 +601,14 @@ static int load_script(char *hdr, int len, int fd, const char *name,
    return do_exec_inner(interp, info);
 }
 
-/* 
-   Emulate the normal Unix permissions checking algorithm.
-
-   If owner matches, then use the owner permissions, else
-   if group matches, then use the group permissions, else
-   use other permissions.
-
-   Note that we can't deal with SUID/SGID, so we refuse to run them
-   (otherwise the executable may misbehave if it doesn't have the
-   permissions it thinks it does).
-*/
-static int check_perms(int fd)
-{
-   struct stat st;
-
-   if (fstat(fd, &st) == -1) 
-      return errno;
-
-   if (st.st_mode & (S_ISUID | S_ISGID)) {
-      //fprintf(stderr, "Can't execute suid/sgid executable %s\n", exe);
-      return EACCES;
-   }
-
-   if (geteuid() == st.st_uid) {
-      if (!(st.st_mode & S_IXUSR))
-	 return EACCES;
-   } else {
-      int grpmatch = 0;
-
-      if (getegid() == st.st_gid)
-	 grpmatch = 1;
-      else {
-	 gid_t groups[32];
-	 int ngrp = getgroups(32, groups);
-	 int i;
-
-	 for(i = 0; i < ngrp; i++)
-	    if (groups[i] == st.st_gid) {
-	       grpmatch = 1;
-	       break;
-	    }
-      }
-
-      if (grpmatch) {
-	 if (!(st.st_mode & S_IXGRP))
-	    return EACCES;
-      } else if (!(st.st_mode & S_IXOTH))
-	 return EACCES;
-   }
-
-   return 0;
-}
-
 static int do_exec_inner(const char *exe, struct exeinfo *info)
 {
    int fd;
-   int err;
    char buf[VKI_BYTES_PER_PAGE];
    int bufsz;
    int i;
    int ret;
+   struct stat st;
    static const struct {
       int (*match)(const char *hdr, int len);
       int (*load) (      char *hdr, int len, int fd2, const char *name,
@@ -689,10 +626,40 @@ static int do_exec_inner(const char *exe, struct exeinfo *info)
       return errno;
    }
 
-   err = check_perms(fd);
-   if (err != 0) {
-      close(fd);
-      return err;
+   if (fstat(fd, &st) == -1) 
+      return errno;
+   else {
+      uid_t uid = geteuid();
+      gid_t gid = getegid();
+      gid_t groups[32];
+      int ngrp = getgroups(32, groups);
+
+      if (st.st_mode & (S_ISUID | S_ISGID)) {
+	 fprintf(stderr, "Can't execute suid/sgid executable %s\n", exe);
+	 return EACCES;
+      }
+
+      if (uid == st.st_uid) {
+	 if (!(st.st_mode & S_IXUSR))
+	    return EACCES;
+      } else {
+	 int grpmatch = 0;
+
+	 if (gid == st.st_gid)
+	    grpmatch = 1;
+	 else 
+	    for(i = 0; i < ngrp; i++)
+	       if (groups[i] == st.st_gid) {
+		  grpmatch = 1;
+		  break;
+	       }
+
+	 if (grpmatch) {
+	    if (!(st.st_mode & S_IXGRP))
+	       return EACCES;
+	 } else if (!(st.st_mode & S_IXOTH))
+	    return EACCES;
+      }
    }
 
    bufsz = pread(fd, buf, sizeof(buf), 0);

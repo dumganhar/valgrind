@@ -40,7 +40,7 @@
 #include <string.h>
 #endif*/
 
-#include "core.h"
+#include "vg_include.h"
 #include "ansidecl.h"
 #include "dyn-string.h"
 #include "demangle.h"

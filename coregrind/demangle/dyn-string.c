@@ -31,7 +31,7 @@ Boston, MA 02111-1307, USA.  */
 #include <stdlib.h>
 #endif*/
 
-#include "core.h"
+#include "vg_include.h"
 #include "ansidecl.h"
 #include "dyn-string.h"
 

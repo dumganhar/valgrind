@@ -1,11 +1,7 @@
 
-/*--------------------------------------------------------------------*/
-/*---                                                     mc_asm.h ---*/
-/*--------------------------------------------------------------------*/
-
 /*
-   This file is part of MemCheck, a heavyweight Valgrind tool for
-   detecting memory errors.
+   This file is part of Valgrind, an extensible x86 protected-mode
+   emulator for monitoring program execution on x86-Unixes.
 
    Copyright (C) 2000-2004 Julian Seward 
       jseward@acm.org
@@ -28,16 +24,9 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#ifndef __MC_ASM_H
-#define __MC_ASM_H
+#ifndef UME_ARCHDEFS_H
+#define UME_ARCHDEFS_H
 
-#include "tool_asm.h"
+#define CLIENT_BASE	0x00000000ul			/* base address of client address space */
 
-#define MC_(str)    VGAPPEND(vgMemCheck_,str)
-
-#endif   /* __MC_ASM_H */
-
-/*--------------------------------------------------------------------*/
-/*--- end                                                          ---*/
-/*--------------------------------------------------------------------*/
-
+#endif /* UME_ARCHDEFS_H */

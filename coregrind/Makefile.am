@@ -1,11 +1,14 @@
-include $(top_srcdir)/Makefile.all.am
-include $(top_srcdir)/Makefile.core-AM_CPPFLAGS.am
 
-SUBDIRS = $(VG_ARCH) demangle . docs
+SUBDIRS = x86 demangle . docs
 
-AM_CPPFLAGS += -DVG_LIBDIR="\"$(valdir)"\" -I$(srcdir)/demangle \
-		-DKICKSTART_BASE=$(KICKSTART_BASE) \
-		-DVG_PLATFORM="\"$(VG_PLATFORM)"\"
+add_includes = -I$(srcdir)/demangle -I$(top_builddir)/include \
+		-I$(top_srcdir)/include -I$(srcdir)/x86
+
+valdir = $(libdir)/valgrind
+inplacedir = $(top_builddir)/.in_place
+
+AM_CPPFLAGS = $(add_includes) -DVG_LIBDIR="\"$(valdir)"\" \
+		-DKICKSTART_BASE=$(KICKSTART_BASE)
 AM_CFLAGS = $(WERROR) -Winline -Wall -Wshadow -O -fno-omit-frame-pointer \
 		@PREFERRED_STACK_BOUNDARY@ -g -DELFSZ=32
 AM_CCASFLAGS = $(add_includes) -I..
@@ -16,7 +19,7 @@ bin_PROGRAMS = \
 	valgrind
 
 val_PROGRAMS = \
-	stage2 \
+	valgrind stage2 \
 	libpthread.so \
 	vg_inject.so
 
@@ -92,7 +95,6 @@ stage2_LDADD= \
 	demangle/cplus-dem.o \
 	demangle/dyn-string.o \
 	demangle/safe-ctype.o \
-	${VG_ARCH}/libarch.a \
 	-ldl
 
 vg_intercept.c: $(srcdir)/gen_intercepts.pl $(srcdir)/vg_intercept.c.base
@@ -140,10 +142,10 @@ vg_inject_so_LDFLAGS = \
 	-Wl,-z,initfirst
 
 noinst_HEADERS = \
-	core.h			\
-	core_asm.h		\
 	ume.h			\
 	ume_arch.h		\
+        vg_include.h            \
+        vg_constants.h          \
 	vg_symtab2.h		\
         vg_unistd.h             \
 	vg_symtypes.h		\

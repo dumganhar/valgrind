@@ -1,8 +1,8 @@
 
 /*--------------------------------------------------------------------*/
 /*--- A header file for all private parts of Valgrind's core.      ---*/
-/*--- Include no other! (more or less...)                          ---*/
-/*---                                                       core.h ---*/
+/*--- Include no other!                                            ---*/
+/*---                                                 vg_include.h ---*/
 /*--------------------------------------------------------------------*/
 
 /*
@@ -30,73 +30,27 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#ifndef __CORE_H
-#define __CORE_H
-
-/*
-   Header hierarchy:
-
-   - core C   files include core.h
-   - core asm files include core_asm.h
-   - tool C   files include tool.h
-   - tool asm files include tool_asm.h
-
-   - The hierarchy of the header files themselves is based around the
-     following rules:
-
-      - core headers     include  tool headers
-      - generic headers  include  arch/OS/platform headers
-      - C headers        include  asm headers
-
-     This gives the following hierarchy (only showing 'arch' headers, not
-     'os' or 'platform' headers), where arrows indicate inclusion, and
-     $VG_ARCH==x86:
-
-
-   (include/x86/tool_arch_asm.h?) <----- coregrind/x86/core_arch_asm.h
-              ^   ^                          ^   ^
-             /     \                        /     \
-            /       \                      /       \
-           /         \                    /         \
- include/tool_asm.h <-\---- coregrind/core_asm.h     \
-           ^           \                  ^           \
-            \  include/x86/tool_arch.h <--------coregrind/x86/core_arch.h
-             \         ^                    \         ^
-              \       /                      \       /
-               \     /                        \     /
-                \   /                          \   /
-           include/tool.h <------------ coregrind/core.h
-
-
-   Note that core.h contains the *declarations* of arch-specific functions
-   and variables, which can be used by the core_arch.h file of any
-   architecture.  (The functions/variables are *defined* within arch/.)
-   However, arch-specific macros and types cannot go into core.h, because
-   there is no separation between declaration and definition for
-   macros/types, so they instead go into $VG_ARCH/core_arch.h.
-
-   The tool-specific headers are all in include/ so they can be seen by any
-   external tools.
-*/
-
-
-/* For system call numbers __NR_... */
-#include "vg_unistd.h"
-
-#include "core_asm.h"      // asm stuff
-#include "tool.h"          // tool stuff
-#include "core_arch.h"     // arch-specific stuff;  eg. x86/arch.h
-
-#include "valgrind.h"
-
-#undef SK_
-#define SK_(x)	vgSkinInternal_##x
-
+#ifndef __VG_INCLUDE_H
+#define __VG_INCLUDE_H
 
 /* ---------------------------------------------------------------------
    Build options and table sizes.  You should be able to change these
    options or sizes, recompile, and still have a working system.
    ------------------------------------------------------------------ */
+
+/* For system call numbers __NR_... */
+#include "vg_unistd.h"
+
+#include "vg_constants.h"
+
+/* All stuff visible to core and tools goes in vg_skin.h.  Things
+ * visible to core but not visible to any tools should go in this
+ * file, vg_include.h. */
+#include "vg_skin.h"
+#include "valgrind.h"
+
+#undef SK_
+#define SK_(x)	vgSkinInternal_##x
 
 /* Total number of spill slots available for allocation, if a TempReg
    doesn't make it into a RealReg.  Just bomb the entire system if
@@ -180,31 +134,6 @@
 #define ROUNDUP(p, a)	ROUNDDN((p)+(a)-1, (a))
 #define PGROUNDDN(p)	ROUNDDN(p, VKI_BYTES_PER_PAGE)
 #define PGROUNDUP(p)	ROUNDUP(p, VKI_BYTES_PER_PAGE)
-
-/* ---------------------------------------------------------------------
-   Environment variables
-   ------------------------------------------------------------------ */
-
-/* The directory we look for all our auxillary files in */
-#define VALGRINDLIB	"VALGRINDLIB"
-
-/* Additional command-line arguments; they are overridden by actual
-   command-line option.  Each argument is separated by spaces.  There
-   is no quoting mechanism.
- */
-#define VALGRINDOPTS	"VALGRIND_OPTS"
-
-/* If this variable is present in the environment, then valgrind will
-   not parse the command line for options at all; all options come
-   from this variable.  Arguments are terminated by ^A (\001).  There
-   is no quoting mechanism.
-
-   This variable is not expected to be set by anything other than
-   Valgrind itself, as part of its handling of execve with
-   --trace-children=yes.  This variable should not be present in the
-   client environment.
- */
-#define VALGRINDCLO	"_VALGRIND_CLO"
 
 
 /* ---------------------------------------------------------------------
@@ -356,7 +285,7 @@ extern void VGP_(done_profiling) ( void );
    ------------------------------------------------------------------ */
 /* These structs are not exposed to tools to mitigate possibility of
    binary-incompatibilities when the core/tool interface changes.  Instead,
-   set functions are provided (see include/tool.h). */
+   set functions are provided (see include/vg_skin.h). */
 typedef
    struct {
       Char* name;
@@ -566,7 +495,7 @@ extern Bool  VG_(is_empty_arena) ( ArenaId aid );
 #define VG_USERREQ__INTERNAL_PRINTF_BACKTRACE 0x3104
 
 /* 
-In core_asm.h:
+In vg_constants.h:
 #define VG_USERREQ__SIGNAL_RETURNS          0x4001
 */
 
@@ -600,11 +529,62 @@ struct vg_mallocfunc_info {
 };
 
 /* ---------------------------------------------------------------------
+   Constants pertaining to the simulated CPU state, VG_(baseBlock),
+   which need to go here to avoid ugly circularities.
+   ------------------------------------------------------------------ */
+
+/* How big is the saved SSE/SSE2 state?  Note that this subsumes the
+   FPU state.  On machines without SSE, we just save/restore the FPU
+   state into the first part of this area. */
+/* A general comment about SSE save/restore: It appears that the 7th
+   word (which is the MXCSR) has to be &ed with 0x0000FFBF in order
+   that restoring from it later does not cause a GP fault (which is
+   delivered as a segfault).  I guess this will have to be done
+   any time we do fxsave :-(  7th word means word offset 6 or byte
+   offset 24 from the start address of the save area.
+ */
+#define VG_SIZE_OF_SSESTATE 512
+/* ... and in words ... */
+#define VG_SIZE_OF_SSESTATE_W ((VG_SIZE_OF_SSESTATE+3)/4)
+
+
+/* ---------------------------------------------------------------------
    Exports of vg_defaults.c
    ------------------------------------------------------------------ */
 
 extern Bool VG_(sk_malloc_called_by_scheduler);
 
+
+/* ---------------------------------------------------------------------
+   Exports of vg_ldt.c
+   ------------------------------------------------------------------ */
+
+/* This is the hardware-format for a segment descriptor, ie what the
+   x86 actually deals with.  It is 8 bytes long.  It's ugly.  */
+
+typedef struct _LDT_ENTRY {
+    union {
+       struct {
+          UShort      LimitLow;
+          UShort      BaseLow;
+          unsigned    BaseMid         : 8;
+          unsigned    Type            : 5;
+          unsigned    Dpl             : 2;
+          unsigned    Pres            : 1;
+          unsigned    LimitHi         : 4;
+          unsigned    Sys             : 1;
+          unsigned    Reserved_0      : 1;
+          unsigned    Default_Big     : 1;
+          unsigned    Granularity     : 1;
+          unsigned    BaseHi          : 8;
+       } Bits;
+       struct {
+          UInt word1;
+          UInt word2;
+       } Words;
+    } 
+    LdtEnt;
+} VgLdtEntry;
 
 /* Maximum number of LDT entries supported (by the x86). */
 #define VG_M_LDT_ENTRIES     8192
@@ -868,8 +848,57 @@ typedef
    /* Alternate signal stack */
    vki_kstack_t altstack;
 
-   /* Architecture-specific thread state */
-   arch_thread_t arch;
+   /* Pointer to this thread's Local (Segment) Descriptor Table.
+      Starts out as NULL, indicating there is no table, and we hope to
+      keep it that way.  If the thread does __NR_modify_ldt to create
+      entries, we allocate a 8192-entry table at that point.  This is
+      a straight copy of the Linux kernel's scheme.  Don't forget to
+      deallocate this at thread exit. */
+   VgLdtEntry* ldt;
+
+   /* TLS table. This consists of a small number (currently 3) of
+      entries from the Global Descriptor Table. */
+   VgLdtEntry tls[VKI_GDT_TLS_ENTRIES];
+
+   /* Saved machine context.  Note the FPU state, %EIP and segment
+      registers are not shadowed.
+
+      Although the segment registers are 16 bits long, storage
+      management here and in VG_(baseBlock) is
+      simplified if we pretend they are 32 bits. */
+   UInt m_cs;
+   UInt m_ss;
+   UInt m_ds;
+   UInt m_es;
+   UInt m_fs;
+   UInt m_gs;
+
+   UInt m_eax;
+   UInt m_ebx;
+   UInt m_ecx;
+   UInt m_edx;
+   UInt m_esi;
+   UInt m_edi;
+   UInt m_ebp;
+   UInt m_esp;
+   UInt m_eflags;
+   UInt m_eip;
+
+   /* The SSE/FPU state.  This array does not (necessarily) have the
+      required 16-byte alignment required to get stuff in/out by
+      fxsave/fxrestore.  So we have to do it "by hand".
+   */
+   UInt m_sse[VG_SIZE_OF_SSESTATE_W];
+
+   UInt sh_eax;
+   UInt sh_ebx;
+   UInt sh_ecx;
+   UInt sh_edx;
+   UInt sh_esi;
+   UInt sh_edi;
+   UInt sh_ebp;
+   UInt sh_esp;
+   UInt sh_eflags;
 } 
 ThreadState;
 
@@ -933,7 +962,7 @@ extern void VG_(scheduler_handle_fatal_signal)( Int sigNo );
 
 /* Write a value to a client's thread register, and shadow (if necessary) */
 #define SET_THREAD_REG( zztid, zzval, zzreg, zzREG, zzevent, zzargs... ) \
-   do { VG_(threads)[zztid].arch.m_##zzreg = (zzval);             \
+   do { VG_(threads)[zztid].m_##zzreg = (zzval);                  \
         VG_TRACK( zzevent, zztid, R_##zzREG, ##zzargs );          \
    } while (0)
 
@@ -1149,9 +1178,9 @@ extern void VG_(print_reg_alloc_stats) ( void );
 struct _ExeContext {
    struct _ExeContext * next;
    /* Variable-length array.  The size is VG_(clo_backtrace_size); at
-      least 1, at most VG_DEEPEST_BACKTRACE.  [0] is the current IP,
+      least 1, at most VG_DEEPEST_BACKTRACE.  [0] is the current %eip,
       [1] is its caller, [2] is the caller of [1], etc. */
-   Addr ips[0];
+   Addr eips[0];
 };
 
 
@@ -1159,8 +1188,8 @@ struct _ExeContext {
 extern void VG_(print_ExeContext_stats) ( void );
 
 /* Like VG_(get_ExeContext), but with a slightly different type */
-extern ExeContext* VG_(get_ExeContext2) ( Addr ip, Addr fp,
-                                          Addr fp_min, Addr fp_max );
+extern ExeContext* VG_(get_ExeContext2) ( Addr eip, Addr ebp,
+                                          Addr ebp_min, Addr ebp_max );
 
 
 /* ---------------------------------------------------------------------
@@ -1245,7 +1274,7 @@ extern Addr VG_(brk_limit);	/* current brk */
 extern Addr VG_(shadow_base);	/* tool's shadow memory */
 extern Addr VG_(shadow_end);
 extern Addr VG_(valgrind_base);	/* valgrind's address range */
-extern Addr VG_(valgrind_last); // Nb: last byte, rather than one past the end
+extern Addr VG_(valgrind_end);
 
 extern vki_rlimit VG_(client_rlimit_data); /* client's original rlimit data */
 
@@ -1279,10 +1308,6 @@ extern UInt VG_(bb_dechain_count);     // Counts of unchain operations done
 extern UInt VG_(unchained_jumps_done); // Number of unchained jumps performed
 
 extern void VG_(print_scheduler_stats) ( void );
-
-extern Int  VG_(alloc_BaB)( Int );      // Allocate slots in baseBlock
-extern void VG_(align_BaB)( UInt );     // Align baseBlock offset
-extern Int  VG_(alloc_BaB_1_set)( Addr ); // Allocate & init baseBlock slot
 
 /* ---------------------------------------------------------------------
    Exports of vg_memory.c
@@ -1450,6 +1475,57 @@ extern UInt VG_(patch_me);
    Exports of vg_helpers.S
    ------------------------------------------------------------------ */
 
+/* Mul, div, etc, -- we don't codegen these directly. */
+extern void VG_(helper_idiv_64_32);
+extern void VG_(helper_div_64_32);
+extern void VG_(helper_idiv_32_16);
+extern void VG_(helper_div_32_16);
+extern void VG_(helper_idiv_16_8);
+extern void VG_(helper_div_16_8);
+
+extern void VG_(helper_imul_32_64);
+extern void VG_(helper_mul_32_64);
+extern void VG_(helper_imul_16_32);
+extern void VG_(helper_mul_16_32);
+extern void VG_(helper_imul_8_16);
+extern void VG_(helper_mul_8_16);
+
+extern void VG_(helper_CLD);
+extern void VG_(helper_STD);
+extern void VG_(helper_get_dirflag);
+
+extern void VG_(helper_CLC);
+extern void VG_(helper_STC);
+extern void VG_(helper_CMC);
+
+extern void VG_(helper_shldl);
+extern void VG_(helper_shldw);
+extern void VG_(helper_shrdl);
+extern void VG_(helper_shrdw);
+
+extern void VG_(helper_IN);
+extern void VG_(helper_OUT);
+
+extern void VG_(helper_RDTSC);
+extern void VG_(helper_CPUID);
+
+extern void VG_(helper_bsfw);
+extern void VG_(helper_bsfl);
+extern void VG_(helper_bsrw);
+extern void VG_(helper_bsrl);
+
+extern void VG_(helper_fstsw_AX);
+extern void VG_(helper_SAHF);
+extern void VG_(helper_LAHF);
+extern void VG_(helper_DAS);
+extern void VG_(helper_DAA);
+extern void VG_(helper_AAS);
+extern void VG_(helper_AAA);
+extern void VG_(helper_AAD);
+extern void VG_(helper_AAM);
+
+extern void VG_(helper_cmpxchg8b);
+
 extern void VG_(helper_undefined_instruction);
 
 /* Information about trampoline code (for signal return and syscalls) */
@@ -1472,10 +1548,15 @@ __attribute__ ((noreturn))
 extern void VG_(missing_tool_func) ( const Char* fn );
 
 /* ---------------------------------------------------------------------
-   The baseBlock -- arch-neutral bits
+   The state of the simulated CPU.
    ------------------------------------------------------------------ */
 
-#define INVALID_OFFSET (-1)
+/* ---------------------------------------------------------------------
+   Offsets into baseBlock for everything which needs to referred to
+   from generated code.  The order of these decls does not imply 
+   what the order of the actual offsets is.  The latter is important
+   and is set up in vg_main.c.
+   ------------------------------------------------------------------ */
 
 /* An array of words.  In generated code, %ebp always points to the
    start of this array.  Useful stuff, like the simulated CPU state,
@@ -1488,21 +1569,62 @@ extern void VG_(missing_tool_func) ( const Char* fn );
 
 extern UInt VG_(baseBlock)[VG_BASEBLOCK_WORDS];
 
-// ---------------------------------------------------------------------
-// Architecture-specific things defined in eg. x86/*.c
-// ---------------------------------------------------------------------
+/* -----------------------------------------------------
+   Read-write parts of baseBlock.
+   -------------------------------------------------- */
 
-/* For setting up the baseBlock */    
-extern void VGA_(init_low_baseBlock)  ( Addr client_eip, Addr esp_at_startup );
-extern void VGA_(init_high_baseBlock) ( Addr client_eip, Addr esp_at_startup );
+/* State of the simulated CPU. */
+extern Int VGOFF_(m_eax);
+extern Int VGOFF_(m_ecx);
+extern Int VGOFF_(m_edx);
+extern Int VGOFF_(m_ebx);
+extern Int VGOFF_(m_esp);
+extern Int VGOFF_(m_ebp);
+extern Int VGOFF_(m_esi);
+extern Int VGOFF_(m_edi);
+extern Int VGOFF_(m_eflags);
+extern Int VGOFF_(m_ssestate);
+extern Int VGOFF_(m_eip);
 
-extern void VGA_(load_state) ( arch_thread_t*, ThreadId tid );
-extern void VGA_(save_state) ( arch_thread_t*, ThreadId tid );
+extern Int VGOFF_(m_dflag);	/* D flag is handled specially */
 
-extern Bool VGA_(setup_pointercheck) ( void );
+extern Int VGOFF_(m_cs);
+extern Int VGOFF_(m_ss);
+extern Int VGOFF_(m_ds);
+extern Int VGOFF_(m_es);
+extern Int VGOFF_(m_fs);
+extern Int VGOFF_(m_gs);
 
-extern Int  VGA_(ptrace_setregs_from_BB)  ( Int pid );
-extern Int  VGA_(ptrace_setregs_from_tst) ( Int pid, arch_thread_t* arch );
+/* Reg-alloc spill area (VG_MAX_SPILLSLOTS words long). */
+extern Int VGOFF_(spillslots);
+
+/* Records the valid bits for the 8 integer regs & flags reg. */
+extern Int VGOFF_(sh_eax);
+extern Int VGOFF_(sh_ecx);
+extern Int VGOFF_(sh_edx);
+extern Int VGOFF_(sh_ebx);
+extern Int VGOFF_(sh_esp);
+extern Int VGOFF_(sh_ebp);
+extern Int VGOFF_(sh_esi);
+extern Int VGOFF_(sh_edi);
+extern Int VGOFF_(sh_eflags);
+
+/* -----------------------------------------------------
+   Read-only parts of baseBlock.
+   -------------------------------------------------- */
+
+/* This thread's LDT pointer. */
+extern Int VGOFF_(ldt);
+
+/* This thread's TLS pointer. */
+extern Int VGOFF_(tls_ptr);
+
+/* Nb: Most helper offsets are in include/vg_skin.h, for use by tools */
+
+extern Int VGOFF_(helper_undefined_instruction);
+
+#endif /* ndef __VG_INCLUDE_H */
+
 
 /* ---------------------------------------------------------------------
    Finally - autoconf-generated settings
@@ -1510,8 +1632,6 @@ extern Int  VGA_(ptrace_setregs_from_tst) ( Int pid, arch_thread_t* arch );
 
 #include "config.h"
 
-#endif /* ndef __CORE_H */
-
 /*--------------------------------------------------------------------*/
-/*--- end                                                          ---*/
+/*--- end                                             vg_include.h ---*/
 /*--------------------------------------------------------------------*/

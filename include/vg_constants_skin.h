@@ -1,13 +1,15 @@
+
 /*--------------------------------------------------------------------*/
-/*---                                          x86/core_arch_asm.h ---*/
+/*--- A header file containing constants (for assembly code).      ---*/
+/*---                                               vg_constants.h ---*/
 /*--------------------------------------------------------------------*/
 
 /*
    This file is part of Valgrind, an extensible x86 protected-mode
    emulator for monitoring program execution on x86-Unixes.
 
-   Copyright (C) 2000-2004 Nicholas Nethercote
-      njn25@cam.ac.uk
+   Copyright (C) 2000-2004 Julian Seward 
+      jseward@acm.org
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -27,17 +29,33 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#ifndef __X86_CORE_ARCH_ASM_H
-#define __X86_CORE_ARCH_ASM_H
+#ifndef __VG_CONSTANTS_SKIN_H
+#define __VG_CONSTANTS_SKIN_H
 
-/* size of call instruction put into generated code at jump sites */
-#define VG_PATCHME_CALLSZ	5
 
-/* size of jmp instruction which overwrites the call */
-#define VG_PATCHME_JMPSZ	5
+/* All symbols externally visible from valgrind.so are prefixed
+   as specified here.  The prefix can be changed, so as to avoid
+   namespace conflict problems.
+*/
+#define VGAPPEND(str1,str2) str1##str2
 
-#endif   // __X86_CORE_ARCH_ASM_H
+/* These macros should add different prefixes so the same base
+   name can safely be used across different macros. */
+#define VG_(str)    VGAPPEND(vgPlain_,str)
+#define VGP_(str)   VGAPPEND(vgProf_,str)
+#define VGOFF_(str) VGAPPEND(vgOff_,str)
+
+/* Tool-specific ones.  Note that final name still starts with "vg". */
+#define SK_(str)    VGAPPEND(vgSkin_,str)
+
+/* This is specifically for stringifying VG_(x) function names.  We
+   need to do two macroexpansions to get the VG_ macro expanded before
+   stringifying */
+#define _STR(x)	#x
+#define STR(x)	_STR(x)
+
+#endif /* ndef __VG_CONSTANTS_SKIN_H */
 
 /*--------------------------------------------------------------------*/
-/*--- end                                                          ---*/
+/*--- end                                           vg_constants.h ---*/
 /*--------------------------------------------------------------------*/

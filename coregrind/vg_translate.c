@@ -29,7 +29,7 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#include "core.h"
+#include "vg_include.h"
 
 /*------------------------------------------------------------*/
 /*--- Renamings of frequently-used global functions.       ---*/
@@ -1589,8 +1589,8 @@ Bool uInstrMentionsTempReg ( UInstr* u, Int tempreg )
 static void vg_improve ( UCodeBlock* cb )
 {
    Int     i, j, k, m, n, ar, tr, told, actual_areg;
-   Int     areg_map[N_ARCH_REGS];
-   Bool    annul_put[N_ARCH_REGS];
+   Int     areg_map[8];
+   Bool    annul_put[8];
    Int     tempUse[VG_MAX_REGS_USED];
    Bool    isWrites[VG_MAX_REGS_USED];
    UInstr* u;
@@ -1636,14 +1636,14 @@ static void vg_improve ( UCodeBlock* cb )
 #  define BIND_ARCH_TO_TEMP(archreg,tempreg)\
    { Int q;                                           \
      /* Invalidate any old binding(s) to tempreg. */  \
-     for (q = 0; q < N_ARCH_REGS; q++)                \
+     for (q = 0; q < 8; q++)                          \
         if (areg_map[q] == tempreg) areg_map[q] = -1; \
      /* Add the new binding. */                       \
      areg_map[archreg] = (tempreg);                   \
    }
 
    /* Set up the A-reg map. */
-   for (i = 0; i < N_ARCH_REGS; i++) areg_map[i] = -1;
+   for (i = 0; i < 8; i++) areg_map[i] = -1;
 
    /* Scan insns. */
    for (i = 0; i < cb->used; i++) {
@@ -1735,7 +1735,7 @@ static void vg_improve ( UCodeBlock* cb )
             wr  = isWrites[j];
             if (!wr) continue;
             tr = tempUse[j];
-            for (m = 0; m < N_ARCH_REGS; m++)
+            for (m = 0; m < 8; m++)
                if (areg_map[m] == tr) areg_map[m] = -1;
          }
       }
@@ -1749,7 +1749,7 @@ static void vg_improve ( UCodeBlock* cb )
       in-memory value of %ESP to be up to date.  Although this isn't
       actually required by other analyses (cache simulation), it's
       simplest to be consistent for all end-uses. */
-   for (j = 0; j < N_ARCH_REGS; j++)
+   for (j = 0; j < 8; j++)
       annul_put[j] = False;
 
    for (i = cb->used-1; i >= 0; i--) {
@@ -1775,7 +1775,7 @@ static void vg_improve ( UCodeBlock* cb )
       } 
       else if (u->opcode == JMP || u->opcode == JIFZ
                || u->opcode == CALLM) {
-         for (j = 0; j < N_ARCH_REGS; j++)
+         for (j = 0; j < 8; j++)
             annul_put[j] = False;
       }
       else {

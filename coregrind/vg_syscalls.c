@@ -28,7 +28,7 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#include "core.h"
+#include "vg_include.h"
 
 /* vg_unsafe.h should NOT be included into any file except this
    one. */
@@ -1010,14 +1010,14 @@ static Bool fd_allowed(Int fd, const Char *syscall, ThreadId tid, Bool soft)
 #define POSTALIAS(new, old)	\
 	POST(new) __attribute__((alias(STR(after_##old))))
 
-#define SYSNO	(tst->arch.m_eax)	/* in PRE(x)  */
-#define res	(tst->arch.m_eax)	/* in POST(x) */
-#define arg1	(tst->arch.m_ebx)
-#define arg2	(tst->arch.m_ecx)
-#define arg3	(tst->arch.m_edx)
-#define arg4	(tst->arch.m_esi)
-#define arg5	(tst->arch.m_edi)
-#define arg6	(tst->arch.m_ebp)
+#define SYSNO	(tst->m_eax)		/* in PRE(x)  */
+#define res	(tst->m_eax)	/* in POST(x) */
+#define arg1	(tst->m_ebx)
+#define arg2	(tst->m_ecx)
+#define arg3	(tst->m_edx)
+#define arg4	(tst->m_esi)
+#define arg5	(tst->m_edi)
+#define arg6	(tst->m_ebp)
 
 PRE(exit_group)
 {
@@ -3410,40 +3410,30 @@ PRE(ioctl)
       SYSCALL_TRACK( pre_mem_read, tid, "ioctl(PPSETMODE)", arg3,
                      sizeof(int) );
       break;
-#ifdef PPGETMODE
    case PPGETMODE:
       SYSCALL_TRACK( pre_mem_write, tid, "ioctl(PPGETMODE)", arg3,
                      sizeof(int) );
       break;
-#endif
    case PPSETPHASE:
       SYSCALL_TRACK( pre_mem_read, tid, "ioctl(PPSETPHASE)", arg3,
                      sizeof(int) );
       break;
-#ifdef PPGETPHASE
    case PPGETPHASE:
       SYSCALL_TRACK( pre_mem_write, tid, "ioctl(PPGETPHASE)", arg3,
                      sizeof(int) );
       break;
-#endif
-#ifdef PPGETMODES
    case PPGETMODES:
       SYSCALL_TRACK( pre_mem_write, tid, "ioctl(PPGETMODES)", arg3,
                      sizeof(unsigned int) );
       break;
-#endif
-#ifdef PPSETFLAGS
    case PPSETFLAGS:
       SYSCALL_TRACK( pre_mem_read, tid, "ioctl(PPSETFLAGS)", arg3,
                      sizeof(int) );
       break;
-#endif
-#ifdef PPGETFLAGS
    case PPGETFLAGS:
       SYSCALL_TRACK( pre_mem_write, tid, "ioctl(PPGETFLAGS)", arg3,
                      sizeof(int) );
       break;
-#endif
    case PPRSTATUS:
       SYSCALL_TRACK( pre_mem_write, tid, "ioctl(PPRSTATUS)", arg3,
                      sizeof(unsigned char) );
@@ -3938,9 +3928,7 @@ POST(ioctl)
    case PPRELEASE:
    case PPSETMODE:
    case PPSETPHASE:
-#ifdef PPSETFLAGS
    case PPSETFLAGS:
-#endif
    case PPWDATA:
    case PPWCONTROL:
    case PPFCONTROL:
@@ -3949,26 +3937,18 @@ POST(ioctl)
    case PPWCTLONIRQ:
    case PPSETTIME:
       break;
-#ifdef PPGETMODE
    case PPGETMODE:
       VG_TRACK( post_mem_write, arg3, sizeof(int) );
       break;
-#endif
-#ifdef PPGETPHASE
    case PPGETPHASE:
       VG_TRACK( post_mem_write, arg3, sizeof(int) );
       break;
-#endif
-#ifdef PPGETMODES
    case PPGETMODES:
       VG_TRACK( post_mem_write, arg3, sizeof(unsigned int) );
       break;
-#endif
-#ifdef PPGETFLAGS
    case PPGETFLAGS:
       VG_TRACK( post_mem_write, arg3, sizeof(int) );
       break;
-#endif
    case PPRSTATUS:
       VG_TRACK( post_mem_write, arg3, sizeof(unsigned char) );
       break;
@@ -6284,7 +6264,7 @@ static void restart_syscall(ThreadId tid)
    vg_assert(tst->syscallno != -1);
 
    SYSNO = tst->syscallno;
-   tst->arch.m_eip -= 2;		/* sizeof(int $0x80) */
+   tst->m_eip -= 2;		/* sizeof(int $0x80) */
 
    /* Make sure our caller is actually sane, and we're really backing
       back over a syscall.
@@ -6292,12 +6272,12 @@ static void restart_syscall(ThreadId tid)
       int $0x80 == CD 80 
    */
    {
-      UChar *p = (UChar *)tst->arch.m_eip;
+      UChar *p = (UChar *)tst->m_eip;
       
       if (p[0] != 0xcd || p[1] != 0x80)
 	 VG_(message)(Vg_DebugMsg, 
 		      "?! restarting over syscall at %p %02x %02x\n",
-		      tst->arch.m_eip, p[0], p[1]);
+		      tst->m_eip, p[0], p[1]);
 
       vg_assert(p[0] == 0xcd && p[1] == 0x80);
    }

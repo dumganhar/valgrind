@@ -1,6 +1,7 @@
 
 /*--------------------------------------------------------------------*/
-/*--- Asm-specific core stuff.                          core_asm.h ---*/
+/*--- A header file containing constants (for assembly code).      ---*/
+/*---                                               vg_constants.h ---*/
 /*--------------------------------------------------------------------*/
 
 /*
@@ -28,11 +29,10 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#ifndef __CORE_ASM_H
-#define __CORE_ASM_H
+#ifndef __VG_CONSTANTS_H
+#define __VG_CONSTANTS_H
 
-#include "tool_asm.h"            // tool asm stuff
-#include "core_arch_asm.h"       // arch-specific asm stuff
+#include "vg_constants_skin.h"
 
 /* This file is included in all Valgrind source files, including
    assembly ones. */
@@ -53,6 +53,12 @@
 #define VG_TRC_INNER_FASTMISS     31 /* TRC only; means fast-cache miss. */
 #define VG_TRC_INNER_COUNTERZERO  29 /* TRC only; means bb ctr == 0 */
 #define VG_TRC_UNRESUMABLE_SIGNAL 37 /* TRC only; got sigsegv/sigbus */
+
+/* size of call instruction put into generated code at jump sites */
+#define VG_PATCHME_CALLSZ	5
+
+/* size of jmp instruction which overwrites the call */
+#define VG_PATCHME_JMPSZ	5
 
 /* maximum number of normal jumps which can appear in a basic block */
 #define VG_MAX_JUMPS		2
@@ -152,8 +158,31 @@
 #define VG_AMD_FEAT_3DNOWEXT	(VG_AMD_FEAT*32 + 30)
 #define VG_AMD_FEAT_3DNOW	(VG_AMD_FEAT*32 + 31)
 
-#endif /* ndef __CORE_ASM_H */
+/* Various environment variables we pay attention to */
+
+/* The directory we look for all our auxillary files in */
+#define VALGRINDLIB	"VALGRINDLIB"
+
+/* Additional command-line arguments; they are overridden by actual
+   command-line option.  Each argument is separated by spaces.  There
+   is no quoting mechanism.
+ */
+#define VALGRINDOPTS	"VALGRIND_OPTS"
+
+/* If this variable is present in the environment, then valgrind will
+   not parse the command line for options at all; all options come
+   from this variable.  Arguments are terminated by ^A (\001).  There
+   is no quoting mechanism.
+
+   This variable is not expected to be set by anything other than
+   Valgrind itself, as part of its handling of execve with
+   --trace-children=yes.  This variable should not be present in the
+   client environment.
+ */
+#define VALGRINDCLO	"_VALGRIND_CLO"
+
+#endif /* ndef __VG_CONSTANTS_H */
 
 /*--------------------------------------------------------------------*/
-/*--- end                                                          ---*/
+/*--- end                                           vg_constants.h ---*/
 /*--------------------------------------------------------------------*/

@@ -30,7 +30,7 @@
 */
 
 
-#include "core.h"
+#include "vg_include.h"
 
 //#define DEBUG_MALLOC      // turn on heavyweight debugging machinery
 //#define VERBOSE_MALLOC    // make verbose, esp. in debugging machinery

@@ -30,9 +30,10 @@
 
 #define _FILE_OFFSET_BITS 64
 
-#include "core.h"
+#include "vg_include.h"
 #include "ume.h"
 #include "ume_arch.h"
+#include "ume_archdefs.h"
 
 #include <dirent.h>
 #include <dlfcn.h>
@@ -108,9 +109,11 @@ Addr VG_(shadow_end);
 
 Addr VG_(valgrind_base);	 /* valgrind's address range */
 
-// Note that VG_(valgrind_last) names the last byte of the section, whereas
-// the VG_(*_end) vars name the byte one past the end of the section.
-Addr VG_(valgrind_last);
+// VG_(valgrind_end) has a slightly different meaning to all the other
+// VG_(*_end) vars -- ie. it names the last byte, whereas the others
+// go one byte past the end.
+
+Addr VG_(valgrind_end);
 
 vki_rlimit VG_(client_rlimit_data);
 
@@ -225,14 +228,6 @@ static void print_all_stats ( void )
 /*=== Miscellaneous global functions                               ===*/
 /*====================================================================*/
 
-static Int ptrace_setregs(Int pid, ThreadId tid)
-{
-   if (VG_(is_running_thread)( tid ))
-      return VGA_(ptrace_setregs_from_BB)(pid);
-   else
-      return VGA_(ptrace_setregs_from_tst)(pid, &VG_(threads)[tid].arch);
-}
-
 /* Start debugger and get it to attach to this process.  Called if the
    user requests this service after an error has been shown, so she can
    poke around and look at parameters, memory, etc.  You can't
@@ -247,12 +242,51 @@ void VG_(start_debugger) ( Int tid )
       VG_(kkill)(VG_(getpid)(), VKI_SIGSTOP);
 
    } else if (pid > 0) {
+      struct user_regs_struct regs;
       Int status;
       Int res;
 
+      if (VG_(is_running_thread)( tid )) {
+         regs.cs  = VG_(baseBlock)[VGOFF_(m_cs)];
+         regs.ss  = VG_(baseBlock)[VGOFF_(m_ss)];
+         regs.ds  = VG_(baseBlock)[VGOFF_(m_ds)];
+         regs.es  = VG_(baseBlock)[VGOFF_(m_es)];
+         regs.fs  = VG_(baseBlock)[VGOFF_(m_fs)];
+         regs.gs  = VG_(baseBlock)[VGOFF_(m_gs)];
+         regs.eax = VG_(baseBlock)[VGOFF_(m_eax)];
+         regs.ebx = VG_(baseBlock)[VGOFF_(m_ebx)];
+         regs.ecx = VG_(baseBlock)[VGOFF_(m_ecx)];
+         regs.edx = VG_(baseBlock)[VGOFF_(m_edx)];
+         regs.esi = VG_(baseBlock)[VGOFF_(m_esi)];
+         regs.edi = VG_(baseBlock)[VGOFF_(m_edi)];
+         regs.ebp = VG_(baseBlock)[VGOFF_(m_ebp)];
+         regs.esp = VG_(baseBlock)[VGOFF_(m_esp)];
+         regs.eflags = VG_(baseBlock)[VGOFF_(m_eflags)];
+         regs.eip = VG_(baseBlock)[VGOFF_(m_eip)];
+      } else {
+         ThreadState* tst = & VG_(threads)[ tid ];
+         
+         regs.cs  = tst->m_cs;
+         regs.ss  = tst->m_ss;
+         regs.ds  = tst->m_ds;
+         regs.es  = tst->m_es;
+         regs.fs  = tst->m_fs;
+         regs.gs  = tst->m_gs;
+         regs.eax = tst->m_eax;
+         regs.ebx = tst->m_ebx;
+         regs.ecx = tst->m_ecx;
+         regs.edx = tst->m_edx;
+         regs.esi = tst->m_esi;
+         regs.edi = tst->m_edi;
+         regs.ebp = tst->m_ebp;
+         regs.esp = tst->m_esp;
+         regs.eflags = tst->m_eflags;
+         regs.eip = tst->m_eip;
+      }
+
       if ((res = VG_(waitpid)(pid, &status, 0)) == pid &&
           WIFSTOPPED(status) && WSTOPSIG(status) == SIGSTOP &&
-          ptrace_setregs(pid, tid) == 0 &&
+          ptrace(PTRACE_SETREGS, pid, NULL, &regs) == 0 &&
           kill(pid, SIGSTOP) == 0 &&
           ptrace(PTRACE_DETACH, pid, NULL, 0) == 0) {
          Char pidbuf[15];
@@ -403,7 +437,12 @@ static void layout_remaining_space(Addr argc_addr, float ratio)
    addr_t client_size, shadow_size;
 
    VG_(valgrind_base)  = (addr_t)&kickstart_base;
-   VG_(valgrind_last)  = ROUNDUP(argc_addr, 0x10000) - 1; // stack
+
+   // VG_(valgrind_end) has a slightly different meaning to all the other
+   // VG_(*_end) vars -- ie. it names the last byte, whereas the others
+   // go one byte past the end.
+
+   VG_(valgrind_end)   = ROUNDUP(argc_addr, 0x10000) - 1; // stack
 
    // This gives the client the largest possible address space while
    // taking into account the tool's shadow needs.
@@ -415,9 +454,9 @@ static void layout_remaining_space(Addr argc_addr, float ratio)
    VG_(client_mapbase) = VG_(client_base) +
          PGROUNDDN((addr_t)(client_size * CLIENT_HEAP_PROPORTION));
 
+   shadow_size         = PGROUNDUP(client_size * ratio);
    VG_(shadow_base)    = VG_(client_end) + REDZONE_SIZE;
-   VG_(shadow_end)     = VG_(valgrind_base);
-   shadow_size         = VG_(shadow_end) - VG_(shadow_base);
+   VG_(shadow_end)     = VG_(shadow_base) + shadow_size;
 
 #define SEGSIZE(a,b) ((VG_(b) - VG_(a))/(1024*1024))
 
@@ -427,23 +466,23 @@ static void layout_remaining_space(Addr argc_addr, float ratio)
          "client_mapbase     %8x (%dMB)\n"
          "client_end         %8x (%dMB)\n"
          "shadow_base        %8x (%dMB)\n"
-         "shadow_end         %8x\n"
+         "shadow_end         %8x (%dMB)\n"
          "valgrind_base      %8x (%dMB)\n"
-         "valgrind_last      %8x\n",
+         "valgrind_end       %8x\n",
          VG_(client_base),       SEGSIZE(client_base,       client_mapbase),
          VG_(client_mapbase),    SEGSIZE(client_mapbase,    client_end),
          VG_(client_end),        SEGSIZE(client_end,        shadow_base),
          VG_(shadow_base),       SEGSIZE(shadow_base,       shadow_end),
-         VG_(shadow_end),
-         VG_(valgrind_base),     SEGSIZE(valgrind_base,     valgrind_last),
-         VG_(valgrind_last)
+         VG_(shadow_end),        SEGSIZE(shadow_end,        valgrind_base),
+         VG_(valgrind_base),     SEGSIZE(valgrind_base,     valgrind_end),
+         VG_(valgrind_end)
       );
 
 #undef SEGSIZE
 
    // Ban redzone
    vres = mmap((void *)VG_(client_end), REDZONE_SIZE, PROT_NONE,
-               MAP_FIXED|MAP_ANON|MAP_PRIVATE|MAP_NORESERVE, -1, 0);
+               MAP_FIXED|MAP_ANON|MAP_PRIVATE, -1, 0);
    vg_assert((void*)-1 != vres);
 
    // Make client hole
@@ -454,7 +493,7 @@ static void layout_remaining_space(Addr argc_addr, float ratio)
    // Initially all inaccessible, incrementally initialized as it is used
    if (shadow_size != 0) {
       vres = mmap((char *)VG_(shadow_base), shadow_size, PROT_NONE,
-                  MAP_PRIVATE|MAP_ANON|MAP_FIXED|MAP_NORESERVE, -1, 0);
+                  MAP_PRIVATE|MAP_ANON|MAP_FIXED, -1, 0);
       if ((void*)-1 == vres) {
          fprintf(stderr, 
           "valgrind: Couldn't allocate address space for shadow memory\n"
@@ -988,10 +1027,9 @@ static Addr setup_client_stack(char **orig_argv, char **orig_envp,
 
    if (0)
       printf("stringsize=%d auxsize=%d stacksize=%d\n"
-             "clstk_base %p\n"
-             "clstk_end  %p\n",
-	     stringsize, auxsize, stacksize,
-             (void*)VG_(clstk_base), (void*)VG_(clstk_end));
+             "clstk_base %x\n"
+             "clstk_end  %x\n",
+	     stringsize, auxsize, stacksize, VG_(clstk_base), VG_(clstk_end));
 
 
    /* ==================== allocate space ==================== */
@@ -1404,7 +1442,7 @@ Int    VG_(clo_verbosity)      = 1;
 Bool   VG_(clo_demangle)       = True;
 Bool   VG_(clo_trace_children) = False;
 
-/* See big comment in core.h for meaning of these three.
+/* See big comment in vg_include.h for meaning of these three.
    fd is initially stdout, for --help, but gets moved to stderr by default
    immediately afterwards. */
 VgLogTo VG_(clo_log_to)        = VgLogTo_Fd;
@@ -1879,19 +1917,18 @@ static void process_cmd_line_options( UInt* client_auxv, const char* toolname )
 
    if (VG_(clo_verbosity > 0)) {
       /* Tool details */
-      VG_(message)(Vg_UserMsg, "%s%s%s, %s for %s.",
+      VG_(message)(Vg_UserMsg, "%s%s%s, %s for x86-linux.",
                    VG_(details).name, 
                    NULL == VG_(details).version ?        "" : "-",
                    NULL == VG_(details).version 
                       ? (Char*)"" : VG_(details).version,
-                   VG_(details).description,
-                   VG_PLATFORM);
+                   VG_(details).description);
       VG_(message)(Vg_UserMsg, "%s", VG_(details).copyright_author);
 
       /* Core details */
       VG_(message)(Vg_UserMsg,
-         "Using valgrind-%s, a program supervision framework for %s.",
-         VERSION, VG_PLATFORM);
+         "Using valgrind-%s, a program supervision framework for x86-linux.",
+         VERSION);
       VG_(message)(Vg_UserMsg, 
          "Copyright (C) 2000-2004, and GNU GPL'd, by Julian Seward et al.");
    }
@@ -2070,6 +2107,82 @@ static void setup_file_descriptors(void)
 /*=== baseBlock: definition + setup                                ===*/
 /*====================================================================*/
 
+/* The variables storing offsets. */
+
+#define INVALID_OFFSET (-1)
+
+Int VGOFF_(m_eax) = INVALID_OFFSET;
+Int VGOFF_(m_ecx) = INVALID_OFFSET;
+Int VGOFF_(m_edx) = INVALID_OFFSET;
+Int VGOFF_(m_ebx) = INVALID_OFFSET;
+Int VGOFF_(m_esp) = INVALID_OFFSET;
+Int VGOFF_(m_ebp) = INVALID_OFFSET;
+Int VGOFF_(m_esi) = INVALID_OFFSET;
+Int VGOFF_(m_edi) = INVALID_OFFSET;
+Int VGOFF_(m_eflags) = INVALID_OFFSET;
+Int VGOFF_(m_dflag)  = INVALID_OFFSET;
+Int VGOFF_(m_ssestate) = INVALID_OFFSET;
+Int VGOFF_(ldt)   = INVALID_OFFSET;
+Int VGOFF_(tls_ptr) = INVALID_OFFSET;
+Int VGOFF_(m_cs)  = INVALID_OFFSET;
+Int VGOFF_(m_ss)  = INVALID_OFFSET;
+Int VGOFF_(m_ds)  = INVALID_OFFSET;
+Int VGOFF_(m_es)  = INVALID_OFFSET;
+Int VGOFF_(m_fs)  = INVALID_OFFSET;
+Int VGOFF_(m_gs)  = INVALID_OFFSET;
+Int VGOFF_(m_eip) = INVALID_OFFSET;
+Int VGOFF_(spillslots) = INVALID_OFFSET;
+Int VGOFF_(sh_eax) = INVALID_OFFSET;
+Int VGOFF_(sh_ecx) = INVALID_OFFSET;
+Int VGOFF_(sh_edx) = INVALID_OFFSET;
+Int VGOFF_(sh_ebx) = INVALID_OFFSET;
+Int VGOFF_(sh_esp) = INVALID_OFFSET;
+Int VGOFF_(sh_ebp) = INVALID_OFFSET;
+Int VGOFF_(sh_esi) = INVALID_OFFSET;
+Int VGOFF_(sh_edi) = INVALID_OFFSET;
+Int VGOFF_(sh_eflags) = INVALID_OFFSET;
+
+Int VGOFF_(helper_idiv_64_32) = INVALID_OFFSET;
+Int VGOFF_(helper_div_64_32) = INVALID_OFFSET;
+Int VGOFF_(helper_idiv_32_16) = INVALID_OFFSET;
+Int VGOFF_(helper_div_32_16) = INVALID_OFFSET;
+Int VGOFF_(helper_idiv_16_8) = INVALID_OFFSET;
+Int VGOFF_(helper_div_16_8) = INVALID_OFFSET;
+Int VGOFF_(helper_imul_32_64) = INVALID_OFFSET;
+Int VGOFF_(helper_mul_32_64) = INVALID_OFFSET;
+Int VGOFF_(helper_imul_16_32) = INVALID_OFFSET;
+Int VGOFF_(helper_mul_16_32) = INVALID_OFFSET;
+Int VGOFF_(helper_imul_8_16) = INVALID_OFFSET;
+Int VGOFF_(helper_mul_8_16) = INVALID_OFFSET;
+Int VGOFF_(helper_CLD) = INVALID_OFFSET;
+Int VGOFF_(helper_STD) = INVALID_OFFSET;
+Int VGOFF_(helper_get_dirflag) = INVALID_OFFSET;
+Int VGOFF_(helper_CLC) = INVALID_OFFSET;
+Int VGOFF_(helper_STC) = INVALID_OFFSET;
+Int VGOFF_(helper_CMC) = INVALID_OFFSET;
+Int VGOFF_(helper_shldl) = INVALID_OFFSET;
+Int VGOFF_(helper_shldw) = INVALID_OFFSET;
+Int VGOFF_(helper_shrdl) = INVALID_OFFSET;
+Int VGOFF_(helper_shrdw) = INVALID_OFFSET;
+Int VGOFF_(helper_IN) = INVALID_OFFSET;
+Int VGOFF_(helper_OUT) = INVALID_OFFSET;
+Int VGOFF_(helper_RDTSC) = INVALID_OFFSET;
+Int VGOFF_(helper_CPUID) = INVALID_OFFSET;
+Int VGOFF_(helper_BSWAP) = INVALID_OFFSET;
+Int VGOFF_(helper_bsfw) = INVALID_OFFSET;
+Int VGOFF_(helper_bsfl) = INVALID_OFFSET;
+Int VGOFF_(helper_bsrw) = INVALID_OFFSET;
+Int VGOFF_(helper_bsrl) = INVALID_OFFSET;
+Int VGOFF_(helper_fstsw_AX) = INVALID_OFFSET;
+Int VGOFF_(helper_SAHF) = INVALID_OFFSET;
+Int VGOFF_(helper_LAHF) = INVALID_OFFSET;
+Int VGOFF_(helper_DAS) = INVALID_OFFSET;
+Int VGOFF_(helper_DAA) = INVALID_OFFSET;
+Int VGOFF_(helper_AAS) = INVALID_OFFSET;
+Int VGOFF_(helper_AAA) = INVALID_OFFSET;
+Int VGOFF_(helper_AAD) = INVALID_OFFSET;
+Int VGOFF_(helper_AAM) = INVALID_OFFSET;
+Int VGOFF_(helper_cmpxchg8b) = INVALID_OFFSET;
 Int VGOFF_(helper_undefined_instruction) = INVALID_OFFSET;
 
 /* MAX_NONCOMPACT_HELPERS can be increased easily.  If MAX_COMPACT_HELPERS is
@@ -2097,18 +2210,18 @@ static Int baB_off = 0;
 
 
 /* Returns the offset, in words. */
-Int VG_(alloc_BaB) ( Int words )
+static Int alloc_BaB ( Int words )
 {
    Int off = baB_off;
    baB_off += words;
    if (baB_off >= VG_BASEBLOCK_WORDS)
-      VG_(core_panic)( "VG_(alloc_BaB): baseBlock is too small");
+      VG_(core_panic)( "alloc_BaB: baseBlock is too small");
 
    return off;   
 }
 
 /* Align offset, in *bytes* */
-void VG_(align_BaB) ( UInt align )
+static void align_BaB ( UInt align )
 {
    vg_assert(2 == align || 4 == align || 8 == align || 16 == align);
    baB_off +=  (align-1);
@@ -2116,9 +2229,9 @@ void VG_(align_BaB) ( UInt align )
 }
 
 /* Allocate 1 word in baseBlock and set it to the given value. */
-Int VG_(alloc_BaB_1_set) ( Addr a )
+static Int alloc_BaB_1_set ( Addr a )
 {
-   Int off = VG_(alloc_BaB)(1);
+   Int off = alloc_BaB(1);
    VG_(baseBlock)[off] = (UInt)a;
    return off;
 }
@@ -2157,7 +2270,7 @@ void assign_helpers_in_baseBlock(UInt n, Int offsets[], Addr addrs[])
 {
    UInt i;
    for (i = 0; i < n; i++) 
-      offsets[i] = VG_(alloc_BaB_1_set)( addrs[i] );
+      offsets[i] = alloc_BaB_1_set( addrs[i] );
 }
 
 Bool VG_(need_to_handle_esp_assignment)(void)
@@ -2177,19 +2290,133 @@ Bool VG_(need_to_handle_esp_assignment)(void)
           );
 }
 
-// The low/high split is for x86, so that the more common helpers can be
-// in the first 128 bytes of the start, which allows the use of a more
-// compact addressing mode.
+/* Here we assign actual offsets.  It's important to get the most
+   popular referents within 128 bytes of the start, so we can take
+   advantage of short addressing modes relative to %ebp.  Popularity
+   of offsets was measured on 22 Feb 02 running a KDE application, and
+   the slots rearranged accordingly, with a 1.5% reduction in total
+   size of translations. */
 static void init_baseBlock ( Addr client_eip, Addr esp_at_startup )
 {
-   VGA_(init_low_baseBlock)(client_eip, esp_at_startup);
+   /* Those with offsets under 128 are carefully chosen. */
 
+   /* WORD offsets in this column */
+   /* 0   */ VGOFF_(m_eax)     = alloc_BaB_1_set(0);
+   /* 1   */ VGOFF_(m_ecx)     = alloc_BaB_1_set(0);
+   /* 2   */ VGOFF_(m_edx)     = alloc_BaB_1_set(0);
+   /* 3   */ VGOFF_(m_ebx)     = alloc_BaB_1_set(0);
+   /* 4   */ VGOFF_(m_esp)     = alloc_BaB_1_set(esp_at_startup);
+   /* 5   */ VGOFF_(m_ebp)     = alloc_BaB_1_set(0);
+   /* 6   */ VGOFF_(m_esi)     = alloc_BaB_1_set(0);
+   /* 7   */ VGOFF_(m_edi)     = alloc_BaB_1_set(0);
+   /* 8   */ VGOFF_(m_eflags)  = alloc_BaB_1_set(0);
+
+   if (VG_(needs).shadow_regs) {
+      /* 9   */ VGOFF_(sh_eax)    = alloc_BaB_1_set(0);
+      /* 10  */ VGOFF_(sh_ecx)    = alloc_BaB_1_set(0);
+      /* 11  */ VGOFF_(sh_edx)    = alloc_BaB_1_set(0);
+      /* 12  */ VGOFF_(sh_ebx)    = alloc_BaB_1_set(0);
+      /* 13  */ VGOFF_(sh_esp)    = alloc_BaB_1_set(0);
+      /* 14  */ VGOFF_(sh_ebp)    = alloc_BaB_1_set(0);
+      /* 15  */ VGOFF_(sh_esi)    = alloc_BaB_1_set(0);
+      /* 16  */ VGOFF_(sh_edi)    = alloc_BaB_1_set(0);
+      /* 17  */ VGOFF_(sh_eflags) = alloc_BaB_1_set(0);
+      VG_TRACK( post_regs_write_init );
+   }
+
+   /* 9,10,11 or 18,19,20... depends on number whether shadow regs are used
+    * and on compact helpers registered */ 
+
+   /* Make these most-frequently-called specialised ones compact, if they
+      are used. */
+   if (VG_(defined_new_mem_stack_4)())
+      VG_(register_compact_helper)( (Addr) VG_(tool_interface).track_new_mem_stack_4);
+
+   if (VG_(defined_die_mem_stack_4)())
+      VG_(register_compact_helper)( (Addr) VG_(tool_interface).track_die_mem_stack_4);
+
+   /* (9 or 18) + n_compact_helpers  */
    /* Allocate slots for compact helpers */
    assign_helpers_in_baseBlock(VG_(n_compact_helpers), 
                                VG_(compact_helper_offsets), 
                                VG_(compact_helper_addrs));
 
-   VGA_(init_high_baseBlock)(client_eip, esp_at_startup);
+   /* (9/10 or 18/19) + n_compact_helpers */
+   VGOFF_(m_eip) = alloc_BaB_1_set(client_eip);
+
+   /* There are currently 24 spill slots */
+   /* (11+/20+ .. 32+/43+) + n_compact_helpers.  This can overlap the magic
+    * boundary at >= 32 words, but most spills are to low numbered spill
+    * slots, so the ones above the boundary don't see much action. */
+   VGOFF_(spillslots) = alloc_BaB(VG_MAX_SPILLSLOTS);
+
+   /* I gave up counting at this point.  Since they're above the
+      short-amode-boundary, there's no point. */
+
+   VGOFF_(m_dflag) = alloc_BaB_1_set(1);  // 1 == forward D-flag
+
+   /* The FPU/SSE state.  This _must_ be 16-byte aligned.  Initial
+      state doesn't matter much, as long as it's not totally borked. */
+   align_BaB(16);
+   VGOFF_(m_ssestate) = alloc_BaB(VG_SIZE_OF_SSESTATE_W);
+   vg_assert( 
+      0 == ( ((UInt)(& VG_(baseBlock)[VGOFF_(m_ssestate)])) % 16 )
+   );
+
+   /* I assume that if we have SSE2 we also have SSE */
+   VG_(have_ssestate) = 
+	   VG_(cpu_has_feature)(VG_X86_FEAT_FXSR) &&
+	   VG_(cpu_has_feature)(VG_X86_FEAT_SSE);
+
+   /* set up an initial FPU state (doesn't really matter what it is,
+      so long as it's somewhat valid) */
+   if (!VG_(have_ssestate))
+      asm volatile("fwait; fnsave %0; fwait; frstor %0; fwait" 
+                   : 
+                   : "m" (VG_(baseBlock)[VGOFF_(m_ssestate)]) 
+                   : "cc", "memory");
+   else
+      asm volatile("fwait; fxsave %0; fwait; andl $0xffbf, %1;"
+                   "fxrstor %0; fwait"
+                   : 
+                   : "m" (VG_(baseBlock)[VGOFF_(m_ssestate)]), 
+                     "m" (VG_(baseBlock)[VGOFF_(m_ssestate)+(24/4)]) 
+                   : "cc", "memory");
+
+   if (0) {
+      if (VG_(have_ssestate))
+         VG_(printf)("Looks like a SSE-capable CPU\n");
+      else
+         VG_(printf)("Looks like a MMX-only CPU\n");
+   }
+
+   /* LDT pointer: pretend the root thread has an empty LDT to start with. */
+   VGOFF_(ldt)   = alloc_BaB_1_set((UInt)NULL);
+
+   /* TLS pointer: pretend the root thread has no TLS array for now. */
+   VGOFF_(tls_ptr) = alloc_BaB_1_set((UInt)NULL);
+
+   /* segment registers */
+   VGOFF_(m_cs)  = alloc_BaB_1_set(0);
+   VGOFF_(m_ss)  = alloc_BaB_1_set(0);
+   VGOFF_(m_ds)  = alloc_BaB_1_set(0);
+   VGOFF_(m_es)  = alloc_BaB_1_set(0);
+   VGOFF_(m_fs)  = alloc_BaB_1_set(0);
+   VGOFF_(m_gs)  = alloc_BaB_1_set(0);
+
+   /* initialise %cs, %ds and %ss to point at the operating systems
+      default code, data and stack segments */
+   asm volatile("movw %%cs, %0"
+                :
+                : "m" (VG_(baseBlock)[VGOFF_(m_cs)]));
+   asm volatile("movw %%ds, %0"
+                :
+                : "m" (VG_(baseBlock)[VGOFF_(m_ds)]));
+   asm volatile("movw %%ss, %0"
+                :
+                : "m" (VG_(baseBlock)[VGOFF_(m_ss)]));
+
+   VG_(register_noncompact_helper)( (Addr) & VG_(do_useseg) );
 
 #define REG(kind, size) \
    if (VG_(defined_##kind##_mem_stack##size)()) \
@@ -2210,8 +2437,43 @@ static void init_baseBlock ( Addr client_eip, Addr esp_at_startup )
    if (VG_(need_to_handle_esp_assignment)())
       VG_(register_noncompact_helper)((Addr) VG_(unknown_esp_update));
 
-   VGOFF_(helper_undefined_instruction)
-      = VG_(alloc_BaB_1_set)( (Addr) & VG_(helper_undefined_instruction));
+#  define HELPER(name) \
+   VGOFF_(helper_##name) = alloc_BaB_1_set( (Addr) & VG_(helper_##name))
+
+   /* Helper functions. */
+   HELPER(idiv_64_32);     HELPER(div_64_32);
+   HELPER(idiv_32_16);     HELPER(div_32_16);
+   HELPER(idiv_16_8);      HELPER(div_16_8);
+
+   HELPER(imul_32_64);     HELPER(mul_32_64);
+   HELPER(imul_16_32);     HELPER(mul_16_32);
+   HELPER(imul_8_16);      HELPER(mul_8_16);
+
+   HELPER(CLD);            HELPER(STD);
+   HELPER(get_dirflag);
+
+   HELPER(CLC);            HELPER(STC);
+   HELPER(CMC);
+
+   HELPER(shldl);          HELPER(shldw);
+   HELPER(shrdl);          HELPER(shrdw);
+
+   HELPER(RDTSC);          HELPER(CPUID);
+
+   HELPER(bsfw);           HELPER(bsfl);
+   HELPER(bsrw);           HELPER(bsrl);
+
+   HELPER(fstsw_AX);
+   HELPER(SAHF);           HELPER(LAHF);
+   HELPER(DAS);            HELPER(DAA);
+   HELPER(AAS);            HELPER(AAA);
+   HELPER(AAD);            HELPER(AAM);
+   HELPER(IN);             HELPER(OUT);
+   HELPER(cmpxchg8b);
+
+   HELPER(undefined_instruction);
+
+#  undef HELPER
 
    /* Allocate slots for noncompact helpers */
    assign_helpers_in_baseBlock(VG_(n_noncompact_helpers), 
@@ -2254,6 +2516,36 @@ Int VG_(helper_offset)(Addr a)
 
 
 /*====================================================================*/
+/*=== Setup pointercheck                                           ===*/
+/*====================================================================*/
+
+static void setup_pointercheck(void)
+{
+   int ret;
+
+   if (VG_(clo_pointercheck)) {
+      vki_modify_ldt_t ldt = { 
+         VG_POINTERCHECK_SEGIDX,    // entry_number
+         VG_(client_base),          // base_addr
+         (VG_(client_end)-VG_(client_base)) / VKI_BYTES_PER_PAGE, // limit
+         1,                         // seg_32bit
+         0,                         // contents: data, RW, non-expanding
+         0,                         // ! read_exec_only
+         1,                         // limit_in_pages
+         0,                         // ! seg not present
+         1,                         // useable
+      };
+      ret = VG_(do_syscall)(__NR_modify_ldt, 1, &ldt, sizeof(ldt));
+      if (ret < 0) {
+	 VG_(message)(Vg_UserMsg,
+		      "Warning: ignoring --pointercheck=yes, "
+		      "because modify_ldt failed (errno=%d)", -ret);
+	 VG_(clo_pointercheck) = False;
+      }
+   }
+}
+
+/*====================================================================*/
 /*===  Initialise program data/text, etc.                          ===*/
 /*====================================================================*/
 
@@ -2272,7 +2564,7 @@ static void build_valgrind_map_callback
       symbols.  This is so we know where the free space is before we
       start allocating more memory (note: heap is OK, it's just mmap
       which is the problem here). */
-   if (start >= VG_(valgrind_base) && (start+size-1) <= VG_(valgrind_last)) {
+   if (start >= VG_(valgrind_base) && (start+size) <= VG_(valgrind_end)) {
       flags |= SF_VALGRIND;
       VG_(map_file_segment)(start, size, prot, flags, dev, ino, foffset, filename);
    }
@@ -2305,7 +2597,7 @@ static void build_segment_map_callback
    if (filename != NULL)
       flags |= SF_FILE;
 
-   if (start >= VG_(valgrind_base) && (start+size-1) <= VG_(valgrind_last))
+   if (start >= VG_(valgrind_base) && (start+size) <= VG_(valgrind_end))
       flags |= SF_VALGRIND;
 
    VG_(map_file_segment)(start, size, prot, flags, dev, ino, foffset, filename);
@@ -2425,6 +2717,7 @@ void VG_(sanity_check_general) ( Bool force_expensive )
 	         : shadow memory for tools :
 	         | (may be 0 sized)        |
   shadow_end     +-------------------------+
+                 : gap (may be 0 sized)    :
   valgrind_base  +-------------------------+
                  | kickstart executable    |
                  | valgrind heap  vvvvvvvvv| (barely used)
@@ -2433,7 +2726,7 @@ void VG_(sanity_check_general) ( Bool force_expensive )
 		 | and mappings            |
                  -                         -
                  | valgrind stack ^^^^^^^^^|
-  valgrind_last  +-------------------------+
+  valgrind_end   +-------------------------+
 		 : kernel                  :
 
   Nb: Before we can do general allocations with VG_(arena_malloc)() and
@@ -2578,9 +2871,8 @@ int main(int argc, char **argv)
    esp_at_startup = setup_client_stack(cl_argv, env, &info, &client_auxv);
 
    if (0)
-      printf("entry=%p client esp=%p vg_argc=%d brkbase=%p\n",
-	     (void*)client_eip, (void*)esp_at_startup, vg_argc, 
-             (void*)VG_(brk_base));
+      printf("entry=%x client esp=%x vg_argc=%d brkbase=%x\n",
+	     client_eip, esp_at_startup, vg_argc, VG_(brk_base));
 
    //==============================================================
    // Finished setting up operating environment.  Now initialise
@@ -2758,8 +3050,7 @@ int main(int argc, char **argv)
    // Setup pointercheck
    //   p: process_cmd_line_options() [for VG_(clo_pointercheck)]
    //--------------------------------------------------------------
-   if (VG_(clo_pointercheck))
-      VG_(clo_pointercheck) = VGA_(setup_pointercheck)();
+   setup_pointercheck();
 
    //--------------------------------------------------------------
    // Run!

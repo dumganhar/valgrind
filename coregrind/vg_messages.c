@@ -30,7 +30,7 @@
 */
 
 
-#include "core.h"
+#include "vg_include.h"
 
 #include <time.h>
 #include <sys/time.h>

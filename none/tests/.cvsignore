@@ -35,9 +35,8 @@ insn_sse2
 insn_sse2.c
 int
 map_unmap
-mq
-mremap
 munmap_exe
+mremap
 pluto
 pth_blockedsig
 rcl_assert

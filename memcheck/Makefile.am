@@ -1,7 +1,15 @@
-include $(top_srcdir)/Makefile.tool.am
 
-## Build Memcheck at a higher optimisation level
-AM_CFLAGS += -O2
+SUBDIRS = . tests docs
+
+all_includes = -I$(top_builddir)/include -I$(top_srcdir)/include
+
+AM_CPPFLAGS = $(all_includes)
+AM_CFLAGS = $(WERROR) -Winline -Wall -Wshadow -O2 -fomit-frame-pointer \
+		@PREFERRED_STACK_BOUNDARY@ -g
+AM_CCASFLAGS = $(all_includes)
+
+valdir = $(libdir)/valgrind
+inplacedir = $(top_builddir)/.in_place
 
 val_PROGRAMS = vgskin_memcheck.so vgpreload_memcheck.so
 
@@ -30,8 +38,12 @@ mcinclude_HEADERS = \
 
 noinst_HEADERS =	\
 	mac_shared.h	\
-	mc_asm.h	\
+	mc_constants.h	\
 	mc_include.h
 
 mac_replace_strmem.o: CFLAGS += -fno-omit-frame-pointer
 
+all-local:
+	mkdir -p $(inplacedir)
+	-rm -f $(addprefix $(inplacedir)/,$(val_PROGRAMS))
+	ln -f -s $(addprefix $(top_builddir)/$(subdir)/,$(val_PROGRAMS)) $(inplacedir)
