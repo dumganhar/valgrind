@@ -13,7 +13,6 @@ default skin.
 
 <h3>3.1&nbsp; Kinds of bugs that memcheck can find</h3>
 
-Memcheck is Valgrind-1.0.X's checking mechanism bundled up into a skin.
     All reads and writes of memory are checked, and calls to
     malloc/new/free/delete are intercepted. As a result, memcheck can
     detect the following problems:
@@ -100,8 +99,8 @@ Memcheck is Valgrind-1.0.X's checking mechanism bundled up into a skin.
       assume that reads and writes some small distance below the stack
       pointer <code>%esp</code> are due to bugs in gcc 2.96, and does
       not report them.  The "small distance" is 256 bytes by default.
-      Note that gcc 2.96 is the default compiler on some popular Linux
-      distributions (RedHat 7.X, Mandrake) and so you may well need to
+      Note that gcc 2.96 is the default compiler on some older Linux
+      distributions (RedHat 7.X) and so you may well need to
       use this flag.  Do not use it if you do not have to, as it can
       cause real errors to be overlooked.  Another option is to use a
       gcc/g++ which does not generate accesses below the stack
@@ -822,6 +821,18 @@ details of their arguments.
     the number of bytes of memory found by the previous leak check to
     be leaked, dubious, reachable and suppressed.  Again, useful in
     test harness code, after calling <code>VALGRIND_DO_LEAK_CHECK</code>.
+<p>
+<li><code>VALGRIND_MALLOCLIKE_BLOCK</code>: If your program manages its own
+    memory instead of using the standard
+    <code>malloc()</code>/<code>new</code>/<code>new[]</code>, Memcheck will
+    not detect nearly as many errors, and the error messages won't be as
+    informative.  To improve this situation, use this macro just after your
+    custom allocator allocates some new memory.  See the comments in
+    <code>memcheck/memcheck.h</code> for information on how to use it.
+<p>
+<li><code>VALGRIND_FREELIKE_BLOCK</code>: This should be used in conjunction 
+    with <code>VALGRIND_MALLOCLIKE_BLOCK</code>.  Again, see
+    <code>memcheck/memcheck.h</code> for information on how to use it.  
 <p>
 <li><code>VALGRIND_GET_VBITS</code> and
     <code>VALGRIND_SET_VBITS</code>: allow you to get and set the V (validity)

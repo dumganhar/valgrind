@@ -187,7 +187,9 @@ Char* SK_(name_XUOpcode)(Opcode opc)
 void SK_(pp_XUInstr)(UInstr* u)
 {
    switch (u->opcode) {
+
       case TAG1:
+         VG_(printf)("\t");
          VG_(pp_UOperand)(u, 1, 4, False);
          VG_(printf)(" = %s ( ", nameOfTagOp( u->val3 ));
          VG_(pp_UOperand)(u, 1, 4, False);
@@ -195,6 +197,7 @@ void SK_(pp_XUInstr)(UInstr* u)
          break;
 
       case TAG2:
+         VG_(printf)("\t");
          VG_(pp_UOperand)(u, 2, 4, False);
          VG_(printf)(" = %s ( ", nameOfTagOp( u->val3 ));
          VG_(pp_UOperand)(u, 1, 4, False);
@@ -204,22 +207,26 @@ void SK_(pp_XUInstr)(UInstr* u)
          break;
 
       case STOREV: case LOADV:
+         VG_(printf)("\t");
          VG_(pp_UOperand)(u, 1, u->size, u->opcode==LOADV);
          VG_(printf)(", ");
          VG_(pp_UOperand)(u, 2, u->size, u->opcode==STOREV);
          break;
 
       case PUTVF: case GETVF:
+         VG_(printf)("\t");
          VG_(pp_UOperand)(u, 1, 0, False);
          break;
 
       case GETV: case PUTV:
+         VG_(printf)("\t");
          VG_(pp_UOperand)(u, 1, u->opcode==PUTV ? 4 : u->size, False);
          VG_(printf)(", ");
          VG_(pp_UOperand)(u, 2, u->opcode==GETV ? 4 : u->size, False);
          break;
 
       case TESTV: case SETV:
+         VG_(printf)("\t");
          VG_(pp_UOperand)(u, 1, u->size, False);
          break;
 
@@ -860,7 +867,6 @@ static UCodeBlock* memcheck_instrument ( UCodeBlock* cb_in )
          */
          case ADD: case SUB:
          case ADC: case SBB:
-         case MUL:
             qd = SHADOW(u_in->val2);
             qs = getOperandShadow(cb, u_in->size, u_in->tag1, u_in->val1);
             create_UifU(cb, u_in->size, qs, qd);

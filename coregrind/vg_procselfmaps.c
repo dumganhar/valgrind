@@ -71,13 +71,13 @@ static Int readhex ( Char* buf, UInt* val )
 
 /* Read /proc/self/maps, store the contents in a static buffer.  If there's
    a syntax error or other failure, just abort. */
-void VG_(read_procselfmaps)(void)
+void VG_(read_procselfmaps_contents)(void)
 {
    Int n_chunk, fd;
    
    /* Read the initial memory mapping from the /proc filesystem. */
    fd = VG_(open) ( "/proc/self/maps", VKI_O_RDONLY, 0 );
-   if (fd < 0) {
+   if (fd == -1) {
       VG_(message)(Vg_UserMsg, "FATAL: can't open /proc/self/maps");
       VG_(exit)(1);
    }
@@ -123,8 +123,9 @@ void VG_(read_procselfmaps)(void)
    Nb: it is important that this function does not alter the contents of
        procmap_buf!
 */
-void VG_(parse_procselfmaps) (
-   void (*record_mapping)( Addr, UInt, Char, Char, Char, UInt, UChar* ) )
+void VG_(read_procselfmaps) (
+   void (*record_mapping)( Addr, UInt, Char, Char, Char, UInt, UChar* ),
+   Bool read_from_file )
 {
    Int    i, j, i_eol;
    Addr   start, endPlusOne;
@@ -132,7 +133,12 @@ void VG_(parse_procselfmaps) (
    UInt   foffset;
    UChar  rr, ww, xx, pp, ch, tmp;
 
-   sk_assert( '\0' != procmap_buf[0] && 0 != buf_n_tot);
+   static Int depth = 0;
+
+   if (read_from_file && depth == 0) {
+      VG_(read_procselfmaps_contents)();
+   }
+   depth++;
 
    if (0)
       VG_(message)(Vg_DebugMsg, "raw:\n%s", procmap_buf );
@@ -212,6 +218,7 @@ void VG_(parse_procselfmaps) (
 
       i = i_eol + 1;
    }
+   depth--;
 }
 
 /*--------------------------------------------------------------------*/

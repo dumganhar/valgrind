@@ -59,8 +59,6 @@
 #ifndef __VALGRIND_H
 #define __VALGRIND_H
 
-#include <stdarg.h>
-
 
 /* This file is for inclusion into client (your!) code.
 
@@ -134,9 +132,6 @@
 /* Some request codes.  There are many more of these, but most are not
    exposed to end-user view.  These are the public ones, all of the
    form 0x1000 + small_number.
-
-   Core ones are in the range 0x00000000--0x0000ffff.  The non-public ones
-   start at 0x2000.
 */
 
 #define VG_USERREQ_SKIN_BASE(a,b) \
@@ -159,14 +154,7 @@ typedef
              Valgrind's output to /dev/null and still count errors. */
           VG_USERREQ__COUNT_ERRORS = 0x1201,
 
-          /* These are useful and can be interpreted by any skin that tracks
-             malloc() et al, by using vg_replace_malloc.c. */
-          VG_USERREQ__MALLOCLIKE_BLOCK = 0x1301,
-          VG_USERREQ__FREELIKE_BLOCK   = 0x1302,
-
-          /* Allow printfs to valgrind log. */
-          VG_USERREQ__PRINTF = 0x1401,
-          VG_USERREQ__PRINTF_BACKTRACE = 0x1402,
+          VG_USERREQ__FINAL_DUMMY_CLIENT_REQUEST
    } Vg_ClientRequest;
 
 
@@ -192,44 +180,6 @@ typedef
                             _qzz_addr, _qzz_len, 0, 0);            \
    }
 
-#ifndef NVALGRIND
-
-int VALGRIND_PRINTF(const char *format, ...)
-   __attribute__((format(__printf__, 1, 2)));
-__attribute__((weak))
-int
-VALGRIND_PRINTF(const char *format, ...)
-{
-   unsigned int _qzz_res;
-   va_list vargs;
-   va_start(vargs, format);
-   VALGRIND_MAGIC_SEQUENCE(_qzz_res, 0, VG_USERREQ__PRINTF,
-                           (unsigned int)format, (unsigned int)vargs, 0, 0);
-   va_end(vargs);
-   return _qzz_res;
-}
-
-int VALGRIND_PRINTF_BACKTRACE(const char *format, ...)
-   __attribute__((format(__printf__, 1, 2)));
-__attribute__((weak))
-int
-VALGRIND_PRINTF_BACKTRACE(const char *format, ...)
-{
-   unsigned int _qzz_res;
-   va_list vargs;
-   va_start(vargs, format);
-   VALGRIND_MAGIC_SEQUENCE(_qzz_res, 0, VG_USERREQ__PRINTF_BACKTRACE,
-                           (unsigned int)format, (unsigned int)vargs, 0, 0);
-   va_end(vargs);
-   return _qzz_res;
-}
-
-#else /* NVALGRIND */
-
-#define VALGRIND_PRINTF(...)
-#define VALGRIND_PRINTF_BACKTRACE(...)
-
-#endif /* NVALGRIND */
 
 /* These requests allow control to move from the simulated CPU to the
    real CPU, calling an arbitary function */
@@ -280,43 +230,5 @@ VALGRIND_PRINTF_BACKTRACE(const char *format, ...)
                             0, 0, 0, 0);                                \
     _qyy_res;                                                           \
    })
-
-/* Mark a block of memory as having been allocated by a malloc()-like
-   function.  `addr' is the start of the usable block (ie. after any
-   redzone) `rzB' is redzone size if the allocator can apply redzones;
-   use '0' if not.  Adding redzones makes it more likely Valgrind will spot
-   block overruns.  `is_zeroed' indicates if the memory is zeroed, as it is
-   for calloc().  Put it immediately after the point where a block is
-   allocated. 
-   
-   If you're allocating memory via superblocks, and then handing out small
-   chunks of each superblock, if you don't have redzones on your small
-   blocks, it's worth marking the superblock with VALGRIND_MAKE_NOACCESS
-   when it's created, so that block overruns are detected.  But if you can
-   put redzones on, it's probably better to not do this, so that messages
-   for small overruns are described in terms of the small block rather than
-   the superblock (but if you have a big overrun that skips over a redzone,
-   you could miss an error this way).  See memcheck/tests/custom_alloc.c
-   for an example.
-
-   Nb: block must be freed via a free()-like function specified
-   with VALGRIND_FREELIKE_BLOCK or mismatch errors will occur. */
-#define VALGRIND_MALLOCLIKE_BLOCK(addr, sizeB, rzB, is_zeroed)     \
-   {unsigned int _qzz_res;                                         \
-    VALGRIND_MAGIC_SEQUENCE(_qzz_res, 0,                           \
-                            VG_USERREQ__MALLOCLIKE_BLOCK,          \
-                            addr, sizeB, rzB, is_zeroed);          \
-   }
-
-/* Mark a block of memory as having been freed by a free()-like function.
-   `rzB' is redzone size;  it must match that given to
-   VALGRIND_MALLOCLIKE_BLOCK.  Memory not freed will be detected by the leak
-   checker.  Put it immediately after the point where the block is freed. */
-#define VALGRIND_FREELIKE_BLOCK(addr, rzB)                         \
-   {unsigned int _qzz_res;                                         \
-    VALGRIND_MAGIC_SEQUENCE(_qzz_res, 0,                           \
-                            VG_USERREQ__FREELIKE_BLOCK,            \
-                            addr, rzB, 0, 0);                      \
-   }
 
 #endif   /* __VALGRIND_H */

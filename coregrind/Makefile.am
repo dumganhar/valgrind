@@ -4,9 +4,9 @@ SUBDIRS = demangle . docs
 add_includes = -I$(srcdir)/demangle -I$(top_srcdir)/include
 
 AM_CPPFLAGS = $(add_includes) -DVG_LIBDIR="\"$(libdir)"\"
-AM_CFLAGS = $(WERROR) -Winline -Wall -Wshadow -O -fno-omit-frame-pointer \
-		@PREFERRED_STACK_BOUNDARY@ -g -fpic
-AM_CCASFLAGS = $(add_includes)
+AM_CFLAGS = $(WERROR) -Winline -Wall -Wshadow -O -fomit-frame-pointer \
+		@PREFERRED_STACK_BOUNDARY@ -g
+AM_CCASFLAGS = -I$(top_builddir) -I$(top_srcdir) $(add_includes)
 
 valdir = $(libdir)/valgrind
 
@@ -19,7 +19,7 @@ val_PROGRAMS = \
 	valgrinq.so \
 	libpthread.so
 
-EXTRA_DIST = vg_libpthread.vs valgrind.vs
+EXTRA_DIST = vg_libpthread.vs
 
 libpthread_so_SOURCES = \
 	vg_libpthread.c \
@@ -53,25 +53,17 @@ valgrind_so_SOURCES = \
 	vg_mylibc.c \
 	vg_needs.c \
 	vg_procselfmaps.c \
-	vg_proxylwp.c \
 	vg_dummy_profile.c \
 	vg_signals.c \
 	vg_startup.S \
 	vg_symtab2.c \
-	vg_dwarf.c \
-	vg_stabs.c \
-	vg_symtypes.c \
 	vg_syscalls.c \
 	vg_syscall.S \
 	vg_to_ucode.c \
 	vg_translate.c \
 	vg_transtab.c \
 	vg_ldt.c
-valgrind_so_DEPENDENCIES = $(srcdir)/valgrind.vs
-valgrind_so_LDFLAGS = \
-	-Wl,-z,initfirst -shared \
-	-Wl,-version-script $(srcdir)/valgrind.vs 
-
+valgrind_so_LDFLAGS = -Wl,-z,initfirst -shared
 valgrind_so_LDADD = \
 	demangle/cp-demangle.o \
 	demangle/cplus-dem.o \
@@ -87,9 +79,6 @@ lib_replace_malloc_a_SOURCES = vg_replace_malloc.c
 noinst_HEADERS = \
         vg_include.h            \
         vg_constants.h          \
-	vg_symtab2.h		\
-        vg_unistd.h             \
-	vg_symtypes.h		\
 	vg_unsafe.h
 
 MANUAL_DEPS = $(noinst_HEADERS) $(include_HEADERS) .in_place/libpthread.so.0

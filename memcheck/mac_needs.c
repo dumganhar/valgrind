@@ -287,42 +287,13 @@ void MAC_(pp_shared_SkinError) ( Error* err )
          MAC_(pp_AddrInfo)(VG_(get_error_address)(err), &err_extra->addrinfo);
          break;
 
-      case AddrErr:
-         switch (err_extra->axskind) {
-            case ReadAxs:
-               VG_(message)(Vg_UserMsg, "Invalid read of size %d", 
-                                        err_extra->size ); 
-               break;
-            case WriteAxs:
-               VG_(message)(Vg_UserMsg, "Invalid write of size %d", 
-                                        err_extra->size ); 
-               break;
-            case ExecAxs:
-               VG_(message)(Vg_UserMsg, "Jump to the invalid address "
-                                        "stated on the next line");
-               break;
-            default: 
-               VG_(skin_panic)("SK_(pp_SkinError)(axskind)");
-         }
+      case OverlapErr:
+         VG_(message)(Vg_UserMsg, 
+                      "Source and destination overlap in %s",
+                      VG_(get_error_string)(err));
          VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-         MAC_(pp_AddrInfo)(VG_(get_error_address)(err), &err_extra->addrinfo);
          break;
 
-      case OverlapErr: {
-         OverlapExtra* ov_extra = (OverlapExtra*)VG_(get_error_extra)(err);
-         if (ov_extra->len == -1)
-            VG_(message)(Vg_UserMsg,
-                         "Source and destination overlap in %s(%p, %p)",
-                         VG_(get_error_string)(err),
-                         ov_extra->dst, ov_extra->src);
-         else
-            VG_(message)(Vg_UserMsg,
-                         "Source and destination overlap in %s(%p, %p, %d)",
-                         VG_(get_error_string)(err),
-                         ov_extra->dst, ov_extra->src, ov_extra->len);
-         VG_(pp_ExeContext)( VG_(get_error_where)(err) );
-         break;
-      }
       case LeakErr: {
          /* Totally abusing the types of these spare fields... oh well. */
          UInt n_this_record   = (UInt)VG_(get_error_address)(err);
@@ -499,36 +470,43 @@ void MAC_(record_freemismatch_error) ( ThreadId tid, Addr a )
 
 
 // This one not passed a ThreadId, so it grabs it itself.
-void MAC_(record_overlap_error) ( Char* function, OverlapExtra* ov_extra )
+void MAC_(record_overlap_error) ( Char* function )
 {
+   static Int n_strdups = 0;
+   MAC_Error err_extra;
+ 
+   /* Potential space leak; this strdup'd space is never
+      reclaimed.  Hence hacky sanity check. */
+   if (n_strdups < 1000) {
+      n_strdups++;
+      function = VG_(strdup) ( function );
+   } else {
+      function = NULL;
+   }
+
+   MAC_(clear_MAC_Error)( &err_extra );
    VG_(maybe_record_error)( VG_(get_current_or_recent_tid)(), 
-                            OverlapErr, /*addr*/0, /*s*/function, ov_extra );
+                            OverlapErr, /*addr*/0, /*s*/function, &err_extra );
 }
 
 
-/* Updates the copy with address info if necessary (but not for all errors). */
+/* Updates the copy with address info if necessary (but not for LeakErrs). */
 UInt SK_(update_extra)( Error* err )
 {
-   switch (VG_(get_error_kind)(err)) {
-   case ValueErr:
-   case CoreMemErr:
-   case AddrErr: 
-   case ParamErr:
-   case UserErr:
-   case FreeErr:
-   case FreeMismatchErr: {
-      MAC_Error* extra = (MAC_Error*)VG_(get_error_extra)(err);
-      if (extra != NULL && Undescribed == extra->addrinfo.akind) {
-         describe_addr ( VG_(get_error_address)(err), &(extra->addrinfo) );
-      }
-      return sizeof(MAC_Error);
-   }
+   MAC_Error* extra;
+
    /* Don't need to return the correct size -- LeakErrs are always shown with
       VG_(unique_error)() so they're not copied anyway. */
-   case LeakErr:     return 0;
-   case OverlapErr:  return sizeof(OverlapExtra);
-   default: VG_(skin_panic)("update_extra: bad errkind");
+   if (LeakErr == VG_(get_error_kind)(err))
+      return 0;
+
+   extra = (MAC_Error*)VG_(get_error_extra)(err);
+
+   if (extra != NULL && Undescribed == extra->addrinfo.akind) {
+      describe_addr ( VG_(get_error_address)(err), &(extra->addrinfo) );
    }
+
+   return sizeof(MAC_Error);
 }
 
 
@@ -827,12 +805,7 @@ void MAC_(common_fini)(void (*leak_check)(void))
 
 Bool MAC_(handle_common_client_requests)(ThreadId tid, UInt* arg, UInt* ret )
 {
-   Char* err  = 
-         "The client requests VALGRIND_MALLOCLIKE_BLOCK and\n"
-      "   VALGRIND_FREELIKE_BLOCK have moved.  Please recompile your\n"
-      "   program to incorporate the updates in the Valgrind header files.\n"
-      "   You shouldn't need to change the text of your program at all.\n"
-      "   Everything should then work as before.  Sorry for the bother.\n";
+   UInt* argv = (UInt*)arg;
 
    // Not using 'tid' here because MAC_(new_block)() and MAC_(handle_free)()
    // grab it themselves.  But what they grab should match 'tid', check
@@ -851,27 +824,22 @@ Bool MAC_(handle_common_client_requests)(ThreadId tid, UInt* arg, UInt* ret )
       *ret = 0;
       return True;
    }
-   case VG_USERREQ__MALLOCLIKE_BLOCK__OLD_DO_NOT_USE:
-   case VG_USERREQ__FREELIKE_BLOCK__OLD_DO_NOT_USE:
-      VG_(skin_panic)(err);
-
    case VG_USERREQ__MALLOCLIKE_BLOCK: {
-      Addr p         = (Addr)arg[1];
-      UInt sizeB     =       arg[2];
-      UInt rzB       =       arg[3];
-      Bool is_zeroed = (Bool)arg[4];
+      Addr p         = (Addr)argv[1];
+      UInt sizeB     =       argv[2];
+      UInt rzB       =       argv[3];
+      Bool is_zeroed = (Bool)argv[4];
 
       MAC_(new_block) ( p, sizeB, rzB, is_zeroed, MAC_AllocCustom );
       return True;
    }
    case VG_USERREQ__FREELIKE_BLOCK: {
-      Addr p         = (Addr)arg[1];
-      UInt rzB       =       arg[2];
+      Addr p         = (Addr)argv[1];
+      UInt rzB       =       argv[2];
 
       MAC_(handle_free) ( p, rzB, MAC_AllocCustom );
       return True;
    }
-
    default:
       return False;
    }

@@ -29,10 +29,9 @@
 */
 
 #include "vg_include.h"
-#include "vg_symtypes.h"
-#include "vg_symtab2.h"
 
 #include <elf.h>          /* ELF defns                      */
+#include <a.out.h>        /* stabs defns                    */
 
 
 /* Majorly rewritten Sun 3 Feb 02 to enable loading symbols from
@@ -42,20 +41,100 @@
 */
 
 
+/*------------------------------------------------------------*/
+/*--- Structs n stuff                                      ---*/
+/*------------------------------------------------------------*/
+
+/* A structure to hold an ELF symbol (very crudely). */
+typedef 
+   struct { 
+      Addr addr;   /* lowest address of entity */
+      UInt size;   /* size in bytes */
+      Int  nmoff;  /* offset of name in this SegInfo's str tab */
+   }
+   RiSym;
+
+/* Line count at which overflow happens, due to line numbers being stored as
+ * shorts in `struct nlist' in a.out.h. */
+#define LINENO_OVERFLOW (1 << (sizeof(short) * 8))
+
+#define LINENO_BITS     20
+#define LOC_SIZE_BITS  (32 - LINENO_BITS)
+#define MAX_LINENO     ((1 << LINENO_BITS) - 1)
+
+/* Unlikely to have any lines with instruction ranges > 4096 bytes */
+#define MAX_LOC_SIZE   ((1 << LOC_SIZE_BITS) - 1)
+
+/* Number used to detect line number overflows;  if one line is 60000-odd
+ * smaller than the previous, is was probably an overflow.  
+ */
+#define OVERFLOW_DIFFERENCE     (LINENO_OVERFLOW - 5000)
+
+/* A structure to hold addr-to-source info for a single line.  There can be a
+ * lot of these, hence the dense packing. */
+typedef
+   struct {
+      /* Word 1 */
+      Addr   addr;                  /* lowest address for this line */
+      /* Word 2 */
+      UShort size:LOC_SIZE_BITS;    /* byte size; we catch overflows of this */
+      UInt   lineno:LINENO_BITS;    /* source line number, or zero */
+      /* Word 3 */
+      UInt   fnmoff;                /* source filename; offset in this 
+                                       SegInfo's str tab */
+   }
+   RiLoc;
+
+
+/* A structure which contains information pertaining to one mapped
+   text segment. (typedef in vg_skin.h) */
+struct _SegInfo {
+   struct _SegInfo* next;
+   /* Description of the mapped segment. */
+   Addr   start;
+   UInt   size;
+   UChar* filename; /* in mallocville */
+   UInt   foffset;
+   /* An expandable array of symbols. */
+   RiSym* symtab;
+   UInt   symtab_used;
+   UInt   symtab_size;
+   /* An expandable array of locations. */
+   RiLoc* loctab;
+   UInt   loctab_used;
+   UInt   loctab_size;
+   /* An expandable array of characters -- the string table. */
+   Char*  strtab;
+   UInt   strtab_used;
+   UInt   strtab_size;
+   /* offset    is what we need to add to symbol table entries
+      to get the real location of that symbol in memory.
+      For executables, offset is zero.  
+      For .so's, offset == base_addr.
+      This seems like a giant kludge to me.
+   */
+   UInt   offset;
+
+   /* Bounds of data, BSS, PLT and GOT, so that skins can see what
+      section an address is in */
+   Addr	  plt_start;
+   UInt   plt_size;
+   Addr   got_start;
+   UInt   got_size;
+   Addr   data_start;
+   UInt   data_size;
+   Addr   bss_start;
+   UInt   bss_size;
+};
+
 
 static void freeSegInfo ( SegInfo* si )
 {
-   struct strchunk *chunk, *next;
    vg_assert(si != NULL);
    if (si->filename) VG_(arena_free)(VG_AR_SYMTAB, si->filename);
    if (si->symtab)   VG_(arena_free)(VG_AR_SYMTAB, si->symtab);
    if (si->loctab)   VG_(arena_free)(VG_AR_SYMTAB, si->loctab);
-   if (si->scopetab) VG_(arena_free)(VG_AR_SYMTAB, si->scopetab);
-
-   for(chunk = si->strchunks; chunk != NULL; chunk = next) {
-      next = chunk->next;
-      VG_(arena_free)(VG_AR_SYMTAB, chunk);
-   }
+   if (si->strtab)   VG_(arena_free)(VG_AR_SYMTAB, si->strtab);
    VG_(arena_free)(VG_AR_SYMTAB, si);
 }
 
@@ -65,28 +144,23 @@ static void freeSegInfo ( SegInfo* si )
 /*------------------------------------------------------------*/
 
 /* Add a str to the string table, including terminating zero, and
-   return pointer to the string in vg_strtab.  Unless it's been seen
-   recently, in which case we find the old pointer and return that.
-   This avoids the most egregious duplications. 
+   return offset of the string in vg_strtab.  Unless it's been seen
+   recently, in which case we find the old index and return that.
+   This avoids the most egregious duplications. */
 
-   JSGF: changed from returning an index to a pointer, and changed to
-   a chunking memory allocator rather than reallocating, so the
-   pointers are stable.
-*/
-
-Char *VG_(addStr) ( SegInfo* si, Char* str, Int len )
+static
+Int addStr ( SegInfo* si, Char* str )
 {
-#  define EMPTY    NULL
+#  define EMPTY    0xffffffff
 #  define NN       5
    
    /* prevN[0] has the most recent, prevN[NN-1] the least recent */
-   static Char     *prevN[NN] = { EMPTY, EMPTY, EMPTY, EMPTY, EMPTY };
+   static UInt     prevN[NN] = { EMPTY, EMPTY, EMPTY, EMPTY, EMPTY };
    static SegInfo* curr_si = NULL;
-   struct strchunk *chunk;
-   Int   i, space_needed;
 
-   if (len == -1)
-      len = VG_(strlen)(str);
+   Char* new_tab;
+   Int   space_needed, i;
+   UInt  new_sz, u;
 
    /* Avoid gratuitous duplication:  if we saw `str' within the last NN,
     * within this segment, return that index.  Saves about 200KB in glibc,
@@ -94,8 +168,8 @@ Char *VG_(addStr) ( SegInfo* si, Char* str, Int len )
    if (curr_si == si) {
       for (i = NN-1; i >= 0; i--) {
          if (EMPTY != prevN[i] 
-             && NULL != si->strchunks
-	     && 0 == VG_(memcmp)(str, prevN[i], len+1)) {
+             && NULL != si->strtab
+             && 0 == VG_(strcmp)(str, &si->strtab[prevN[i]])) {
             return prevN[i];
          }
       }
@@ -105,28 +179,33 @@ Char *VG_(addStr) ( SegInfo* si, Char* str, Int len )
       for (i = 0; i < NN; i++) prevN[i] = EMPTY;
    }
    /* Shuffle prevous ones along, put new one in. */
-   for (i = NN-1; i > 0; i--)
-      prevN[i] = prevN[i-1];
+   for (i = NN-1; i > 0; i--) prevN[i] = prevN[i-1];
+   prevN[0] = si->strtab_used;
 
 #  undef EMPTY
 
-   space_needed = 1 + len;
+   space_needed = 1 + VG_(strlen)(str);
 
-   if (si->strchunks == NULL || 
-       (si->strchunks->strtab_used + space_needed) > STRCHUNKSIZE) {
-      chunk = VG_(arena_malloc)(VG_AR_SYMTAB, sizeof(*chunk));
-      chunk->strtab_used = 0;
-      chunk->next = si->strchunks;
-      si->strchunks = chunk;
+   if (si->strtab_used + space_needed > si->strtab_size) {
+      new_sz = 2 * si->strtab_size;
+      if (new_sz == 0) new_sz = 5000;
+      new_tab = VG_(arena_malloc)(VG_AR_SYMTAB, new_sz);
+      if (si->strtab != NULL) {
+         for (u = 0; u < si->strtab_used; u++)
+            new_tab[u] = si->strtab[u];
+         VG_(arena_free)(VG_AR_SYMTAB, si->strtab);
+      }
+      si->strtab      = new_tab;
+      si->strtab_size = new_sz;
    }
-   chunk = si->strchunks;
 
-   prevN[0] = &chunk->strtab[chunk->strtab_used];
-   VG_(memcpy)(prevN[0], str, len);
-   chunk->strtab[chunk->strtab_used+len] = '\0';
-   chunk->strtab_used += space_needed;
+   for (i = 0; i < space_needed; i++)
+      si->strtab[si->strtab_used+i] = str[i];
 
-   return prevN[0];
+   si->strtab_used += space_needed;
+   vg_assert(si->strtab_used <= si->strtab_size);
+
+   return si->strtab_used - space_needed;
 }
 
 /* Add a symbol to the symbol table. */
@@ -190,23 +269,20 @@ void addLoc ( SegInfo* si, RiLoc* loc )
 
 /* Top-level place to call to add a source-location mapping entry. */
 
-void VG_(addLineInfo) ( SegInfo* si,
-			Char*    filename,
-			Addr     this,
-			Addr     next,
-			Int      lineno,
-			Int      entry /* only needed for debug printing */
-		       )
+static 
+void addLineInfo ( SegInfo* si,
+                   Int      fnmoff,
+                   Addr     this,
+                   Addr     next,
+                   Int      lineno,
+                   Int      entry /* only needed for debug printing */
+                 )
 {
-   static const Bool debug = False;
    RiLoc loc;
    Int size = next - this;
 
    /* Ignore zero-sized locs */
    if (this == next) return;
-
-   if (debug)
-      VG_(printf)("  src %s line %d %p-%p\n", filename, lineno, this, next);
 
    /* Maximum sanity checking.  Some versions of GNU as do a shabby
     * job with stabs entries; if anything looks suspicious, revert to
@@ -255,70 +331,13 @@ void VG_(addLineInfo) ( SegInfo* si,
    loc.addr      = this;
    loc.size      = (UShort)size;
    loc.lineno    = lineno;
-   loc.filename  = filename;
+   loc.fnmoff    = fnmoff;
 
    if (0) VG_(message)(Vg_DebugMsg, 
 		       "addLoc: addr %p, size %d, line %d, file %s",
-		       this,size,lineno,filename);
+		       this,size,lineno,&si->strtab[fnmoff]);
 
    addLoc ( si, &loc );
-}
-
-static __inline__
-void addScopeRange ( SegInfo* si, ScopeRange *range )
-{
-   Int    new_sz, i;
-   ScopeRange* new_tab;
-
-   /* Zero-sized scopes should have been ignored earlier */
-   vg_assert(range->size > 0);
-
-   if (si->scopetab_used == si->scopetab_size) {
-      new_sz = 2 * si->scopetab_size;
-      if (new_sz == 0) new_sz = 500;
-      new_tab = VG_(arena_malloc)(VG_AR_SYMTAB, new_sz * sizeof(*new_tab) );
-      if (si->scopetab != NULL) {
-         for (i = 0; i < si->scopetab_used; i++)
-            new_tab[i] = si->scopetab[i];
-         VG_(arena_free)(VG_AR_SYMTAB, si->scopetab);
-      }
-      si->scopetab = new_tab;
-      si->scopetab_size = new_sz;
-   }
-
-   si->scopetab[si->scopetab_used] = *range;
-   si->scopetab_used++;
-   vg_assert(si->scopetab_used <= si->scopetab_size);
-}
-
-
-/* Top-level place to call to add a source-location mapping entry. */
-
-void VG_(addScopeInfo) ( SegInfo* si,
-			 Addr     this,
-			 Addr     next,
-			 Scope    *scope)
-{
-   static const Bool debug = False;
-   Int size = next - this;
-   ScopeRange range;
-
-   /* Ignore zero-sized scopes */
-   if (this == next) {
-      if (debug)
-	 VG_(printf)("ignoring zero-sized range, scope %p at %p\n", scope, this);
-      return;
-   }
-
-   if (debug)
-      VG_(printf)("adding scope range %p-%p (size=%d)  scope %p (%d)\n",
-		  this, next, next-this, scope, scope->depth);
-
-   range.addr    = this;
-   range.size    = size;
-   range.scope   = scope;
-
-   addScopeRange ( si, &range );
 }
 
 /*------------------------------------------------------------*/
@@ -326,7 +345,8 @@ void VG_(addScopeInfo) ( SegInfo* si,
 /*------------------------------------------------------------*/
 
 /* Non-fatal -- use vg_panic if terminal. */
-void VG_(symerr) ( Char* msg )
+static 
+void vg_symerr ( Char* msg )
 {
    if (VG_(clo_verbosity) > 1)
       VG_(message)(Vg_UserMsg,"%s", msg );
@@ -341,7 +361,7 @@ void printSym ( SegInfo* si, Int i )
                i,
                si->symtab[i].addr, 
                si->symtab[i].addr + si->symtab[i].size - 1, si->symtab[i].size,
-	       si->symtab[i].name );
+                &si->strtab[si->symtab[i].nmoff] );
 }
 
 
@@ -383,49 +403,6 @@ void safeCopy ( UChar* dst, UInt maxlen, UChar* src )
 /*--- Canonicalisers                                       ---*/
 /*------------------------------------------------------------*/
 
-static void shellsort(void *base, UInt nmemb, UInt sz, Int (*compare)(void *a, void *b))
-{
-   /* Magic numbers due to Janet Incerpi and Robert Sedgewick. */
-   static const Int incs[16] = { 1, 3, 7, 21, 48, 112, 336, 861, 1968,
-				 4592, 13776, 33936, 86961, 198768, 
-				 463792, 1391376 };
-   Int lo = 0;
-   Int hi = nmemb-1;
-   Int bigN;
-   Int hp;
-   Char *cp = (Char *)base;
-   Char tmp[sz];
-
-   bigN = hi - lo + 1;
-   if (bigN < 2)
-      return;
-   hp = 0;
-   while (hp < 16 && incs[hp] < bigN)
-      hp++;
-   hp--;
-   vg_assert(0 <= hp && hp < 16);
-
-   for (; hp >= 0; hp--) {
-      Int i, h;
-      
-      h = incs[hp];
-      i = lo + h;
-      for (i = lo+h; i <= hi; i++) {
-	 Int j;
-	 VG_(memcpy)(&tmp, &cp[i * sz], sz);
-
-         j = i;
-         while ((*compare)((void *)&cp[(j-h) * sz], (void *)&tmp) > 0) {
-	    VG_(memcpy)(&cp[j * sz], &cp[(j-h) * sz], sz);
-            j = j - h;
-            if (j <= (lo + h - 1))
-	       break;
-         }
-	 VG_(memcpy)(&cp[j * sz], &tmp, sz);
-      }
-   }
-}
-
 /* Sort the symtab by starting address, and emit warnings if any
    symbols have overlapping address ranges.  We use that old chestnut,
    shellsort.  Mash the table around so as to establish the property
@@ -433,26 +410,42 @@ static void shellsort(void *base, UInt nmemb, UInt sz, Int (*compare)(void *a, v
    facilitates using binary search to map addresses to symbols when we
    come to query the table.
 */
-static Int compare_RiSym(void *va, void *vb) {
-   RiSym *a = (RiSym *)va;
-   RiSym *b = (RiSym *)vb;
-   
-   return a->addr - b->addr;
-}
-
 static 
 void canonicaliseSymtab ( SegInfo* si )
 {
-   Int   i, j, n_merged, n_truncated;
+   /* Magic numbers due to Janet Incerpi and Robert Sedgewick. */
+   Int   incs[16] = { 1, 3, 7, 21, 48, 112, 336, 861, 1968,
+                      4592, 13776, 33936, 86961, 198768, 
+                      463792, 1391376 };
+   Int   lo = 0;
+   Int   hi = si->symtab_used-1;
+   Int   i, j, h, bigN, hp, n_merged, n_truncated;
+   RiSym v;
    Addr  s1, s2, e1, e2;
 
 #  define SWAP(ty,aa,bb) \
       do { ty tt = (aa); (aa) = (bb); (bb) = tt; } while (0)
 
-   if (si->symtab_used == 0)
-      return;
+   bigN = hi - lo + 1; if (bigN < 2) return;
+   hp = 0; while (hp < 16 && incs[hp] < bigN) hp++; hp--;
+   vg_assert(0 <= hp && hp < 16);
 
-   shellsort(si->symtab, si->symtab_used, sizeof(*si->symtab), compare_RiSym);
+   for (; hp >= 0; hp--) {
+      h = incs[hp];
+      i = lo + h;
+      while (1) {
+         if (i > hi) break;
+         v = si->symtab[i];
+         j = i;
+         while (si->symtab[j-h].addr > v.addr) {
+            si->symtab[j] = si->symtab[j-h];
+            j = j - h;
+            if (j <= (lo + h - 1)) break;
+         }
+         si->symtab[j] = v;
+         i++;
+      }
+   }
 
   cleanup_more:
  
@@ -469,8 +462,8 @@ void canonicaliseSymtab ( SegInfo* si )
              && si->symtab[i].size   == si->symtab[i+1].size) {
             n_merged++;
             /* merge the two into one */
-            if (VG_(strlen)(si->symtab[i].name) 
-                > VG_(strlen)(si->symtab[i+1].name)) {
+            if (VG_(strlen)(&si->strtab[si->symtab[i].nmoff]) 
+                > VG_(strlen)(&si->strtab[si->symtab[i+1].nmoff])) {
                si->symtab[si->symtab_used++] = si->symtab[i];
             } else {
                si->symtab[si->symtab_used++] = si->symtab[i+1];
@@ -558,74 +551,6 @@ void canonicaliseSymtab ( SegInfo* si )
 #  undef SWAP
 }
 
-/* Sort the scope range table by starting address.  Mash the table
-   around so as to establish the property that addresses are in order
-   and the ranges do not overlap.  This facilitates using binary
-   search to map addresses to scopes when we come to query the
-   table.
-*/
-static Int compare_ScopeRange(void *va, void *vb) {
-   ScopeRange *a = (ScopeRange *)va;
-   ScopeRange *b = (ScopeRange *)vb;
-   
-   return a->addr - b->addr;
-}
-
-static 
-void canonicaliseScopetab ( SegInfo* si )
-{
-   Int i,j;
-
-   if (si->scopetab_used == 0)
-      return;
-
-   /* Sort by start address. */
-   shellsort(si->scopetab, si->scopetab_used, sizeof(*si->scopetab), 
-	     compare_ScopeRange);
-
-   /* If two adjacent entries overlap, truncate the first. */
-   for (i = 0; i < si->scopetab_used-1; i++) {
-      if (si->scopetab[i].addr + si->scopetab[i].size > si->scopetab[i+1].addr) {
-         Int new_size = si->scopetab[i+1].addr - si->scopetab[i].addr;
-
-         if (new_size < 0)
-            si->scopetab[i].size = 0;
-         else
-	    si->scopetab[i].size = new_size;
-      }
-   }
-
-   /* Zap any zero-sized entries resulting from the truncation
-      process. */
-   j = 0;
-   for (i = 0; i < si->scopetab_used; i++) {
-      if (si->scopetab[i].size > 0) {
-         si->scopetab[j] = si->scopetab[i];
-         j++;
-      }
-   }
-   si->scopetab_used = j;
-
-   /* Ensure relevant postconditions hold. */
-   for (i = 0; i < si->scopetab_used-1; i++) {
-      /* 
-      VG_(printf)("%d   (%d) %d 0x%x\n", 
-                   i, si->scopetab[i+1].confident, 
-                   si->scopetab[i+1].size, si->scopetab[i+1].addr );
-      */
-      /* No zero-sized symbols. */
-      vg_assert(si->scopetab[i].size > 0);
-      /* In order. */
-      if (si->scopetab[i].addr >= si->scopetab[i+1].addr)
-	 VG_(printf)("si->scopetab[%d] = %p,size=%d [%d] = %p,size=%d\n",
-		     i, si->scopetab[i].addr, si->scopetab[i].size,
-		     i+1, si->scopetab[i+1].addr, si->scopetab[i+1].size);
-      vg_assert(si->scopetab[i].addr < si->scopetab[i+1].addr);
-      /* No overlaps. */
-      vg_assert(si->scopetab[i].addr + si->scopetab[i].size - 1
-                < si->scopetab[i+1].addr);
-   }
-}
 
 
 /* Sort the location table by starting address.  Mash the table around
@@ -633,26 +558,43 @@ void canonicaliseScopetab ( SegInfo* si )
    ranges do not overlap.  This facilitates using binary search to map
    addresses to locations when we come to query the table.  
 */
-static Int compare_RiLoc(void *va, void *vb) {
-   RiLoc *a = (RiLoc *)va;
-   RiLoc *b = (RiLoc *)vb;
-
-   return a->addr - b->addr;
-}
-
 static 
 void canonicaliseLoctab ( SegInfo* si )
 {
-   Int   i, j;
+   /* Magic numbers due to Janet Incerpi and Robert Sedgewick. */
+   Int   incs[16] = { 1, 3, 7, 21, 48, 112, 336, 861, 1968,
+                      4592, 13776, 33936, 86961, 198768, 
+                      463792, 1391376 };
+   Int   lo = 0;
+   Int   hi = si->loctab_used-1;
+   Int   i, j, h, bigN, hp;
+   RiLoc v;
 
 #  define SWAP(ty,aa,bb) \
       do { ty tt = (aa); (aa) = (bb); (bb) = tt; } while (0);
 
-   if (si->loctab_used == 0)
-      return;
-
    /* Sort by start address. */
-   shellsort(si->loctab, si->loctab_used, sizeof(*si->loctab), compare_RiLoc);
+
+   bigN = hi - lo + 1; if (bigN < 2) return;
+   hp = 0; while (hp < 16 && incs[hp] < bigN) hp++; hp--;
+   vg_assert(0 <= hp && hp < 16);
+
+   for (; hp >= 0; hp--) {
+      h = incs[hp];
+      i = lo + h;
+      while (1) {
+         if (i > hi) break;
+         v = si->loctab[i];
+         j = i;
+         while (si->loctab[j-h].addr > v.addr) {
+            si->loctab[j] = si->loctab[j-h];
+            j = j - h;
+            if (j <= (lo + h - 1)) break;
+         }
+         si->loctab[j] = v;
+         i++;
+      }
+   }
 
    /* If two adjacent entries overlap, truncate the first. */
    for (i = 0; i < ((Int)si->loctab_used)-1; i++) {
@@ -703,6 +645,1024 @@ void canonicaliseLoctab ( SegInfo* si )
 
 
 /*------------------------------------------------------------*/
+/*--- Read STABS format debug info.                        ---*/
+/*------------------------------------------------------------*/
+
+/* Stabs entry types, from:
+ *   The "stabs" debug format
+ *   Menapace, Kingdon and MacKenzie
+ *   Cygnus Support
+ */
+typedef enum { N_GSYM  = 32,    /* Global symbol                    */
+               N_FUN   = 36,    /* Function start or end            */
+               N_STSYM = 38,    /* Data segment file-scope variable */
+               N_LCSYM = 40,    /* BSS segment file-scope variable  */
+               N_RSYM  = 64,    /* Register variable                */
+               N_SLINE = 68,    /* Source line number               */
+               N_SO    = 100,   /* Source file path and name        */
+               N_LSYM  = 128,   /* Stack variable or type           */
+               N_SOL   = 132,   /* Include file name                */
+               N_LBRAC = 192,   /* Start of lexical block           */
+               N_RBRAC = 224    /* End   of lexical block           */
+             } stab_types;
+      
+
+/* Read stabs-format debug info.  This is all rather horrible because
+   stabs is a underspecified, kludgy hack.
+*/
+static
+void read_debuginfo_stabs ( SegInfo* si,
+                            UChar* stabC,   Int stab_sz, 
+                            UChar* stabstr, Int stabstr_sz )
+{
+   Int    i;
+   Int    curr_filenmoff;
+   Addr   curr_fn_stabs_addr = (Addr)NULL;
+   Addr   curr_fnbaseaddr    = (Addr)NULL;
+   Char  *curr_file_name, *curr_fn_name;
+   Int    n_stab_entries;
+   Int    prev_lineno = 0, lineno = 0;
+   Int    lineno_overflows = 0;
+   Bool   same_file = True;
+   struct nlist* stab = (struct nlist*)stabC;
+
+   /* Ok.  It all looks plausible.  Go on and read debug data. 
+         stab kinds: 100   N_SO     a source file name
+                      68   N_SLINE  a source line number
+                      36   N_FUN    start of a function
+
+      In this loop, we maintain a current file name, updated as 
+      N_SO/N_SOLs appear, and a current function base address, 
+      updated as N_FUNs appear.  Based on that, address ranges for 
+      N_SLINEs are calculated, and stuffed into the line info table.
+
+      Finding the instruction address range covered by an N_SLINE is
+      complicated;  see the N_SLINE case below.
+   */
+   curr_filenmoff     = addStr(si,"???");
+   curr_file_name     = curr_fn_name = (Char*)NULL;
+
+   n_stab_entries = stab_sz/(int)sizeof(struct nlist);
+
+   for (i = 0; i < n_stab_entries; i++) {
+#     if 0
+      VG_(printf) ( "   %2d  ", i );
+      VG_(printf) ( "type=0x%x   othr=%d   desc=%d   value=0x%x   strx=%d  %s",
+                    stab[i].n_type, stab[i].n_other, stab[i].n_desc, 
+                    (int)stab[i].n_value,
+                    (int)stab[i].n_un.n_strx, 
+                    stabstr + stab[i].n_un.n_strx );
+      VG_(printf)("\n");
+#     endif
+
+      Char *no_fn_name = "???";
+
+      switch (stab[i].n_type) {
+         UInt next_addr;
+
+         /* Two complicated things here:
+	  *
+          * 1. the n_desc field in 'struct n_list' in a.out.h is only
+          *    16-bits, which gives a maximum of 65535 lines.  We handle
+          *    files bigger than this by detecting heuristically
+          *    overflows -- if the line count goes from 65000-odd to
+          *    0-odd within the same file, we assume it's an overflow.
+          *    Once we switch files, we zero the overflow count.
+          *
+          * 2. To compute the instr address range covered by a single
+          *    line, find the address of the next thing and compute the
+          *    difference.  The approach used depends on what kind of
+          *    entry/entries follow...
+          */
+         case N_SLINE: {
+            Int this_addr = (UInt)stab[i].n_value;
+
+            /* Although stored as a short, neg values really are >
+             * 32768, hence the UShort cast.  Then we use an Int to
+             * handle overflows. */
+            prev_lineno = lineno;
+            lineno      = (Int)((UShort)stab[i].n_desc);
+
+            if (prev_lineno > lineno + OVERFLOW_DIFFERENCE && same_file) {
+               VG_(message)(Vg_DebugMsg, 
+                  "Line number overflow detected (%d --> %d) in %s", 
+                  prev_lineno, lineno, curr_file_name);
+               lineno_overflows++;
+            }
+            same_file = True;
+
+            LOOP:
+            if (i+1 >= n_stab_entries) {
+               /* If it's the last entry, just guess the range is
+                * four; can't do any better */
+               next_addr = this_addr + 4;
+            } else {    
+               switch (stab[i+1].n_type) {
+                  /* Easy, common case: use address of next entry */
+                  case N_SLINE: case N_SO:
+                     next_addr = (UInt)stab[i+1].n_value;
+                     break;
+
+                  /* Boring one: skip, look for something more useful. */
+                  case N_RSYM: case N_LSYM: case N_LBRAC: case N_RBRAC: 
+                  case N_STSYM: case N_LCSYM: case N_GSYM:
+                     i++;
+                     goto LOOP;
+                     
+                  /* If end-of-this-fun entry, use its address.
+                   * If start-of-next-fun entry, find difference between start
+                   *   of current function and start of next function to work
+                   *   it out.
+                   */
+                  case N_FUN: 
+                     if ('\0' == * (stabstr + stab[i+1].n_un.n_strx) ) {
+                        next_addr = (UInt)stab[i+1].n_value;
+                     } else {
+                        next_addr = 
+                            (UInt)stab[i+1].n_value - curr_fn_stabs_addr;
+                     }
+                     break;
+
+                  /* N_SOL should be followed by an N_SLINE which can
+                     be used */
+                  case N_SOL:
+                     if (i+2 < n_stab_entries && N_SLINE == stab[i+2].n_type) {
+                        next_addr = (UInt)stab[i+2].n_value;
+                        break;
+                     } else {
+                        VG_(printf)("unhandled N_SOL stabs case: %d %d %d", 
+                                    stab[i+1].n_type, i, n_stab_entries);
+                        VG_(core_panic)("unhandled N_SOL stabs case");
+                     }
+
+                  default:
+                     VG_(printf)("unhandled (other) stabs case: %d %d", 
+                                 stab[i+1].n_type,i);
+                     /* VG_(core_panic)("unhandled (other) stabs case"); */
+                     next_addr = this_addr + 4;
+                     break;
+               }
+            }
+            
+            addLineInfo ( si, curr_filenmoff, curr_fnbaseaddr + this_addr, 
+                          curr_fnbaseaddr + next_addr,
+                          lineno + lineno_overflows * LINENO_OVERFLOW, i);
+            break;
+         }
+
+         case N_FUN: {
+            if ('\0' != (stabstr + stab[i].n_un.n_strx)[0] ) {
+               /* N_FUN with a name -- indicates the start of a fn.  */
+               curr_fn_stabs_addr = (Addr)stab[i].n_value;
+               curr_fnbaseaddr = si->offset + curr_fn_stabs_addr;
+               curr_fn_name = stabstr + stab[i].n_un.n_strx;
+            } else {
+               curr_fn_name = no_fn_name;
+            }
+            break;
+         }
+
+         case N_SOL:
+            if (lineno_overflows != 0) {
+               VG_(message)(Vg_UserMsg, 
+                            "Warning: file %s is very big (> 65535 lines) "
+                            "Line numbers and annotation for this file might "
+                            "be wrong.  Sorry",
+                            curr_file_name);
+            }
+            /* fall through! */
+         case N_SO: 
+            lineno_overflows = 0;
+
+         /* seems to give lots of locations in header files */
+         /* case 130: */ /* BINCL */
+         { 
+            UChar* nm = stabstr + stab[i].n_un.n_strx;
+            UInt len = VG_(strlen)(nm);
+            
+            if (len > 0 && nm[len-1] != '/') {
+               curr_filenmoff = addStr ( si, nm );
+               curr_file_name = stabstr + stab[i].n_un.n_strx;
+            }
+            else
+               if (len == 0)
+                  curr_filenmoff = addStr ( si, "?1\0" );
+
+            break;
+         }
+
+#        if 0
+         case 162: /* EINCL */
+            curr_filenmoff = addStr ( si, "?2\0" );
+            break;
+#        endif
+
+         default:
+            break;
+      }
+   } /* for (i = 0; i < stab_sz/(int)sizeof(struct nlist); i++) */
+}
+
+
+/*------------------------------------------------------------*/
+/*--- Read DWARF2 format debug info.                       ---*/
+/*------------------------------------------------------------*/
+
+/* Structure found in the .debug_line section.  */
+typedef struct
+{
+  UChar li_length          [4];
+  UChar li_version         [2];
+  UChar li_prologue_length [4];
+  UChar li_min_insn_length [1];
+  UChar li_default_is_stmt [1];
+  UChar li_line_base       [1];
+  UChar li_line_range      [1];
+  UChar li_opcode_base     [1];
+}
+DWARF2_External_LineInfo;
+
+typedef struct
+{
+  UInt   li_length;
+  UShort li_version;
+  UInt   li_prologue_length;
+  UChar  li_min_insn_length;
+  UChar  li_default_is_stmt;
+  Int    li_line_base;
+  UChar  li_line_range;
+  UChar  li_opcode_base;
+}
+DWARF2_Internal_LineInfo;
+
+/* Line number opcodes.  */
+enum dwarf_line_number_ops
+  {
+    DW_LNS_extended_op = 0,
+    DW_LNS_copy = 1,
+    DW_LNS_advance_pc = 2,
+    DW_LNS_advance_line = 3,
+    DW_LNS_set_file = 4,
+    DW_LNS_set_column = 5,
+    DW_LNS_negate_stmt = 6,
+    DW_LNS_set_basic_block = 7,
+    DW_LNS_const_add_pc = 8,
+    DW_LNS_fixed_advance_pc = 9,
+    /* DWARF 3.  */
+    DW_LNS_set_prologue_end = 10,
+    DW_LNS_set_epilogue_begin = 11,
+    DW_LNS_set_isa = 12
+  };
+
+/* Line number extended opcodes.  */
+enum dwarf_line_number_x_ops
+  {
+    DW_LNE_end_sequence = 1,
+    DW_LNE_set_address = 2,
+    DW_LNE_define_file = 3
+  };
+
+typedef struct State_Machine_Registers
+{
+  /* Information for the last statement boundary.
+   * Needed to calculate statement lengths. */
+  Addr  last_address;
+  UInt  last_file;
+  UInt  last_line;
+
+  Addr  address;
+  UInt  file;
+  UInt  line;
+  UInt  column;
+  Int   is_stmt;
+  Int   basic_block;
+  Int   end_sequence;
+  /* This variable hold the number of the last entry seen
+     in the File Table.  */
+  UInt  last_file_entry;
+} SMR;
+
+
+static 
+UInt read_leb128 ( UChar* data, Int* length_return, Int sign )
+{
+  UInt   result = 0;
+  UInt   num_read = 0;
+  Int    shift = 0;
+  UChar  byte;
+
+  do
+    {
+      byte = * data ++;
+      num_read ++;
+
+      result |= (byte & 0x7f) << shift;
+
+      shift += 7;
+
+    }
+  while (byte & 0x80);
+
+  if (length_return != NULL)
+    * length_return = num_read;
+
+  if (sign && (shift < 32) && (byte & 0x40))
+    result |= -1 << shift;
+
+  return result;
+}
+
+
+static SMR state_machine_regs;
+
+static 
+void reset_state_machine ( Int is_stmt )
+{
+  if (0) VG_(printf)("smr.a := %p (reset)\n", 0 );
+  state_machine_regs.last_address = 0;
+  state_machine_regs.last_file = 1;
+  state_machine_regs.last_line = 1;
+  state_machine_regs.address = 0;
+  state_machine_regs.file = 1;
+  state_machine_regs.line = 1;
+  state_machine_regs.column = 0;
+  state_machine_regs.is_stmt = is_stmt;
+  state_machine_regs.basic_block = 0;
+  state_machine_regs.end_sequence = 0;
+  state_machine_regs.last_file_entry = 0;
+}
+
+/* Handled an extend line op.  Returns true if this is the end
+   of sequence.  */
+static 
+int process_extended_line_op( SegInfo *si, UInt** fnames, 
+                              UChar* data, Int is_stmt, Int pointer_size)
+{
+  UChar   op_code;
+  Int     bytes_read;
+  UInt    len;
+  UChar * name;
+  Addr    adr;
+
+  len = read_leb128 (data, & bytes_read, 0);
+  data += bytes_read;
+
+  if (len == 0)
+    {
+      VG_(message)(Vg_UserMsg,
+         "badly formed extended line op encountered!\n");
+      return bytes_read;
+    }
+
+  len += bytes_read;
+  op_code = * data ++;
+
+  if (0) VG_(printf)("dwarf2: ext OPC: %d\n", op_code);
+
+  switch (op_code)
+    {
+    case DW_LNE_end_sequence:
+      if (0) VG_(printf)("1001: si->o %p, smr.a %p\n", 
+                         si->offset, state_machine_regs.address );
+      state_machine_regs.end_sequence = 1; /* JRS: added for compliance
+         with spec; is pointless due to reset_state_machine below 
+      */
+      if (state_machine_regs.is_stmt) {
+	  if (state_machine_regs.last_address)
+	      addLineInfo (si, (*fnames)[state_machine_regs.last_file], 
+                       si->offset + state_machine_regs.last_address, 
+                       si->offset + state_machine_regs.address, 
+                       state_machine_regs.last_line, 0);
+      }
+      reset_state_machine (is_stmt);
+      break;
+
+    case DW_LNE_set_address:
+      /* XXX: Pointer size could be 8 */
+      vg_assert(pointer_size == 4);
+      adr = *((Addr *)data);
+      if (0) VG_(printf)("smr.a := %p\n", adr );
+      state_machine_regs.address = adr;
+      break;
+
+    case DW_LNE_define_file:
+      ++ state_machine_regs.last_file_entry;
+      name = data;
+      if (*fnames == NULL)
+        *fnames = VG_(arena_malloc)(VG_AR_SYMTAB, sizeof (UInt) * 2);
+      else
+        *fnames = VG_(arena_realloc)(
+                     VG_AR_SYMTAB, *fnames, /*alignment*/4,
+                     sizeof(UInt) 
+                        * (state_machine_regs.last_file_entry + 1));
+      (*fnames)[state_machine_regs.last_file_entry] = addStr (si,name);
+      data += VG_(strlen) ((char *) data) + 1;
+      read_leb128 (data, & bytes_read, 0);
+      data += bytes_read;
+      read_leb128 (data, & bytes_read, 0);
+      data += bytes_read;
+      read_leb128 (data, & bytes_read, 0);
+      break;
+
+    default:
+      break;
+    }
+
+  return len;
+}
+
+
+static
+void read_debuginfo_dwarf2 ( SegInfo* si, UChar* dwarf2, Int dwarf2_sz )
+{
+  DWARF2_External_LineInfo * external;
+  DWARF2_Internal_LineInfo   info;
+  UChar *            standard_opcodes;
+  UChar *            data = dwarf2;
+  UChar *            end  = dwarf2 + dwarf2_sz;
+  UChar *            end_of_sequence;
+  UInt  *            fnames = NULL;
+
+  /* Fails due to gcc padding ...
+  vg_assert(sizeof(DWARF2_External_LineInfo)
+            == sizeof(DWARF2_Internal_LineInfo));
+  */
+
+  while (data < end)
+    {
+      external = (DWARF2_External_LineInfo *) data;
+
+      /* Check the length of the block.  */
+      info.li_length = * ((UInt *)(external->li_length));
+
+      if (info.li_length == 0xffffffff)
+       {
+         vg_symerr("64-bit DWARF line info is not supported yet.");
+         break;
+       }
+
+      if (info.li_length + sizeof (external->li_length) > (UInt)dwarf2_sz)
+       {
+        vg_symerr("DWARF line info appears to be corrupt "
+                  "- the section is too small");
+         return;
+       }
+
+      /* Check its version number.  */
+      info.li_version = * ((UShort *) (external->li_version));
+      if (info.li_version != 2)
+       {
+         vg_symerr("Only DWARF version 2 line info "
+                   "is currently supported.");
+         return;
+       }
+
+      info.li_prologue_length = * ((UInt *) (external->li_prologue_length));
+      info.li_min_insn_length = * ((UChar *)(external->li_min_insn_length));
+
+      info.li_default_is_stmt = True; 
+         /* WAS: = * ((UChar *)(external->li_default_is_stmt)); */
+         /* Josef Weidendorfer (20021021) writes:
+
+            It seems to me that the Intel Fortran compiler generates
+            bad DWARF2 line info code: It sets "is_stmt" of the state
+            machine in the the line info reader to be always
+            false. Thus, there is never a statement boundary generated
+            and therefore never a instruction range/line number
+            mapping generated for valgrind.
+
+            Please have a look at the DWARF2 specification, Ch. 6.2
+            (x86.ddj.com/ftp/manuals/tools/dwarf.pdf).  Perhaps I
+            understand this wrong, but I don't think so.
+
+            I just had a look at the GDB DWARF2 reader...  They
+            completely ignore "is_stmt" when recording line info ;-)
+            That's the reason "objdump -S" works on files from the the
+            intel fortran compiler.  
+         */
+
+
+      /* JRS: changed (UInt*) to (UChar*) */
+      info.li_line_base       = * ((UChar *)(external->li_line_base));
+
+      info.li_line_range      = * ((UChar *)(external->li_line_range));
+      info.li_opcode_base     = * ((UChar *)(external->li_opcode_base)); 
+
+      if (0) VG_(printf)("dwarf2: line base: %d, range %d, opc base: %d\n",
+		  info.li_line_base, info.li_line_range, info.li_opcode_base);
+
+      /* Sign extend the line base field.  */
+      info.li_line_base <<= 24;
+      info.li_line_base >>= 24;
+
+      end_of_sequence = data + info.li_length 
+                             + sizeof (external->li_length);
+
+      reset_state_machine (info.li_default_is_stmt);
+
+      /* Read the contents of the Opcodes table.  */
+      standard_opcodes = data + sizeof (* external);
+
+      /* Read the contents of the Directory table.  */
+      data = standard_opcodes + info.li_opcode_base - 1;
+
+      if (* data == 0) 
+       {
+       }
+      else
+       {
+         /* We ignore the directory table, since gcc gives the entire
+            path as part of the filename */
+         while (* data != 0)
+           {
+             data += VG_(strlen) ((char *) data) + 1;
+           }
+       }
+
+      /* Skip the NUL at the end of the table.  */
+      if (*data != 0) {
+         vg_symerr("can't find NUL at end of DWARF2 directory table");
+         return;
+      }
+      data ++;
+
+      /* Read the contents of the File Name table.  */
+      if (* data == 0)
+       {
+       }
+      else
+       {
+         while (* data != 0)
+           {
+             UChar * name;
+             Int bytes_read;
+
+             ++ state_machine_regs.last_file_entry;
+             name = data;
+             /* Since we don't have realloc (0, ....) == malloc (...)
+		semantics, we need to malloc the first time. */
+
+             if (fnames == NULL)
+               fnames = VG_(arena_malloc)(VG_AR_SYMTAB, sizeof (UInt) * 2);
+             else
+               fnames = VG_(arena_realloc)(VG_AR_SYMTAB, fnames, /*alignment*/4,
+                           sizeof(UInt) 
+                              * (state_machine_regs.last_file_entry + 1));
+             data += VG_(strlen) ((Char *) data) + 1;
+             fnames[state_machine_regs.last_file_entry] = addStr (si,name);
+
+             read_leb128 (data, & bytes_read, 0);
+             data += bytes_read;
+             read_leb128 (data, & bytes_read, 0);
+             data += bytes_read;
+             read_leb128 (data, & bytes_read, 0);
+             data += bytes_read;
+           }
+       }
+
+      /* Skip the NUL at the end of the table.  */
+      if (*data != 0) {
+         vg_symerr("can't find NUL at end of DWARF2 file name table");
+         return;
+      }
+      data ++;
+
+      /* Now display the statements.  */
+
+      while (data < end_of_sequence)
+       {
+         UChar op_code;
+         Int           adv;
+         Int           bytes_read;
+
+         op_code = * data ++;
+
+	 if (0) VG_(printf)("dwarf2: OPC: %d\n", op_code);
+
+         if (op_code >= info.li_opcode_base)
+           {
+             Int advAddr;
+             op_code -= info.li_opcode_base;
+             adv      = (op_code / info.li_line_range) 
+                           * info.li_min_insn_length;
+             advAddr = adv;
+             state_machine_regs.address += adv;
+             if (0) VG_(printf)("smr.a += %p\n", adv );
+             adv = (op_code % info.li_line_range) + info.li_line_base;
+             if (0) VG_(printf)("1002: si->o %p, smr.a %p\n", 
+                                si->offset, state_machine_regs.address );
+             state_machine_regs.line += adv;
+
+	     if (state_machine_regs.is_stmt) {
+		 /* only add a statement if there was a previous boundary */
+		 if (state_machine_regs.last_address) 
+		     addLineInfo (si, fnames[state_machine_regs.last_file], 
+			      si->offset + state_machine_regs.last_address, 
+                              si->offset + state_machine_regs.address, 
+                              state_machine_regs.last_line, 0);
+		 state_machine_regs.last_address = state_machine_regs.address;
+		 state_machine_regs.last_file = state_machine_regs.file;
+		 state_machine_regs.last_line = state_machine_regs.line;
+	     }
+           }
+         else switch (op_code)
+           {
+           case DW_LNS_extended_op:
+             data += process_extended_line_op (
+                        si, &fnames, data, 
+                        info.li_default_is_stmt, sizeof (Addr));
+             break;
+
+           case DW_LNS_copy:
+             if (0) VG_(printf)("1002: si->o %p, smr.a %p\n", 
+                                si->offset, state_machine_regs.address );
+	     if (state_machine_regs.is_stmt) {
+		 /* only add a statement if there was a previous boundary */
+		 if (state_machine_regs.last_address) 
+		     addLineInfo (si, fnames[state_machine_regs.last_file], 
+                              si->offset + state_machine_regs.last_address, 
+                              si->offset + state_machine_regs.address,
+                              state_machine_regs.last_line , 0);
+		 state_machine_regs.last_address = state_machine_regs.address;
+		 state_machine_regs.last_file = state_machine_regs.file;
+		 state_machine_regs.last_line = state_machine_regs.line;
+	     }
+             state_machine_regs.basic_block = 0; /* JRS added */
+             break;
+
+           case DW_LNS_advance_pc:
+             adv = info.li_min_insn_length 
+                      * read_leb128 (data, & bytes_read, 0);
+             data += bytes_read;
+             state_machine_regs.address += adv;
+             if (0) VG_(printf)("smr.a += %p\n", adv );
+             break;
+
+           case DW_LNS_advance_line:
+             adv = read_leb128 (data, & bytes_read, 1);
+             data += bytes_read;
+             state_machine_regs.line += adv;
+             break;
+
+           case DW_LNS_set_file:
+             adv = read_leb128 (data, & bytes_read, 0);
+             data += bytes_read;
+             state_machine_regs.file = adv;
+             break;
+
+           case DW_LNS_set_column:
+             adv = read_leb128 (data, & bytes_read, 0);
+             data += bytes_read;
+             state_machine_regs.column = adv;
+             break;
+
+           case DW_LNS_negate_stmt:
+             adv = state_machine_regs.is_stmt;
+             adv = ! adv;
+             state_machine_regs.is_stmt = adv;
+             break;
+
+           case DW_LNS_set_basic_block:
+             state_machine_regs.basic_block = 1;
+             break;
+
+           case DW_LNS_const_add_pc:
+             adv = (((255 - info.li_opcode_base) / info.li_line_range)
+                    * info.li_min_insn_length);
+             state_machine_regs.address += adv;
+             if (0) VG_(printf)("smr.a += %p\n", adv );
+             break;
+
+           case DW_LNS_fixed_advance_pc:
+             /* XXX: Need something to get 2 bytes */
+             adv = *((UShort *)data);
+             data += 2;
+             state_machine_regs.address += adv;
+             if (0) VG_(printf)("smr.a += %p\n", adv );
+             break;
+
+           case DW_LNS_set_prologue_end:
+             break;
+
+           case DW_LNS_set_epilogue_begin:
+             break;
+
+           case DW_LNS_set_isa:
+             adv = read_leb128 (data, & bytes_read, 0);
+             data += bytes_read;
+             break;
+
+           default:
+             {
+               int j;
+               for (j = standard_opcodes[op_code - 1]; j > 0 ; --j)
+                 {
+                   read_leb128 (data, &bytes_read, 0);
+                   data += bytes_read;
+                 }
+             }
+             break;
+           }
+       }
+      VG_(arena_free)(VG_AR_SYMTAB, fnames);
+      fnames = NULL;
+    }
+}
+
+
+/*------------------------------------------------------------*/
+/*--- Read DWARF1 format debug info.                       ---*/
+/*------------------------------------------------------------*/
+
+/* The following three enums (dwarf_tag, dwarf_form, dwarf_attribute)
+   are taken from the file include/elf/dwarf.h in the GNU gdb-6.0
+   sources, which are Copyright 1992, 1993, 1995, 1999 Free Software
+   Foundation, Inc and naturally licensed under the GNU General Public
+   License version 2 or later. 
+*/
+
+/* Tag names and codes.  */
+
+enum dwarf_tag {
+    TAG_padding			= 0x0000,
+    TAG_array_type		= 0x0001,
+    TAG_class_type		= 0x0002,
+    TAG_entry_point		= 0x0003,
+    TAG_enumeration_type	= 0x0004,
+    TAG_formal_parameter	= 0x0005,
+    TAG_global_subroutine	= 0x0006,
+    TAG_global_variable		= 0x0007,
+    				/* 0x0008 -- reserved */
+				/* 0x0009 -- reserved */
+    TAG_label			= 0x000a,
+    TAG_lexical_block		= 0x000b,
+    TAG_local_variable		= 0x000c,
+    TAG_member			= 0x000d,
+				/* 0x000e -- reserved */
+    TAG_pointer_type		= 0x000f,
+    TAG_reference_type		= 0x0010,
+    TAG_compile_unit		= 0x0011,
+    TAG_string_type		= 0x0012,
+    TAG_structure_type		= 0x0013,
+    TAG_subroutine		= 0x0014,
+    TAG_subroutine_type		= 0x0015,
+    TAG_typedef			= 0x0016,
+    TAG_union_type		= 0x0017,
+    TAG_unspecified_parameters	= 0x0018,
+    TAG_variant			= 0x0019,
+    TAG_common_block		= 0x001a,
+    TAG_common_inclusion	= 0x001b,
+    TAG_inheritance		= 0x001c,
+    TAG_inlined_subroutine	= 0x001d,
+    TAG_module			= 0x001e,
+    TAG_ptr_to_member_type	= 0x001f,
+    TAG_set_type		= 0x0020,
+    TAG_subrange_type		= 0x0021,
+    TAG_with_stmt		= 0x0022,
+
+    /* GNU extensions */
+
+    TAG_format_label		= 0x8000,  /* for FORTRAN 77 and Fortran 90 */
+    TAG_namelist		= 0x8001,  /* For Fortran 90 */
+    TAG_function_template	= 0x8002,  /* for C++ */
+    TAG_class_template		= 0x8003   /* for C++ */
+};
+
+/* Form names and codes.  */
+
+enum dwarf_form {
+    FORM_ADDR	= 0x1,
+    FORM_REF	= 0x2,
+    FORM_BLOCK2	= 0x3,
+    FORM_BLOCK4	= 0x4,
+    FORM_DATA2	= 0x5,
+    FORM_DATA4	= 0x6,
+    FORM_DATA8	= 0x7,
+    FORM_STRING	= 0x8
+};
+
+/* Attribute names and codes.  */
+
+enum dwarf_attribute {
+    AT_sibling			= (0x0010|FORM_REF),
+    AT_location			= (0x0020|FORM_BLOCK2),
+    AT_name			= (0x0030|FORM_STRING),
+    AT_fund_type		= (0x0050|FORM_DATA2),
+    AT_mod_fund_type		= (0x0060|FORM_BLOCK2),
+    AT_user_def_type		= (0x0070|FORM_REF),
+    AT_mod_u_d_type		= (0x0080|FORM_BLOCK2),
+    AT_ordering			= (0x0090|FORM_DATA2),
+    AT_subscr_data		= (0x00a0|FORM_BLOCK2),
+    AT_byte_size		= (0x00b0|FORM_DATA4),
+    AT_bit_offset		= (0x00c0|FORM_DATA2),
+    AT_bit_size			= (0x00d0|FORM_DATA4),
+				/* (0x00e0|FORM_xxxx) -- reserved */
+    AT_element_list		= (0x00f0|FORM_BLOCK4),
+    AT_stmt_list		= (0x0100|FORM_DATA4),
+    AT_low_pc			= (0x0110|FORM_ADDR),
+    AT_high_pc			= (0x0120|FORM_ADDR),
+    AT_language			= (0x0130|FORM_DATA4),
+    AT_member			= (0x0140|FORM_REF),
+    AT_discr			= (0x0150|FORM_REF),
+    AT_discr_value		= (0x0160|FORM_BLOCK2),
+				/* (0x0170|FORM_xxxx) -- reserved */
+				/* (0x0180|FORM_xxxx) -- reserved */
+    AT_string_length		= (0x0190|FORM_BLOCK2),
+    AT_common_reference		= (0x01a0|FORM_REF),
+    AT_comp_dir			= (0x01b0|FORM_STRING),
+        AT_const_value_string	= (0x01c0|FORM_STRING),
+        AT_const_value_data2	= (0x01c0|FORM_DATA2),
+        AT_const_value_data4	= (0x01c0|FORM_DATA4),
+        AT_const_value_data8	= (0x01c0|FORM_DATA8),
+        AT_const_value_block2	= (0x01c0|FORM_BLOCK2),
+        AT_const_value_block4	= (0x01c0|FORM_BLOCK4),
+    AT_containing_type		= (0x01d0|FORM_REF),
+        AT_default_value_addr	= (0x01e0|FORM_ADDR),
+        AT_default_value_data2	= (0x01e0|FORM_DATA2),
+        AT_default_value_data4	= (0x01e0|FORM_DATA4),
+        AT_default_value_data8	= (0x01e0|FORM_DATA8),
+        AT_default_value_string	= (0x01e0|FORM_STRING),
+    AT_friends			= (0x01f0|FORM_BLOCK2),
+    AT_inline			= (0x0200|FORM_STRING),
+    AT_is_optional		= (0x0210|FORM_STRING),
+        AT_lower_bound_ref	= (0x0220|FORM_REF),
+        AT_lower_bound_data2	= (0x0220|FORM_DATA2),
+        AT_lower_bound_data4	= (0x0220|FORM_DATA4),
+        AT_lower_bound_data8	= (0x0220|FORM_DATA8),
+    AT_private			= (0x0240|FORM_STRING),
+    AT_producer			= (0x0250|FORM_STRING),
+    AT_program			= (0x0230|FORM_STRING),
+    AT_protected		= (0x0260|FORM_STRING),
+    AT_prototyped		= (0x0270|FORM_STRING),
+    AT_public			= (0x0280|FORM_STRING),
+    AT_pure_virtual		= (0x0290|FORM_STRING),
+    AT_return_addr		= (0x02a0|FORM_BLOCK2),
+    AT_abstract_origin		= (0x02b0|FORM_REF),
+    AT_start_scope		= (0x02c0|FORM_DATA4),
+    AT_stride_size		= (0x02e0|FORM_DATA4),
+        AT_upper_bound_ref	= (0x02f0|FORM_REF),
+        AT_upper_bound_data2	= (0x02f0|FORM_DATA2),
+        AT_upper_bound_data4	= (0x02f0|FORM_DATA4),
+        AT_upper_bound_data8	= (0x02f0|FORM_DATA8),
+    AT_virtual			= (0x0300|FORM_STRING),
+
+    /* GNU extensions.  */
+
+    AT_sf_names			= (0x8000|FORM_DATA4),
+    AT_src_info			= (0x8010|FORM_DATA4),
+    AT_mac_info			= (0x8020|FORM_DATA4),
+    AT_src_coords		= (0x8030|FORM_DATA4),
+    AT_body_begin		= (0x8040|FORM_ADDR),
+    AT_body_end			= (0x8050|FORM_ADDR)
+};
+
+/* end of enums taken from gdb-6.0 sources */
+
+static
+void read_debuginfo_dwarf1 ( 
+        SegInfo* si, 
+        UChar* dwarf1d, Int dwarf1d_sz, 
+        UChar* dwarf1l, Int dwarf1l_sz )
+{
+   UInt   stmt_list;
+   Bool   stmt_list_found;
+   Int    die_offset, die_szb, at_offset;
+   UShort die_kind, at_kind;
+   UChar* at_base;
+   UChar* src_filename;
+
+   if (0) 
+      VG_(printf)("read_debuginfo_dwarf1 ( %p, %d, %p, %d )\n",
+	          dwarf1d, dwarf1d_sz, dwarf1l, dwarf1l_sz );
+
+   /* This loop scans the DIEs. */
+   die_offset = 0;
+   while (True) {
+      if (die_offset >= dwarf1d_sz) break;
+
+      die_szb  = *(Int*)(dwarf1d + die_offset);
+      die_kind = *(UShort*)(dwarf1d + die_offset + 4);
+
+      /* We're only interested in compile_unit DIEs; ignore others. */
+      if (die_kind != TAG_compile_unit) {
+         die_offset += die_szb;
+         continue; 
+      }
+
+      if (0) 
+         VG_(printf)("compile-unit DIE: offset %d, tag 0x%x, size %d\n", 
+                     die_offset, (Int)die_kind, die_szb );
+
+      /* We've got a compile_unit DIE starting at (dwarf1d +
+         die_offset+6).  Try and find the AT_name and AT_stmt_list
+         attributes.  Then, finally, we can read the line number info
+         for this source file. */
+
+      /* The next 3 are set as we find the relevant attrs. */
+      src_filename    = NULL;
+      stmt_list_found = False;
+      stmt_list       = 0;
+
+      /* This loop scans the Attrs inside compile_unit DIEs. */
+      at_base = dwarf1d + die_offset + 6;
+      at_offset = 0;
+      while (True) {
+         if (at_offset >= die_szb-6) break;
+
+         at_kind = *(UShort*)(at_base + at_offset);
+         if (0) VG_(printf)("atoffset %d, attag 0x%x\n", 
+                            at_offset, (Int)at_kind );
+         at_offset += 2; /* step over the attribute itself */
+	 /* We have to examine the attribute to figure out its
+            length. */
+         switch (at_kind) {
+            case AT_stmt_list:
+            case AT_language:
+            case AT_sibling:
+               if (at_kind == AT_stmt_list) {
+                  stmt_list_found = True;
+                  stmt_list = *(Int*)(at_base+at_offset);
+               }
+               at_offset += 4; break;
+            case AT_high_pc:
+            case AT_low_pc: 
+               at_offset += sizeof(void*); break;
+            case AT_name: 
+            case AT_producer:
+            case AT_comp_dir:
+               /* Zero terminated string, step over it. */
+               if (at_kind == AT_name)
+                  src_filename = at_base + at_offset;
+               while (at_offset < die_szb-6 && at_base[at_offset] != 0)
+                  at_offset++;
+               at_offset++;
+               break;
+            default: 
+               VG_(printf)("Unhandled DWARF-1 attribute 0x%x\n", 
+                           (Int)at_kind );
+               VG_(core_panic)("Unhandled DWARF-1 attribute");
+         } /* switch (at_kind) */
+      } /* looping over attributes */
+
+      /* So, did we find the required stuff for a line number table in
+         this DIE?  If yes, read it. */
+      if (stmt_list_found /* there is a line number table */
+          && src_filename != NULL /* we know the source filename */
+         ) {
+         /* Table starts:
+               Length: 
+                  4 bytes, includes the entire table
+               Base address: 
+                  unclear (4? 8?), assuming native pointer size here.
+            Then a sequence of triples
+               (source line number -- 32 bits
+                source line column -- 16 bits
+                address delta -- 32 bits)
+	 */
+         Addr   base;
+	 Int    len, curr_filenmoff;
+         UChar* ptr;
+         UInt   prev_line, prev_delta;
+
+         curr_filenmoff = addStr ( si, src_filename );
+         prev_line = prev_delta = 0;
+
+         ptr = dwarf1l + stmt_list;
+         len  =        *(Int*)ptr;    ptr += sizeof(Int);
+         base = (Addr)(*(void**)ptr); ptr += sizeof(void*);
+         len -= (sizeof(Int) + sizeof(void*));
+         while (len > 0) {
+            UInt   line;
+            UShort col;
+            UInt   delta;
+            line = *(UInt*)ptr;  ptr += sizeof(UInt);
+            col = *(UShort*)ptr;  ptr += sizeof(UShort);
+            delta = *(UShort*)ptr;  ptr += sizeof(UInt);
+	    if (0) VG_(printf)("line %d, col %d, delta %d\n", 
+                               line, (Int)col, delta );
+            len -= (sizeof(UInt) + sizeof(UShort) + sizeof(UInt));
+
+	    if (delta > 0 && prev_line > 0) {
+	       if (0) VG_(printf) ("     %d  %d-%d\n",
+                                   prev_line, prev_delta, delta-1);
+	       addLineInfo ( si, curr_filenmoff, 
+		 	     base + prev_delta, base + delta,
+			     prev_line, 0 );
+	    }
+	    prev_line = line;
+	    prev_delta = delta;
+	 }        
+      }  
+
+      /* Move on the the next DIE. */
+      die_offset += die_szb;
+
+   } /* Looping over DIEs */
+
+}
+
+
+/*------------------------------------------------------------*/
 /*--- Read info from a .so/exe file.                       ---*/
 /*------------------------------------------------------------*/
 
@@ -717,9 +1677,13 @@ Bool vg_read_lib_symbols ( SegInfo* si )
    UChar*        stab;       /* The .stab table                         */
    UChar*        stabstr;    /* The .stab string table                  */
    UChar*        dwarf2;     /* The DWARF2 location info table          */
+   UChar*        dwarf1d;    /* The DWARF1 ".debug" section             */
+   UChar*        dwarf1l;    /* The DWARF1 ".line" section              */
    Int           stab_sz;    /* Size in bytes of the .stab table        */
    Int           stabstr_sz; /* Size in bytes of the .stab string table */
    Int           dwarf2_sz;  /* Size in bytes of the DWARF2 srcloc table*/
+   Int           dwarf1d_sz; /* Size in bytes of the DWARF1 .debug sect */
+   Int           dwarf1l_sz; /* Size in bytes of the DWARF1 .line sect  */
    Int           fd;
    Int           i;
    Bool          ok;
@@ -737,14 +1701,14 @@ Bool vg_read_lib_symbols ( SegInfo* si )
 
    i = VG_(stat)(si->filename, &stat_buf);
    if (i != 0) {
-      VG_(symerr)("Can't stat .so/.exe (to determine its size)?!");
+      vg_symerr("Can't stat .so/.exe (to determine its size)?!");
       return False;
    }
    n_oimage = stat_buf.st_size;
 
    fd = VG_(open)(si->filename, VKI_O_RDONLY, 0);
-   if (fd < 0) {
-      VG_(symerr)("Can't open .so/.exe to read symbols?!");
+   if (fd == -1) {
+      vg_symerr("Can't open .so/.exe to read symbols?!");
       return False;
    }
 
@@ -782,7 +1746,7 @@ Bool vg_read_lib_symbols ( SegInfo* si )
    }
 
    if (!ok) {
-      VG_(symerr)("Invalid ELF header, or missing stringtab/sectiontab.");
+      vg_symerr("Invalid ELF header, or missing stringtab/sectiontab.");
       VG_(munmap) ( (void*)oimage, n_oimage );
       return False;
    }
@@ -792,7 +1756,7 @@ Bool vg_read_lib_symbols ( SegInfo* si )
       bss memory.  Also computes correct symbol offset value for this
       ELF file. */
    if (ehdr->e_phoff + ehdr->e_phnum*sizeof(Elf32_Phdr) > n_oimage) {
-      VG_(symerr)("ELF program header is beyond image end?!");
+      vg_symerr("ELF program header is beyond image end?!");
       VG_(munmap) ( (void*)oimage, n_oimage );
       return False;
    }
@@ -817,7 +1781,7 @@ Bool vg_read_lib_symbols ( SegInfo* si )
 	 }
 
 	 if (o_phdr->p_vaddr < prev_addr) {
-	    VG_(symerr)("ELF Phdrs are out of order!?");
+	    vg_symerr("ELF Phdrs are out of order!?");
 	    VG_(munmap) ( (void*)oimage, n_oimage );
 	    return False;
 	 }
@@ -861,7 +1825,7 @@ Bool vg_read_lib_symbols ( SegInfo* si )
           ehdr->e_shoff, ehdr->e_shnum, sizeof(Elf32_Shdr), n_oimage );
 
    if (ehdr->e_shoff + ehdr->e_shnum*sizeof(Elf32_Shdr) > n_oimage) {
-      VG_(symerr)("ELF section header is beyond image end?!");
+      vg_symerr("ELF section header is beyond image end?!");
       VG_(munmap) ( (void*)oimage, n_oimage );
       return False;
    }
@@ -888,7 +1852,7 @@ Bool vg_read_lib_symbols ( SegInfo* si )
       Bool       snaffle_it;
       Addr       sym_addr;
 
-      /* find the .stabstr and .stab sections */
+      /* find various symbol and string tables */
       for (i = 0; i < ehdr->e_shnum; i++) {
 
          if (0 == VG_(strcmp)(".dynsym",sh_strtab + shdr[i].sh_name)) {
@@ -945,10 +1909,10 @@ Bool vg_read_lib_symbols ( SegInfo* si )
       }
 
       if (o_strtab == NULL || o_symtab == NULL) {
-         VG_(symerr)("   object doesn't have a symbol table");
+         vg_symerr("   object doesn't have a symbol table");
       }
       if (o_dynstr == NULL || o_dynsym == NULL) {
-         VG_(symerr)("   object doesn't have a dynamic symbol table");
+         vg_symerr("   object doesn't have a dynamic symbol table");
       }
 
       while (True) {
@@ -1098,15 +2062,15 @@ Bool vg_read_lib_symbols ( SegInfo* si )
                Char* t0 = o_symtab[i].st_name 
                              ? (Char*)(o_strtab+o_symtab[i].st_name) 
                              : (Char*)"NONAME";
-               Char *name = VG_(addStr) ( si, t0, -1 );
-               vg_assert(name != NULL
+               Int nmoff = addStr ( si, t0 );
+               vg_assert(nmoff >= 0 
                          /* && 0==VG_(strcmp)(t0,&vg_strtab[nmoff]) */ );
                vg_assert( (Int)o_symtab[i].st_value >= 0);
 	       /* VG_(printf)("%p + %d:   %p %s\n", si->start, 
 			   (Int)o_symtab[i].st_value, sym_addr,  t0 ); */
                sym.addr  = sym_addr;
                sym.size  = o_symtab[i].st_size;
-               sym.name  = name;
+               sym.nmoff = nmoff;
                addSym ( si, &sym );
 	    }
          }
@@ -1121,9 +2085,13 @@ Bool vg_read_lib_symbols ( SegInfo* si )
    stabstr    = NULL;
    stab       = NULL;
    dwarf2     = NULL;
+   dwarf1d    = NULL;
+   dwarf1l    = NULL;
    stabstr_sz = 0;
    stab_sz    = 0;
    dwarf2_sz  = 0;
+   dwarf1d_sz = 0;
+   dwarf1l_sz = 0;
 
    /* find the .stabstr / .stab / .debug_line sections */
    for (i = 0; i < ehdr->e_shnum; i++) {
@@ -1139,10 +2107,21 @@ Bool vg_read_lib_symbols ( SegInfo* si )
          dwarf2 = (UChar *)(oimage + shdr[i].sh_offset);
 	 dwarf2_sz = shdr[i].sh_size;
       }
+      if (0 == VG_(strcmp)(".debug",sh_strtab + shdr[i].sh_name)) {
+         dwarf1d = (UChar *)(oimage + shdr[i].sh_offset);
+	 dwarf1d_sz = shdr[i].sh_size;
+      }
+      if (0 == VG_(strcmp)(".line",sh_strtab + shdr[i].sh_name)) {
+         dwarf1l = (UChar *)(oimage + shdr[i].sh_offset);
+	 dwarf1l_sz = shdr[i].sh_size;
+      }
    }
 
-   if ((stab == NULL || stabstr == NULL) && dwarf2 == NULL) {
-      VG_(symerr)("   object doesn't have any debug info");
+   if ((stab == NULL || stabstr == NULL) 
+       && dwarf2 == NULL
+       && (dwarf1d == NULL || dwarf1l == NULL)
+      ) {
+      vg_symerr("   object doesn't have any debug info");
       VG_(munmap) ( (void*)oimage, n_oimage );
       return False;
    }
@@ -1150,24 +2129,35 @@ Bool vg_read_lib_symbols ( SegInfo* si )
    if ( stab_sz + (UChar*)stab > n_oimage + (UChar*)oimage
         || stabstr_sz + (UChar*)stabstr 
            > n_oimage + (UChar*)oimage ) {
-      VG_(symerr)("   ELF (stabs) debug data is beyond image end?!");
+      vg_symerr("   ELF (stabs) debug data is beyond image end?!");
       VG_(munmap) ( (void*)oimage, n_oimage );
       return False;
    }
 
    if ( dwarf2_sz + (UChar*)dwarf2 > n_oimage + (UChar*)oimage ) {
-      VG_(symerr)("   ELF (dwarf2) debug data is beyond image end?!");
+      vg_symerr("   ELF (dwarf2) debug data is beyond image end?!");
+      VG_(munmap) ( (void*)oimage, n_oimage );
+      return False;
+   }
+
+   if ( dwarf1d_sz + (UChar*)dwarf1d > n_oimage + (UChar*)oimage
+        || dwarf1l_sz + (UChar*)dwarf1l > n_oimage + (UChar*)oimage ) {
+      vg_symerr("   ELF (dwarf1d) debug data is beyond image end?!");
       VG_(munmap) ( (void*)oimage, n_oimage );
       return False;
    }
 
    /* Looks plausible.  Go on and read debug data. */
    if (stab != NULL && stabstr != NULL) {
-      VG_(read_debuginfo_stabs) ( si, stab, stab_sz, stabstr, stabstr_sz );
+      read_debuginfo_stabs ( si, stab, stab_sz, stabstr, stabstr_sz );
    }
 
    if (dwarf2 != NULL) {
-      VG_(read_debuginfo_dwarf2) ( si, dwarf2, dwarf2_sz );
+      read_debuginfo_dwarf2 ( si, dwarf2, dwarf2_sz );
+   }
+
+   if (dwarf1d != NULL && dwarf1l != NULL) {
+      read_debuginfo_dwarf1 ( si, dwarf1d, dwarf1d_sz, dwarf1l, dwarf1l_sz );
    }
 
    /* Last, but not least, heave the oimage back overboard. */
@@ -1189,9 +2179,11 @@ Bool vg_read_lib_symbols ( SegInfo* si )
 */
 static SegInfo* segInfo = NULL;
 
-void VG_(read_seg_symbols) ( Addr start, UInt size, 
-                             Char rr, Char ww, Char xx, 
-                             UInt foffset, UChar* filename )
+
+void VG_(read_symtab_callback) ( 
+        Addr start, UInt size, 
+        Char rr, Char ww, Char xx, 
+        UInt foffset, UChar* filename )
 {
    SegInfo* si;
 
@@ -1208,8 +2200,6 @@ void VG_(read_seg_symbols) ( Addr start, UInt size,
    if (foffset != 0)
       return;
 
-   VGP_PUSHCC(VgpReadSyms);
-
    /* Perhaps we already have this one?  If so, skip. */
    for (si = segInfo; si != NULL; si = si->next) {
       /*
@@ -1221,9 +2211,7 @@ void VG_(read_seg_symbols) ( Addr start, UInt size,
          we don't use that to determine uniqueness. */
       if (si->start == start
           /* && si->size == size */
-          && 0==VG_(strcmp)(si->filename, filename)) 
-      {
-         VGP_POPCC(VgpReadSyms);
+          && 0==VG_(strcmp)(si->filename, filename)) {
          return;
       }
    }
@@ -1242,11 +2230,8 @@ void VG_(read_seg_symbols) ( Addr start, UInt size,
    si->symtab_size = si->symtab_used = 0;
    si->loctab = NULL;
    si->loctab_size = si->loctab_used = 0;
-   si->strchunks = NULL;
-   si->scopetab = NULL;
-   si->scopetab_size = si->scopetab_used = 0;
-
-   si->stab_typetab = NULL;
+   si->strtab = NULL;
+   si->strtab_size = si->strtab_used = 0;
 
    si->plt_start  = si->plt_size = 0;
    si->got_start  = si->got_size = 0;
@@ -1269,9 +2254,7 @@ void VG_(read_seg_symbols) ( Addr start, UInt size,
 
       canonicaliseSymtab ( si );
       canonicaliseLoctab ( si );
-      canonicaliseScopetab ( si );
    }
-   VGP_POPCC(VgpReadSyms);
 }
 
 
@@ -1283,13 +2266,16 @@ void VG_(read_seg_symbols) ( Addr start, UInt size,
    libraries as they are dlopen'd.  Conversely, when the client does
    munmap(), vg_symtab_notify_munmap() throws away any symbol tables
    which happen to correspond to the munmap()d area.  */
-void VG_(read_all_symbols) ( void )
+void VG_(read_symbols) ( void )
 {
    /* 9 July 2003: In order to work around PLT bypassing in
       glibc-2.3.2 (see below VG_(setup_code_redirect_table)), we need
       to load debug info regardless of the skin, unfortunately.  */
-   VG_(read_procselfmaps)  ( );
-   VG_(parse_procselfmaps) ( VG_(read_seg_symbols) );
+
+   VGP_PUSHCC(VgpReadSyms);
+      VG_(read_procselfmaps) ( VG_(read_symtab_callback),
+                               /*read_from_file*/True );
+   VGP_POPCC(VgpReadSyms);
 }
 
 /* When an munmap() call happens, check to see whether it corresponds
@@ -1310,14 +2296,12 @@ void VG_(unload_symbols) ( Addr start, UInt length )
       prev = curr;
       curr = curr->next;
    }
-   if (curr == NULL) {
-      VGP_POPCC(VgpReadSyms);
+   if (curr == NULL) 
       return;
-   }
 
    VG_(message)(Vg_UserMsg, 
                 "discard syms in %s due to munmap()", 
-                curr->filename ? curr->filename : (Char *)"???");
+                curr->filename ? curr->filename : (UChar*)"???");
 
    vg_assert(prev == NULL || prev->next == curr);
 
@@ -1376,8 +2360,9 @@ static Addr reverse_search_one_symtab ( SegInfo* si,
    UInt i;
    for (i = 0; i < si->symtab_used; i++) {
       if (0) 
-         VG_(printf)("%p %s\n",  si->symtab[i].addr, si->symtab[i].name);
-      if (0 == VG_(strcmp)(name, si->symtab[i].name))
+         VG_(printf)("%p %s\n",  si->symtab[i].addr, 
+                     &si->strtab[si->symtab[i].nmoff]);
+      if (0 == VG_(strcmp)(name, &si->strtab[si->symtab[i].nmoff]))
          return si->symtab[i].addr;
    }
    return (Addr)NULL;
@@ -1465,58 +2450,6 @@ static void search_all_loctabs ( Addr ptr, /*OUT*/SegInfo** psi,
 }
 
 
-/* Find a scope-table index containing the specified pointer, or -1
-   if not found.  Binary search.  */
-
-static Int search_one_scopetab ( SegInfo* si, Addr ptr )
-{
-   Addr a_mid_lo, a_mid_hi;
-   Int  mid, 
-        lo = 0, 
-        hi = si->scopetab_used-1;
-   while (True) {
-      /* current unsearched space is from lo to hi, inclusive. */
-      if (lo > hi) return -1; /* not found */
-      mid      = (lo + hi) / 2;
-      a_mid_lo = si->scopetab[mid].addr;
-      a_mid_hi = ((Addr)si->scopetab[mid].addr) + si->scopetab[mid].size - 1;
-
-      if (ptr < a_mid_lo) { hi = mid-1; continue; } 
-      if (ptr > a_mid_hi) { lo = mid+1; continue; }
-      vg_assert(ptr >= a_mid_lo && ptr <= a_mid_hi);
-      return mid;
-   }
-}
-
-
-/* Search all scopetabs that we know about to locate ptr.  If found, set
-   *psi to the relevant SegInfo, and *locno to the scopetab entry number
-   within that.  If not found, *psi is set to NULL.
-*/
-static void search_all_scopetabs ( Addr ptr,
-				   /*OUT*/SegInfo** psi,
-				   /*OUT*/Int* scopeno )
-{
-   Int      scno;
-   SegInfo* si;
-
-   VGP_PUSHCC(VgpSearchSyms);
-
-   for (si = segInfo; si != NULL; si = si->next) {
-      if (si->start <= ptr && ptr < si->start+si->size) {
-         scno = search_one_scopetab ( si, ptr );
-         if (scno == -1) goto not_found;
-         *scopeno = scno;
-         *psi = si;
-         VGP_POPCC(VgpSearchSyms);
-         return;
-      }
-   }
-  not_found:
-   *psi = NULL;
-   VGP_POPCC(VgpSearchSyms);
-}
-
 /* The whole point of this whole big deal: map a code address to a
    plausible symbol name.  Returns False if no idea; otherwise True.
    Caller supplies buf and nbuf.  If demangle is False, don't do
@@ -1534,10 +2467,10 @@ Bool get_fnname ( Bool demangle, Addr a, Char* buf, Int nbuf,
    if (si == NULL) 
       return False;
    if (demangle) {
-      VG_(demangle) ( si->symtab[sno].name, buf, nbuf );
+      VG_(demangle) ( & si->strtab[si->symtab[sno].nmoff], buf, nbuf );
    } else {
       VG_(strncpy_safely) 
-         ( buf, si->symtab[sno].name, nbuf );
+         ( buf, & si->strtab[si->symtab[sno].nmoff], nbuf );
    }
 
    offset = a - si->symtab[sno].addr;
@@ -1637,7 +2570,7 @@ Bool VG_(get_filename)( Addr a, Char* filename, Int n_filename )
    search_all_loctabs ( a, &si, &locno );
    if (si == NULL) 
       return False;
-   VG_(strncpy_safely)(filename, si->loctab[locno].filename, 
+   VG_(strncpy_safely)(filename, & si->strtab[si->loctab[locno].fnmoff], 
                        n_filename);
    return True;
 }
@@ -1667,255 +2600,84 @@ Bool VG_(get_filename_linenum)( Addr a,
    search_all_loctabs ( a, &si, &locno );
    if (si == NULL) 
       return False;
-   VG_(strncpy_safely)(filename, si->loctab[locno].filename, 
+   VG_(strncpy_safely)(filename, & si->strtab[si->loctab[locno].fnmoff], 
                        n_filename);
    *lineno = si->loctab[locno].lineno;
 
    return True;
 }
 
-#ifndef TEST
 
-/* return a pointer to a register (now for 5 other impossible things
-   before breakfast) */
-static UInt *regaddr(ThreadId tid, Int regno)
+/* Print a mini stack dump, showing the current location. */
+void VG_(mini_stack_dump) ( ExeContext* ec )
 {
-   UInt *ret = 0;
 
-   if (VG_(is_running_thread)(tid)) {
-      Int idx;
-
-      switch(regno) {
-      case R_EAX:	idx = VGOFF_(m_eax); break;
-      case R_ECX:	idx = VGOFF_(m_ecx); break;
-      case R_EDX:	idx = VGOFF_(m_edx); break;
-      case R_EBX:	idx = VGOFF_(m_ebx); break;
-      case R_ESP:	idx = VGOFF_(m_esp); break;
-      case R_EBP:	idx = VGOFF_(m_ebp); break;
-      case R_ESI:	idx = VGOFF_(m_esi); break;
-      case R_EDI:	idx = VGOFF_(m_edi); break;
-      default:		
-	 idx = -1;
-	 break;
-      }
-      if (idx != -1)
-	 ret = &VG_(baseBlock)[idx];
-   } else {
-      ThreadState *tst = &VG_(threads)[tid];
-
-      switch(regno) {
-      case R_EAX:	ret = &tst->m_eax; break;
-      case R_ECX:	ret = &tst->m_ecx; break;
-      case R_EDX:	ret = &tst->m_edx; break;
-      case R_EBX:	ret = &tst->m_ebx; break;
-      case R_ESP:	ret = &tst->m_esp; break;
-      case R_EBP:	ret = &tst->m_ebp; break;
-      case R_ESI:	ret = &tst->m_esi; break;
-      case R_EDI:	ret = &tst->m_edi; break;
-      default:	
-	 break;
-      }
-   }	       
-
-   if (ret == 0) {
-      Char file[100];
-      Int line;
-      Addr eip = VG_(get_EIP)(tid);
-
-      if (!VG_(get_filename_linenum)(eip, file, sizeof(file), &line))
-	 file[0] = 0;
-      VG_(printf)("mysterious register %d used at %p %s:%d\n",
-		  regno, eip, file, line);
+#define APPEND(str)                                              \
+   { UChar* sss;                                                 \
+     for (sss = str; n < M_VG_ERRTXT-1 && *sss != 0; n++,sss++)  \
+        buf[n] = *sss;                                           \
+     buf[n] = 0;                                                 \
    }
 
-   return ret;
-}
-
-/* Get a list of all variables in scope, working out from the directly
-   current one */
-Variable *VG_(get_scope_variables)(ThreadId tid)
-{
-   static const Bool debug = False;
-   Variable *list, *end;
-   Addr eip;
-   SegInfo *si;
-   Int scopeidx;
-   Scope *scope;
-   Int distance;
-   static const Int maxsyms = 1000;
-   Int nsyms = maxsyms;
-
-   list = end = NULL;
-
-   eip = VG_(get_EIP)(tid);
-   
-   search_all_scopetabs(eip, &si, &scopeidx);
-
-   if (debug)
-      VG_(printf)("eip=%p si=%p (%s; offset=%p) scopeidx=%d\n", 
-		  eip, si, si ? si->filename : (Char *)"???",
-		  si ? si->offset : 0x99999, scopeidx);
-
-   if (si == NULL)
-      return NULL;		/* nothing in scope (should use global scope at least) */
-
-   if (debug) {
-      ScopeRange *sr = &si->scopetab[scopeidx];
-      Char file[100];
-      Int line;
-
-      if (!VG_(get_filename_linenum)(sr->addr, file, sizeof(file), &line))
-	 file[0] = 0;
-
-      VG_(printf)("found scope range %p: eip=%p (%s:%d) size=%d scope=%p\n",
-		  sr, sr->addr, file, line, sr->size, sr->scope);
-   }
-
-   distance = 0;
-   for(scope = si->scopetab[scopeidx].scope; scope != NULL; scope = scope->outer, distance++) {
-      UInt i;
-
-      for(i = 0; i < scope->nsyms; i++) {
-	 Sym *sym = &scope->syms[i];
-	 Variable *v;
-
-	 if (nsyms-- == 0) {
-	    VG_(printf)("max %d syms reached\n", maxsyms);
-	    return list;
-	 }
-	    
-	 v = VG_(arena_malloc)(VG_AR_SYMTAB, sizeof(*v));
-
-	 v->next = NULL;
-	 v->distance = distance;
-	 v->type = VG_(st_basetype)(sym->type, False);
-	 v->name = VG_(arena_strdup)(VG_AR_SYMTAB, sym->name);
-	 v->container = NULL;
-	 v->size = VG_(st_sizeof)(sym->type);
-
-	 if (debug && 0)
-	    VG_(printf)("sym->name=%s sym->kind=%d offset=%d\n", sym->name, sym->kind, sym->offset);
-	 switch(sym->kind) {
-	    UInt reg;
-
-	 case SyGlobal:
-	 case SyStatic:
-	    if (sym->addr == 0) {
-	       /* XXX lookup value */
-	    }
-	    v->valuep = sym->addr;
-	    break;
-
-	 case SyReg:
-	    v->valuep = (Addr)regaddr(tid, sym->regno);
-	    break;
-
-	 case SyEBPrel:
-	 case SyESPrel:
-	    reg = *regaddr(tid, sym->kind == SyESPrel ? R_ESP : R_EBP);
-	    if (debug)
-	       VG_(printf)("reg=%p+%d=%p\n", reg, sym->offset, reg+sym->offset);
-	    v->valuep = (Addr)(reg + sym->offset);
-	    break;
-
-	 case SyType:
-	    VG_(core_panic)("unexpected typedef in scope");
-	 }
-
-	 if (v->valuep == 0) {
-	    /* not interesting or useful */
-	    VG_(arena_free)(VG_AR_SYMTAB, v);
-	    continue;
-	 }
-
-	 /* append to end of list */
-	 if (list == NULL)
-	    list = end = v;
-	 else {
-	    end->next = v;
-	    end = v;
-	 }
-      }  
-   }
-
-   return list;
-}
-#endif /* TEST */
-
-/* Print into buf info on code address, function name and filename */
-Char* VG_(describe_eip)(Addr eip, Char* buf, Int n_buf)
-{
-#define APPEND(str)                                         \
-   { UChar* sss;                                            \
-     for (sss = str; n < n_buf-1 && *sss != 0; n++,sss++)   \
-        buf[n] = *sss;                                      \
-     buf[n] = '\0';                                         \
-   }
    Bool   know_fnname;
    Bool   know_objname;
    Bool   know_srcloc;
+   UInt   lineno; 
+   UChar  ibuf[20];
+   UInt   i, n;
+
+   UChar  buf[M_VG_ERRTXT];
    UChar  buf_fn[M_VG_ERRTXT];
    UChar  buf_obj[M_VG_ERRTXT];
    UChar  buf_srcloc[M_VG_ERRTXT];
-   UInt   lineno; 
-   UChar  ibuf[20];
-   UInt   n = 0;
 
-   know_fnname  = VG_(get_fnname) (eip, buf_fn,  M_VG_ERRTXT);
-   know_objname = VG_(get_objname)(eip, buf_obj, M_VG_ERRTXT);
-   know_srcloc  = VG_(get_filename_linenum)(eip, buf_srcloc, M_VG_ERRTXT, 
-                                            &lineno);
-   VG_(sprintf)(ibuf,"0x%x: ", eip);
-   APPEND(ibuf);
-   if (know_fnname) { 
-      APPEND(buf_fn);
-      if (!know_srcloc && know_objname) {
-         APPEND(" (in ");
-         APPEND(buf_obj);
-         APPEND(")");
-      }
-   } else if (know_objname && !know_srcloc) {
-      APPEND("(within ");
-      APPEND(buf_obj);
-      APPEND(")");
-   } else {
-      APPEND("???");
-   }
-   if (know_srcloc) {
-      APPEND(" (");
-      APPEND(buf_srcloc);
-      APPEND(":");
-      VG_(sprintf)(ibuf,"%d",lineno);
-      APPEND(ibuf);
-      APPEND(")");
-   }
-   return buf;
-
-#undef APPEND
-}
-
-/* Print a mini stack dump, showing the current location. */
-void VG_(mini_stack_dump) ( Addr eips[], UInt n_eips )
-{
-   UInt  i;
-   UChar buf[M_VG_ERRTXT];
-   Char* how;
-
-   Int stop_at = n_eips;
+   Int stop_at = VG_(clo_backtrace_size);
 
    vg_assert(stop_at > 0);
 
    i = 0;
    do {
-      Addr eip = eips[i];
-      if (i  > 0) eip--;            /* point to calling line */
-      if (i == 0) how = "at"; else how = "by";
-      VG_(describe_eip)(eip, buf, M_VG_ERRTXT);
-      VG_(message)(Vg_UserMsg, "   %s %s", how, buf);
+      Addr eip = ec->eips[i];
+      n = 0;
+      if (i > 0)
+	 eip--;			/* point to calling line */
+      know_fnname  = VG_(get_fnname) (eip, buf_fn,  M_VG_ERRTXT);
+      know_objname = VG_(get_objname)(eip, buf_obj, M_VG_ERRTXT);
+      know_srcloc  = VG_(get_filename_linenum)(eip, buf_srcloc, M_VG_ERRTXT, 
+                                               &lineno);
+      if (i == 0) APPEND("   at ") else APPEND("   by ");
+      
+      VG_(sprintf)(ibuf,"0x%x: ", eip);
+      APPEND(ibuf);
+      if (know_fnname) { 
+         APPEND(buf_fn);
+         if (!know_srcloc && know_objname) {
+            APPEND(" (in ");
+            APPEND(buf_obj);
+            APPEND(")");
+         }
+      } else if (know_objname && !know_srcloc) {
+         APPEND("(within ");
+         APPEND(buf_obj);
+         APPEND(")");
+      } else {
+         APPEND("???");
+      }
+      if (know_srcloc) {
+         APPEND(" (");
+         APPEND(buf_srcloc);
+         APPEND(":");
+         VG_(sprintf)(ibuf,"%d",lineno);
+         APPEND(ibuf);
+         APPEND(")");
+      }
+      VG_(message)(Vg_UserMsg, "%s", buf);
       i++;
 
-   } while (i < (UInt)stop_at && eips[i] != 0);
+   } while (i < (UInt)stop_at && ec->eips[i] != 0);
 }
+
+#undef APPEND
 
 
 /*------------------------------------------------------------*/

@@ -133,64 +133,144 @@ void VG_(replacement_malloc_print_debug_usage)(void)
 
 #define MALLOC_TRACE(format, args...)  \
    if (VG_(clo_trace_malloc))          \
-      VALGRIND_INTERNAL_PRINTF(format, ## args )
+      VG_(printf)(format, ## args )
 
 #define MAYBE_SLOPPIFY(n)           \
    if (VG_(clo_sloppy_malloc)) {    \
       while ((n % 4) > 0) n++;      \
    }
 
-/* ALL calls to malloc() and friends wind up here. */
-#define ALLOC(fff, vgfff) \
-void* fff ( Int n ) \
-{ \
-   void* v; \
- \
-   MALLOC_TRACE(#fff "[simd=%d](%d)",  \
-                (UInt)VG_(is_running_on_simd_CPU)(), n ); \
-   MAYBE_SLOPPIFY(n); \
- \
-   if (VG_(is_running_on_simd_CPU)()) { \
-      v = (void*)VALGRIND_NON_SIMD_CALL1( vgfff, n ); \
-   } else if (VG_(clo_alignment) != 4) { \
-      v = VG_(arena_malloc_aligned)(VG_AR_CLIENT, VG_(clo_alignment), n); \
-   } else { \
-      v = VG_(arena_malloc)(VG_AR_CLIENT, n); \
-   } \
-   MALLOC_TRACE(" = %p", v ); \
-   return v; \
+/* ALL calls to malloc wind up here. */
+void* malloc ( Int n )
+{
+   void* v;
+
+   MALLOC_TRACE("malloc[simd=%d](%d)", 
+                (UInt)VG_(is_running_on_simd_CPU)(), n );
+   MAYBE_SLOPPIFY(n);
+
+   if (VG_(is_running_on_simd_CPU)()) {
+      v = (void*)VALGRIND_NON_SIMD_CALL1( SK_(malloc), n );
+   } else if (VG_(clo_alignment) != 4) {
+      v = VG_(arena_malloc_aligned)(VG_AR_CLIENT, VG_(clo_alignment), n);
+   } else {
+      v = VG_(arena_malloc)(VG_AR_CLIENT, n);
+   }
+   MALLOC_TRACE(" = %p\n", v );
+   return v;
 }
-ALLOC( malloc,              SK_(malloc)            );
-ALLOC( __builtin_new,       SK_(__builtin_new)     );
-ALLOC( _Znwj,               SK_(__builtin_new)     );
 
-// operator new(unsigned, std::nothrow_t const&)
-ALLOC( _ZnwjRKSt9nothrow_t, SK_(__builtin_new)     );
+void* __builtin_new ( Int n )
+{
+   void* v;
 
-ALLOC( __builtin_vec_new,   SK_(__builtin_vec_new) );
-ALLOC( _Znaj,               SK_(__builtin_vec_new) );
+   MALLOC_TRACE("__builtin_new[simd=%d](%d)", 
+                (UInt)VG_(is_running_on_simd_CPU)(), n );
+   MAYBE_SLOPPIFY(n);
 
-// operator new[](unsigned, std::nothrow_t const&
-ALLOC( _ZnajRKSt9nothrow_t, SK_(__builtin_vec_new) );
-
-#define FREE(fff, vgfff) \
-void fff ( void* p ) \
-{ \
-   MALLOC_TRACE(#fff "[simd=%d](%p)",  \
-                (UInt)VG_(is_running_on_simd_CPU)(), p ); \
-   if (p == NULL)  \
-      return; \
-   if (VG_(is_running_on_simd_CPU)()) { \
-      (void)VALGRIND_NON_SIMD_CALL1( vgfff, p ); \
-   } else { \
-      VG_(arena_free)(VG_AR_CLIENT, p);       \
-   } \
+   if (VG_(is_running_on_simd_CPU)()) {
+      v = (void*)VALGRIND_NON_SIMD_CALL1( SK_(__builtin_new), n );
+   } else if (VG_(clo_alignment) != 4) {
+      v = VG_(arena_malloc_aligned)(VG_AR_CLIENT, VG_(clo_alignment), n);
+   } else {
+      v = VG_(arena_malloc)(VG_AR_CLIENT, n);
+   }
+   MALLOC_TRACE(" = %p\n", v );
+   return v;
 }
-FREE( free,                 SK_(free)                 );
-FREE( __builtin_delete,     SK_(__builtin_delete)     );
-FREE( _ZdlPv,               SK_(__builtin_delete)     );
-FREE( __builtin_vec_delete, SK_(__builtin_vec_delete) );
-FREE( _ZdaPv,               SK_(__builtin_vec_delete) );
+
+/* gcc 3.X.X mangles them differently. */
+void* _Znwj ( Int n )
+{
+  return __builtin_new(n);
+}
+
+/* operator new(unsigned, std::nothrow_t const&) */
+void* _ZnwjRKSt9nothrow_t ( Int n )
+{
+  return __builtin_new(n);
+}
+
+void* __builtin_vec_new ( Int n )
+{
+   void* v;
+
+   MALLOC_TRACE("__builtin_vec_new[simd=%d](%d)", 
+                (UInt)VG_(is_running_on_simd_CPU)(), n );
+   MAYBE_SLOPPIFY(n);
+
+   if (VG_(is_running_on_simd_CPU)()) {
+      v = (void*)VALGRIND_NON_SIMD_CALL1( SK_(__builtin_vec_new), n );
+   } else if (VG_(clo_alignment) != 4) {
+      v = VG_(arena_malloc_aligned)(VG_AR_CLIENT, VG_(clo_alignment), n);
+   } else {
+      v = VG_(arena_malloc)(VG_AR_CLIENT, n);
+   }
+   MALLOC_TRACE(" = %p\n", v );
+   return v;
+}
+
+/* gcc 3.X.X mangles them differently. */
+void* _Znaj ( Int n )
+{
+  return __builtin_vec_new(n);
+}
+
+void* _ZnajRKSt9nothrow_t ( Int n )
+{
+  return __builtin_vec_new(n);
+}
+
+void free ( void* p )
+{
+   MALLOC_TRACE("free[simd=%d](%p)\n", 
+                (UInt)VG_(is_running_on_simd_CPU)(), p );
+   if (p == NULL) 
+      return;
+   if (VG_(is_running_on_simd_CPU)()) {
+      (void)VALGRIND_NON_SIMD_CALL1( SK_(free), p );
+   } else {
+      VG_(arena_free)(VG_AR_CLIENT, p);      
+   }
+}
+
+void __builtin_delete ( void* p )
+{
+   MALLOC_TRACE("__builtin_delete[simd=%d](%p)\n", 
+                (UInt)VG_(is_running_on_simd_CPU)(), p );
+   if (p == NULL) 
+      return;
+   if (VG_(is_running_on_simd_CPU)()) {
+      (void)VALGRIND_NON_SIMD_CALL1( SK_(__builtin_delete), p );
+   } else {
+      VG_(arena_free)(VG_AR_CLIENT, p);
+   }
+}
+
+/* gcc 3.X.X mangles them differently. */
+void _ZdlPv ( void* p )
+{
+  __builtin_delete(p);
+}
+
+void __builtin_vec_delete ( void* p )
+{
+   MALLOC_TRACE("__builtin_vec_delete[simd=%d](%p)\n", 
+                (UInt)VG_(is_running_on_simd_CPU)(), p );
+   if (p == NULL) 
+      return;
+   if (VG_(is_running_on_simd_CPU)()) {
+      (void)VALGRIND_NON_SIMD_CALL1( SK_(__builtin_vec_delete), p );
+   } else {
+      VG_(arena_free)(VG_AR_CLIENT, p);
+   }
+}
+
+/* gcc 3.X.X mangles them differently. */
+void _ZdaPv ( void* p )
+{
+  __builtin_vec_delete(p);
+}
 
 void* calloc ( UInt nmemb, UInt size )
 {
@@ -205,7 +285,7 @@ void* calloc ( UInt nmemb, UInt size )
    } else {
       v = VG_(arena_calloc)(VG_AR_CLIENT, VG_(clo_alignment), nmemb, size);
    }
-   MALLOC_TRACE(" = %p", v );
+   MALLOC_TRACE(" = %p\n", v );
    return v;
 }
 
@@ -223,7 +303,7 @@ void* realloc ( void* ptrV, Int new_size )
    if (new_size <= 0) {
       free(ptrV);
       if (VG_(clo_trace_malloc)) 
-         VG_(printf)(" = 0" );
+         VG_(printf)(" = 0\n" );
       return NULL;
    }   
    if (VG_(is_running_on_simd_CPU)()) {
@@ -231,7 +311,7 @@ void* realloc ( void* ptrV, Int new_size )
    } else {
       v = VG_(arena_realloc)(VG_AR_CLIENT, ptrV, VG_(clo_alignment), new_size);
    }
-   MALLOC_TRACE(" = %p", v );
+   MALLOC_TRACE(" = %p\n", v );
    return v;
 }
 
@@ -249,7 +329,7 @@ void* memalign ( Int alignment, Int n )
    } else {
       v = VG_(arena_malloc_aligned)(VG_AR_CLIENT, alignment, n);
    }
-   MALLOC_TRACE(" = %p", v );
+   MALLOC_TRACE(" = %p\n", v );
    return v;
 }
 
@@ -308,7 +388,7 @@ Int malloc_usable_size ( void* p )
    } else {
       pszB = VG_(arena_payload_szB)(VG_AR_CLIENT, p);
    }
-   MALLOC_TRACE(" = %d", pszB );
+   MALLOC_TRACE(" = %d\n", pszB );
 
    return pszB;
 }

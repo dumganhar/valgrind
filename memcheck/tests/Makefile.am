@@ -3,7 +3,7 @@
 ## - lots more mmap/munmap/mremap/mprotect ones
 ##---------------------------------------------------------------------------
 
-noinst_SCRIPTS = filter_allocs filter_leak_check_size \
+noinst_SCRIPTS = filter_allocs filter_leak_check_size filter_mismatches \
 		 filter_stderr filter_stderr_backtrace filter_pushfpopf \
 		 filter_tronical
 
@@ -14,8 +14,6 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	badfree.stderr.exp badfree.vgtest \
 	badjump.stderr.exp badjump.vgtest \
 	badloop.stderr.exp badloop.vgtest \
-	badrw.stderr.exp badrw.vgtest \
-	brk.stderr.exp brk.vgtest \
 	buflen_check.stderr.exp buflen_check.vgtest \
 	clientperm.stderr.exp \
 	clientperm.stdout.exp clientperm.vgtest \
@@ -40,11 +38,9 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	mmaptest.stderr.exp mmaptest.vgtest \
 	nanoleak.stderr.exp nanoleak.vgtest \
 	nanoleak_supp.stderr.exp nanoleak_supp.vgtest nanoleak.supp \
-	new_nothrow.stderr.exp new_nothrow.vgtest \
 	new_override.stderr.exp new_override.vgtest \
 	null_socket.stderr.exp null_socket.vgtest \
 	overlap.stderr.exp overlap.stdout.exp overlap.vgtest \
-	pth_once.stderr.exp pth_once.stdout.exp pth_once.vgtest \
 	pushfpopf.stderr.exp pushfpopf.stdout.exp pushfpopf.vgtest \
 	realloc1.stderr.exp realloc1.vgtest \
 	realloc2.stderr.exp realloc2.vgtest \
@@ -60,20 +56,18 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	tronical.stderr.exp tronical.vgtest \
 	weirdioctl.stderr.exp weirdioctl.stdout.exp weirdioctl.vgtest \
 	metadata.stderr.exp metadata.stdout.exp metadata.vgtest \
-	threadederrno.stderr.exp threadederrno.stdout.exp \
-	threadederrno.vgtest \
-	writev.stderr.exp writev.vgtest
+	threadederrno.stderr.exp threadederrno.stdout.exp threadederrno.vgtest
 
 check_PROGRAMS = \
-	badaddrvalue badfree badjump badloop badrw brk buflen_check \
-	clientperm custom_alloc \
+	badaddrvalue badfree badjump badloop buflen_check clientperm \
+	custom_alloc \
 	doublefree error_counts errs1 exitprog fprw fwrite inits inline \
 	malloc1 malloc2 malloc3 manuel1 manuel2 manuel3 \
-	memalign_test memcmptest mmaptest nanoleak new_nothrow null_socket \
+	memalign_test memcmptest mmaptest nanoleak null_socket \
 	overlap pushfpopf \
 	realloc1 realloc2 realloc3 sigaltstack signal2 supp1 supp2 suppfree \
 	trivialleak tronical weirdioctl	\
-	mismatches new_override metadata threadederrno writev
+	mismatches new_override metadata threadederrno
 
 AM_CPPFLAGS = -I$(top_srcdir)/include
 AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g 
@@ -84,8 +78,6 @@ badaddrvalue_SOURCES 	= badaddrvalue.c
 badfree_SOURCES 	= badfree.c
 badjump_SOURCES 	= badjump.c
 badloop_SOURCES 	= badloop.c
-badrw_SOURCES		= badrw.c
-brk_SOURCES 		= brk.c
 buflen_check_SOURCES	= buflen_check.c
 clientperm_SOURCES 	= clientperm.c
 custom_alloc_SOURCES 	= custom_alloc.c
@@ -124,10 +116,8 @@ weirdioctl_SOURCES 	= weirdioctl.c
 metadata_SOURCES	= metadata.c
 threadederrno_SOURCES	= threadederrno.c
 threadederrno_LDADD	= -lpthread
-writev_SOURCES		= writev.c
 
 # C++ ones
 mismatches_SOURCES	= mismatches.cpp
-new_nothrow_SOURCES 	= new_nothrow.cpp
 new_override_SOURCES 	= new_override.cpp
 

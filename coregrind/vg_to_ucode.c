@@ -271,8 +271,6 @@ static void setFlagsFromUOpcode ( UCodeBlock* cb, Int uopc )
          uFlagsRWU(cb, FlagsEmpty, FlagsOSZCP,  FlagA); break;
       case ADC: case SBB: 
          uFlagsRWU(cb, FlagC,      FlagsOSZACP, FlagsEmpty); break;
-      case MUL: case UMUL:
-	 uFlagsRWU(cb, FlagsEmpty, FlagsOC,     FlagsSZAP); break;
       case ADD: case SUB: case NEG: 
          uFlagsRWU(cb, FlagsEmpty, FlagsOSZACP, FlagsEmpty); break;
       case INC: case DEC:
@@ -1448,7 +1446,7 @@ static void codegen_mul_A_D_Reg ( UCodeBlock* cb, Int sz,
       uInstr1(cb, POP,   2, TempReg, t1);
       uInstr2(cb, PUT,   2, TempReg, t1, ArchReg, R_EAX);
    }
-   uInstr0(cb, CALLM_E, 0);
+	uInstr0(cb, CALLM_E, 0);
    if (dis) VG_(printf)("%s%c %s\n", signed_multiply ? "imul" : "mul",
                         nameISize(sz), nameIReg(sz, eregOfRM(modrm)));
 
@@ -1900,7 +1898,7 @@ void codegen_REPNE_SCAS ( UCodeBlock* cb, Int sz, Addr eip, Addr eip_next )
    uFlagsRWU(cb, FlagD, FlagsEmpty, FlagsEmpty);
 
    uInstr1(cb, POP,   4, TempReg, tv);
-   uInstr0(cb, CALLM_E, 0);
+	uInstr0(cb, CALLM_E, 0);
 
    if (sz == 4 || sz == 2) {
       uInstr2(cb, SHL, 4, Literal, 0, TempReg, tv);
@@ -1911,56 +1909,6 @@ void codegen_REPNE_SCAS ( UCodeBlock* cb, Int sz, Addr eip, Addr eip_next )
    uInstr1(cb, JMP,   0, Literal, 0);
    uLiteral(cb, eip);
    uCond(cb, CondNZ);
-   uFlagsRWU(cb, FlagsOSZACP, FlagsEmpty, FlagsEmpty);
-   uInstr1(cb, JMP,   0, Literal, 0);
-   uLiteral(cb, eip_next);
-   uCond(cb, CondAlways);
-}
-
-/* Template for REPE SCAS<sz>.  Assumes this insn is the last one in
-   the basic block, and so emits a jump to the next insn. */
-static 
-void codegen_REPE_SCAS ( UCodeBlock* cb, Int sz, Addr eip, Addr eip_next )
-{
-   Int ta /* EAX */, tc /* ECX */, td /* EDI */, tv;
-   ta = newTemp(cb);
-   tc = newTemp(cb);
-   tv = newTemp(cb);
-   td = newTemp(cb);
-
-   uInstr2(cb, GET,   4, ArchReg, R_ECX, TempReg, tc);
-   uInstr2(cb, JIFZ,  4, TempReg, tc,    Literal, 0);
-   uLiteral(cb, eip_next);
-   uInstr1(cb, DEC,   4, TempReg, tc);
-   uInstr2(cb, PUT,   4, TempReg, tc,    ArchReg, R_ECX);
-
-   uInstr2(cb, GET,  sz, ArchReg, R_EAX, TempReg, ta);
-   uInstr2(cb, GET,   4, ArchReg, R_EDI, TempReg, td);
-   uInstr2(cb, LOAD, sz, TempReg, td,    TempReg, tv);
-   /* next uinstr kills ta, but that's ok -- don't need it again */
-   uInstr2(cb, SUB,  sz, TempReg, tv,    TempReg, ta);
-   setFlagsFromUOpcode(cb, SUB);
-
-   uInstr0(cb, CALLM_S, 0);
-   uInstr2(cb, MOV,   4, Literal, 0,     TempReg, tv);
-   uLiteral(cb, 0);
-   uInstr1(cb, PUSH,  4, TempReg, tv);
-
-   uInstr1(cb, CALLM, 0, Lit16, VGOFF_(helper_get_dirflag));
-   uFlagsRWU(cb, FlagD, FlagsEmpty, FlagsEmpty);
-
-   uInstr1(cb, POP,   4, TempReg, tv);
-   uInstr0(cb, CALLM_E, 0);
-
-   if (sz == 4 || sz == 2) {
-      uInstr2(cb, SHL, 4, Literal, 0, TempReg, tv);
-      uLiteral(cb, sz/2);
-   }
-   uInstr2(cb, ADD,   4, TempReg, tv,    TempReg, td);
-   uInstr2(cb, PUT,   4, TempReg, td,    ArchReg, R_EDI);
-   uInstr1(cb, JMP,   0, Literal, 0);
-   uLiteral(cb, eip);
-   uCond(cb, CondZ);
    uFlagsRWU(cb, FlagsOSZACP, FlagsEmpty, FlagsEmpty);
    uInstr1(cb, JMP,   0, Literal, 0);
    uLiteral(cb, eip_next);
@@ -2252,19 +2200,38 @@ Addr dis_mul_E_G ( UCodeBlock* cb,
                    Addr        eip0,
                    Bool        signed_multiply )
 {
-   Int ta, tg, te;
+   Int ta, tg, te, helper;
    UChar dis_buf[50];
    UChar rm = getUChar(eip0);
    ta = INVALID_TEMPREG;
    te = newTemp(cb);
    tg = newTemp(cb);
 
+   switch (size) {
+      case 4: helper = signed_multiply ? VGOFF_(helper_imul_32_64) 
+                                       : VGOFF_(helper_mul_32_64);
+              break;
+      case 2: helper = signed_multiply ? VGOFF_(helper_imul_16_32) 
+                                       : VGOFF_(helper_mul_16_32);
+              break;
+      case 1: helper = signed_multiply ? VGOFF_(helper_imul_8_16)
+                                       : VGOFF_(helper_mul_8_16);
+              break;
+      default: VG_(core_panic)("dis_mul_E_G");
+   }
+
+   uInstr0(cb, CALLM_S, 0);
    if (epartIsReg(rm)) {
-      vg_assert(signed_multiply);
-      uInstr2(cb, GET,  size, ArchReg, gregOfRM(rm), TempReg, tg);
-      uInstr2(cb, MUL,	size, ArchReg, eregOfRM(rm), TempReg, tg);
-      setFlagsFromUOpcode(cb, MUL);
-      uInstr2(cb, PUT,  size, TempReg, tg, ArchReg, gregOfRM(rm));
+      uInstr2(cb, GET,   size, ArchReg, eregOfRM(rm), TempReg, te);
+      uInstr2(cb, GET,   size, ArchReg, gregOfRM(rm), TempReg, tg);
+      uInstr1(cb, PUSH,  size, TempReg, te);
+      uInstr1(cb, PUSH,  size, TempReg, tg);
+      uInstr1(cb, CALLM, 0,    Lit16,   helper);
+      uFlagsRWU(cb, FlagsEmpty, FlagsOC, FlagsSZAP);
+      uInstr1(cb, CLEAR, 0,    Lit16,   4);
+      uInstr1(cb, POP,   size, TempReg, tg);
+      uInstr2(cb, PUT,   size, TempReg, tg,   ArchReg, gregOfRM(rm));
+      uInstr0(cb, CALLM_E, 0);
       if (dis) VG_(printf)("%smul%c %s, %s\n",
                            signed_multiply ? "i" : "",
                            nameISize(size), 
@@ -2272,16 +2239,18 @@ Addr dis_mul_E_G ( UCodeBlock* cb,
                            nameIReg(size,gregOfRM(rm)));
       return 1+eip0;
    } else {
-      UInt pair;
-      vg_assert(signed_multiply);
-      pair = disAMode ( cb, sorb, eip0, dis?dis_buf:NULL);
+      UInt pair = disAMode ( cb, sorb, eip0, dis?dis_buf:NULL);
       ta = LOW24(pair);
       uInstr2(cb, LOAD,  size, TempReg, ta, TempReg, te);
       uInstr2(cb, GET,   size, ArchReg, gregOfRM(rm), TempReg, tg);
-      uInstr2(cb, MUL,	size, TempReg, te, TempReg, tg);
-      setFlagsFromUOpcode(cb, MUL);
-      uInstr2(cb, PUT,  size, TempReg, tg,    ArchReg, gregOfRM(rm));
-
+      uInstr1(cb, PUSH,  size, TempReg, te);
+      uInstr1(cb, PUSH,  size, TempReg, tg);
+      uInstr1(cb, CALLM, 0,    Lit16, helper);
+      uFlagsRWU(cb, FlagsEmpty, FlagsOC, FlagsSZAP);
+      uInstr1(cb, CLEAR, 0,    Lit16,   4);
+      uInstr1(cb, POP,   size, TempReg, tg);
+      uInstr2(cb, PUT,   size, TempReg, tg,   ArchReg, gregOfRM(rm));
+      uInstr0(cb, CALLM_E, 0);
       if (dis) VG_(printf)("%smul%c %s, %s\n",
                            signed_multiply ? "i" : "",
                            nameISize(size), 
@@ -2299,20 +2268,30 @@ Addr dis_imul_I_E_G ( UCodeBlock* cb,
                       Addr        eip,
                       Int         litsize )
 {
-   Int ta, te, tl, d32;
+   Int ta, te, tl, helper, d32;
    UChar dis_buf[50];
    UChar rm = getUChar(eip);
    ta = INVALID_TEMPREG;
    te = newTemp(cb);
    tl = newTemp(cb);
 
+   switch (size) {
+      case 4: helper = VGOFF_(helper_imul_32_64); break;
+      case 2: helper = VGOFF_(helper_imul_16_32); break;
+      case 1: helper = VGOFF_(helper_imul_8_16); break;
+      default: VG_(core_panic)("dis_imul_I_E_G");
+   }
+
+   uInstr0(cb, CALLM_S, 0);
    if (epartIsReg(rm)) {
       uInstr2(cb, GET,   size, ArchReg, eregOfRM(rm), TempReg, te);
+      uInstr1(cb, PUSH,  size, TempReg, te);
       eip++;
    } else {
       UInt pair = disAMode ( cb, sorb, eip, dis?dis_buf:NULL);
       ta = LOW24(pair);
       uInstr2(cb, LOAD,  size, TempReg, ta, TempReg, te);
+      uInstr1(cb, PUSH,  size, TempReg, te);
       eip += HI8(pair);
    }
 
@@ -2321,9 +2300,13 @@ Addr dis_imul_I_E_G ( UCodeBlock* cb,
 
    uInstr2(cb, MOV,   size, Literal, 0,   TempReg, tl);
    uLiteral(cb, d32);
-   uInstr2(cb, MUL,   size, TempReg, tl,   TempReg, te);
-   setFlagsFromUOpcode(cb, MUL);
+   uInstr1(cb, PUSH,  size, TempReg, tl);
+   uInstr1(cb, CALLM, 0,    Lit16, helper);
+   uFlagsRWU(cb, FlagsEmpty, FlagsOC, FlagsSZAP);
+   uInstr1(cb, CLEAR, 0,    Lit16,   4);
+   uInstr1(cb, POP,   size, TempReg, te);
    uInstr2(cb, PUT,   size, TempReg, te,   ArchReg, gregOfRM(rm));
+   uInstr0(cb, CALLM_E, 0);
 
    if (dis) {
       if (epartIsReg(rm)) {
@@ -3638,7 +3621,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
    Int   t1, t2, t3, t4;
    UChar dis_buf[50];
    Int   am_sz, d_sz;
-   Char  loc_buf[M_VG_ERRTXT];
 
    /* Holds eip at the start of the insn, so that we can print
       consistent error messages for unimplemented insns. */
@@ -5219,7 +5201,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
    case 0xB9: /* MOV imm,eCX */
    case 0xBA: /* MOV imm,eDX */
    case 0xBB: /* MOV imm,eBX */
-   case 0xBC: /* MOV imm,eSP */
    case 0xBD: /* MOV imm,eBP */
    case 0xBE: /* MOV imm,eSI */
    case 0xBF: /* MOV imm,eDI */
@@ -5729,12 +5710,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
       if (dis) VG_(printf)("scasb\n");
       break;
 
-   case 0xAF: /* SCASl, no REP prefix */
-      vg_assert(sorb == 0);
-      codegen_SCAS ( cb, sz );
-      if (dis) VG_(printf)("scas;\n");
-      break;
-
    case 0xFC: /* CLD */
       uInstr0(cb, CALLM_S, 0);
       uInstr1(cb, CALLM, 0, Lit16, VGOFF_(helper_CLD));
@@ -5810,13 +5785,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
          codegen_REPE_STOS ( cb, sz, eip_orig, eip );
          *isEnd = True;
          if (dis) VG_(printf)("repe stos%c\n", nameISize(sz));
-      }
-      else
-      if (abyte == 0xAE || abyte == 0xAF) { /* REPE SCAS<sz> */
-         if (abyte == 0xAE) sz = 1;
-         codegen_REPE_SCAS ( cb, sz, eip_orig, eip );
-         *isEnd = True;         
-         if (dis) VG_(printf)("repe scas%c\n", nameISize(sz));
       }
       else
       if (abyte == 0x90) { /* REPE NOP (PAUSE) */
@@ -6706,10 +6674,6 @@ static Addr disInstr ( UCodeBlock* cb, Addr eip, Bool* isEnd )
                (Int)eip_start[1],
                (Int)eip_start[2],
                (Int)eip_start[3] );
-
-   /* Print address of failing instruction. */
-   VG_(describe_eip)((Addr)eip_start, loc_buf, M_VG_ERRTXT);
-   VG_(printf)("          at %s\n", loc_buf);
 
    uInstr0(cb, CALLM_S, 0);
    uInstr1(cb, CALLM,   0, Lit16, 

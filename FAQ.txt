@@ -1,8 +1,8 @@
 
-A mini-FAQ for valgrind, version 1.9.6
+A mini-FAQ for valgrind, version 2.0.0
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-Last revised 5 May 2003
-~~~~~~~~~~~~~~~~~~~~~~~
+Last revised 5 November 2003
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 -----------------------------------------------------------------
 
@@ -40,7 +40,23 @@ A1. When the program exits, valgrind runs the procedure
 
 -----------------------------------------------------------------
 
-Q2. [Question erased, as it is no longer relevant]
+Q2. My program dies complaining that syscall 197 is unimplemented.
+
+A2. 197, which is fstat64, is supported by valgrind.  The problem is
+    that the /usr/include/asm/unistd.h on the machine on which your
+    valgrind was built, doesn't match your kernel -- or, to be more 
+    specific, glibc is asking your kernel to do a syscall which is
+    not listed in /usr/include/asm/unistd.h.
+
+    The fix is simple.  Somewhere near the top of
+    coregrind/vg_syscalls.c, add the following line:
+
+       #define __NR_fstat64            197
+
+    Rebuild and try again.  The above line should appear before any
+    uses of the __NR_fstat64 symbol in that file.  If you look at the
+    place where __NR_fstat64 is used in vg_syscalls.c, it will be
+    obvious why this fix works.
 
 -----------------------------------------------------------------
 
@@ -140,11 +156,13 @@ Q8. My program dies, printing a message like this along the way:
 
       disInstr: unhandled instruction bytes: 0x66 0xF 0x2E 0x5
 
-A8. Valgrind doesn't support the full x86 instruction set, although
-    it now supports many SSE and SSE2 instructions.  If you know
-    the failing instruction is an SSE/SSE2 instruction, you might
-    be able to recompile your progrma without it by using the flag
-    -march to gcc.  Either way, let us know and we'll try to fix it.
+A8. Valgrind doesn't support the full x86 instruction set, although it
+    now supports many SSE and SSE2 instructions.  If you know the
+    failing instruction is an SSE/SSE2 instruction, you might be able
+    to recompile your program without it by fiddling with the
+    -march=... flag(s) for gcc.  In particular, get rid of
+    -march=pentium4 or -march=athlon if you can.  Either way, let us
+    know and we'll try to fix it.
 
 -----------------------------------------------------------------
 

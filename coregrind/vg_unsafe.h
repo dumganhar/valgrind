@@ -33,14 +33,10 @@
 
 /* These includes are only used for making sense of the args for
    system calls. */
-#include "vg_unistd.h"    /* for system call numbers */
+#include <asm/unistd.h>   /* for system call numbers */
 #include <sys/mman.h>     /* for PROT_* */
 #include <sys/utsname.h>  /* for uname */
 #include <sys/time.h>     /* for struct timeval & struct timezone */
-#if defined(KERNEL_2_6) || defined(KERNEL_2_4)
-/* ugly hack to avoid that kernel headers redefine stuff from sys/time.h */
-#define _LINUX_TIME_H
-#endif
 #include <linux/net.h>    /* for the SYS_* constants */
 #include <sys/resource.h> /* for struct rlimit */
 #include <linux/shm.h>    /* for struct shmid_ds & struct ipc_perm */
@@ -50,9 +46,6 @@
 #include <net/if.h>       /* for struct ifreq et al */
 #include <net/if_arp.h>   /* for struct arpreq */
 #include <net/route.h>    /* for struct rtentry */
-#ifdef KERNEL_2_6
-#include <linux/compiler.h> /* for __user definition */
-#endif
 #include <asm/ipc.h>      /* for struct ipc_kludge */
 #include <linux/msg.h>    /* for struct msgbuf */
 #include <linux/sem.h>    /* for struct sembuf */
@@ -64,7 +57,7 @@
 #include <linux/cdrom.h>  /* for cd-rom ioctls */
 #include <sys/user.h>     /* for struct user_regs_struct et al */
 #include <signal.h>       /* for siginfo_t */
-#include <linux/timex.h>  /* for adjtimex */
+#include <sys/timex.h>    /* for struct timex */
 
 #define __USE_LARGEFILE64
 #include <sys/stat.h>     /* for struct stat */

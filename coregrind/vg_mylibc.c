@@ -32,6 +32,101 @@
 
 #include "vg_include.h"
 
+
+
+/* ---------------------------------------------------------------------
+   Really Actually DO system calls.
+   ------------------------------------------------------------------ */
+
+/* Ripped off from /usr/include/asm/unistd.h. */
+
+static
+UInt vg_do_syscall0 ( UInt syscallno )
+{ 
+   UInt __res;
+   __asm__ volatile ("int $0x80"
+                     : "=a" (__res)
+                     : "0" (syscallno) );
+   return __res;
+}
+
+
+static
+UInt vg_do_syscall1 ( UInt syscallno, UInt arg1 )
+{ 
+   UInt __res;
+   __asm__ volatile ("int $0x80"
+                     : "=a" (__res)
+                     : "0" (syscallno),
+                       "b" (arg1) );
+   return __res;
+}
+
+
+static
+UInt vg_do_syscall2 ( UInt syscallno, 
+                      UInt arg1, UInt arg2 )
+{ 
+   UInt __res;
+   __asm__ volatile ("int $0x80"
+                     : "=a" (__res)
+                     : "0" (syscallno),
+                       "b" (arg1),
+                       "c" (arg2) );
+   return __res;
+}
+
+
+static
+UInt vg_do_syscall3 ( UInt syscallno, 
+                      UInt arg1, UInt arg2, UInt arg3 )
+{ 
+   UInt __res;
+   __asm__ volatile ("int $0x80"
+                     : "=a" (__res)
+                     : "0" (syscallno),
+                       "b" (arg1),
+                       "c" (arg2),
+                       "d" (arg3) );
+   return __res;
+}
+
+
+static
+UInt vg_do_syscall4 ( UInt syscallno, 
+                      UInt arg1, UInt arg2, UInt arg3, UInt arg4 )
+{ 
+   UInt __res;
+   __asm__ volatile ("int $0x80"
+                     : "=a" (__res)
+                     : "0" (syscallno),
+                       "b" (arg1),
+                       "c" (arg2),
+                       "d" (arg3),
+                       "S" (arg4) );
+   return __res;
+}
+
+
+#if 0
+static
+UInt vg_do_syscall5 ( UInt syscallno, 
+                      UInt arg1, UInt arg2, UInt arg3, UInt arg4, 
+                      UInt arg5 )
+{ 
+   UInt __res;
+   __asm__ volatile ("int $0x80"
+                     : "=a" (__res)
+                     : "0" (syscallno),
+                       "b" (arg1),
+                       "c" (arg2),
+                       "d" (arg3),
+                       "S" (arg4),
+                       "D" (arg5) );
+   return __res;
+}
+#endif
+
 /* ---------------------------------------------------------------------
    Wrappers around system calls, and other stuff, to do with signals.
    ------------------------------------------------------------------ */
@@ -141,9 +236,9 @@ Int VG_(ksigprocmask)( Int how,
                        vki_ksigset_t* oldset)
 {
    Int res 
-      = VG_(do_syscall)(__NR_rt_sigprocmask, 
-			how, (UInt)set, (UInt)oldset, 
-			VKI_KNSIG_WORDS * VKI_BYTES_PER_WORD);
+      = vg_do_syscall4(__NR_rt_sigprocmask, 
+                       how, (UInt)set, (UInt)oldset, 
+                       VKI_KNSIG_WORDS * VKI_BYTES_PER_WORD);
    return VG_(is_kerror)(res) ? -1 : 0;
 }
 
@@ -153,9 +248,9 @@ Int VG_(ksigaction) ( Int signum,
                       vki_ksigaction* oldact)
 {
    Int res
-     = VG_(do_syscall)(__NR_rt_sigaction,
-		       signum, (UInt)act, (UInt)oldact, 
-		       VKI_KNSIG_WORDS * VKI_BYTES_PER_WORD);
+     = vg_do_syscall4(__NR_rt_sigaction,
+                      signum, (UInt)act, (UInt)oldact, 
+                      VKI_KNSIG_WORDS * VKI_BYTES_PER_WORD);
    /* VG_(printf)("res = %d\n",res); */
    return VG_(is_kerror)(res) ? -1 : 0;
 }
@@ -164,17 +259,10 @@ Int VG_(ksigaction) ( Int signum,
 Int VG_(ksigaltstack)( const vki_kstack_t* ss, vki_kstack_t* oss )
 {
    Int res
-     = VG_(do_syscall)(__NR_sigaltstack, (UInt)ss, (UInt)oss);
+     = vg_do_syscall2(__NR_sigaltstack, (UInt)ss, (UInt)oss);
    return VG_(is_kerror)(res) ? -1 : 0;
 }
 
-Int VG_(ksigtimedwait)( const vki_ksigset_t *set, vki_ksiginfo_t *info, 
-			const struct vki_timespec *timeout )
-{
-   Int res = VG_(do_syscall)(__NR_rt_sigtimedwait, set, info, timeout, sizeof(*set));
-
-   return VG_(is_kerror)(res) ? -1 : res;
-}
  
 Int VG_(ksignal)(Int signum, void (*sighandler)(Int))
 {
@@ -185,59 +273,25 @@ Int VG_(ksignal)(Int signum, void (*sighandler)(Int))
    sa.ksa_restorer = NULL;
    res = VG_(ksigemptyset)( &sa.ksa_mask );
    vg_assert(res == 0);
-   res = VG_(do_syscall)(__NR_rt_sigaction,
-			 signum, (UInt)(&sa), (UInt)NULL,
-			 VKI_KNSIG_WORDS * VKI_BYTES_PER_WORD);
+   res = vg_do_syscall4(__NR_rt_sigaction,
+                        signum, (UInt)(&sa), (UInt)NULL,
+                        VKI_KNSIG_WORDS * VKI_BYTES_PER_WORD);
    return VG_(is_kerror)(res) ? -1 : 0;
 }
 
 
 Int VG_(kkill)( Int pid, Int signo )
 {
-   Int res = VG_(do_syscall)(__NR_kill, pid, signo);
+   Int res = vg_do_syscall2(__NR_kill, pid, signo);
    return VG_(is_kerror)(res) ? -1 : 0;
 }
 
-
-Int VG_(ktkill)( Int tid, Int signo )
-{
-   Int ret = -VKI_ENOSYS;
-
-#ifdef __NR_tkill
-   ret = VG_(do_syscall)(__NR_tkill, tid, signo);
-#endif /* __NR_tkill */
-
-   if (ret == -VKI_ENOSYS)
-      ret = VG_(do_syscall)(__NR_kill, tid, signo);
-
-   return VG_(is_kerror)(ret) ? -1 : 0;
-}
 
 Int VG_(ksigpending) ( vki_ksigset_t* set )
 {
-   Int res = VG_(do_syscall)(__NR_sigpending, (UInt)set);
+   Int res = vg_do_syscall1(__NR_sigpending, (UInt)set);
    return VG_(is_kerror)(res) ? -1 : 0;
 }
-
-Int VG_(waitpid)(Int pid, Int *status, Int options)
-{
-   Int ret = VG_(do_syscall)(__NR_wait4, pid, status, options, NULL);
-
-   return VG_(is_kerror)(ret) ? -1 : ret;
-}
-
-Int VG_(gettid)(void)
-{
-   Int ret;
-
-   ret = VG_(do_syscall)(__NR_gettid);
-
-   if (ret == -VKI_ENOSYS)
-      ret = VG_(do_syscall)(__NR_getpid);
-
-   return ret;
-}
-
 
 
 /* ---------------------------------------------------------------------
@@ -256,31 +310,29 @@ void* VG_(mmap)( void* start, UInt length,
    args[3] = flags;
    args[4] = fd;
    args[5] = offset;
-   res = VG_(do_syscall)(__NR_mmap, (UInt)(&(args[0])) );
+   res = vg_do_syscall1(__NR_mmap, (UInt)(&(args[0])) );
    return VG_(is_kerror)(res) ? ((void*)(-1)) : (void*)res;
 }
 
 /* Returns -1 on failure. */
 Int VG_(munmap)( void* start, Int length )
 {
-   Int res = VG_(do_syscall)(__NR_munmap, (UInt)start, (UInt)length );
+   Int res = vg_do_syscall2(__NR_munmap, (UInt)start, (UInt)length );
    return VG_(is_kerror)(res) ? -1 : 0;
 }
 
 void VG_(exit)( Int status )
 {
-   (void)VG_(do_syscall)(__NR_exit_group, (UInt)status );
-   (void)VG_(do_syscall)(__NR_exit, (UInt)status );
+   (void)vg_do_syscall1(__NR_exit, (UInt)status );
    /* Why are we still alive here? */
    /*NOTREACHED*/
-   *(volatile Int *)0 = 'x';
    vg_assert(2+2 == 5);
 }
 
 /* Returns -1 on error. */
 Int VG_(fcntl) ( Int fd, Int cmd, Int arg )
 {
-   Int res = VG_(do_syscall)(__NR_fcntl, fd, cmd, arg);
+   Int res = vg_do_syscall3(__NR_fcntl, fd, cmd, arg);
    return VG_(is_kerror)(res) ? -1 : res;
 }
 
@@ -298,15 +350,8 @@ Int VG_(select)( Int n,
    args[2] = (UInt)writefds;
    args[3] = (UInt)exceptfds;
    args[4] = (UInt)timeout;
-   res = VG_(do_syscall)(__NR_select, (UInt)(&(args[0])) );
+   res = vg_do_syscall1(__NR_select, (UInt)(&(args[0])) );
    return VG_(is_kerror)(res) ? -1 : res;
-}
-
-Int VG_(poll)( struct vki_pollfd *ufds, UInt nfds, Int timeout)
-{
-   Int res = VG_(do_syscall)(__NR_poll, ufds, nfds, timeout);
-
-   return res;
 }
 
 /* Returns -1 on error, 0 if ok, 1 if interrupted. */
@@ -314,7 +359,7 @@ Int VG_(nanosleep)( const struct vki_timespec *req,
                     struct vki_timespec *rem )
 {
    Int res;
-   res = VG_(do_syscall)(__NR_nanosleep, (UInt)req, (UInt)rem);
+   res = vg_do_syscall2(__NR_nanosleep, (UInt)req, (UInt)rem);
    if (res == -VKI_EINVAL) return -1;
    if (res == -VKI_EINTR)  return 1;
    return 0;
@@ -323,7 +368,7 @@ Int VG_(nanosleep)( const struct vki_timespec *req,
 void* VG_(brk) ( void* end_data_segment )
 {
    Int res;
-   res = VG_(do_syscall)(__NR_brk, (UInt)end_data_segment);
+   res = vg_do_syscall1(__NR_brk, (UInt)end_data_segment);
    return (void*)(  VG_(is_kerror)(res) ? -1 : res  );
 }
 
@@ -346,7 +391,6 @@ void* VG_(brk) ( void* end_data_segment )
 #define VG_MSG_ZJUSTIFY  2 /* Must justify with '0'. */
 #define VG_MSG_LJUSTIFY  4 /* Must justify on the left. */
 #define VG_MSG_PAREN     8 /* Parenthesize if present (for %y) */
-#define VG_MSG_COMMA    16 /* Add commas to numbers (for %d, %u) */
 
 /* Copy a string into the buffer. */
 static UInt
@@ -403,7 +447,7 @@ myvprintf_int64 ( void(*send)(Char), Int flags, Int base, Int width, ULong p)
 {
    Char buf[40];
    Int  ind = 0;
-   Int  i, nc = 0;
+   Int  i;
    Bool neg = False;
    Char *digits = "0123456789ABCDEF";
    UInt ret = 0;
@@ -420,15 +464,9 @@ myvprintf_int64 ( void(*send)(Char), Int flags, Int base, Int width, ULong p)
       buf[ind++] = '0';
    else {
       while (p > 0) {
-         if (flags & VG_MSG_COMMA && 10 == base &&
-             0 == (ind-nc) % 3 && 0 != ind) 
-         {
-            buf[ind++] = ',';
-            nc++;
-         }
          buf[ind++] = digits[p % base];
          p /= base;
-      }
+       }
    }
 
    if (neg)
@@ -443,13 +481,12 @@ myvprintf_int64 ( void(*send)(Char), Int flags, Int base, Int width, ULong p)
 
    /* Reverse copy to buffer.  */
    ret += ind;
-   for (i = ind -1; i >= 0; i--) {
+   for (i = ind -1; i >= 0; i--)
       send(buf[i]);
-   }
    if (width > 0 && (flags & VG_MSG_LJUSTIFY)) {
       for(; ind < width; ind++) {
 	 ret++;
-         send(' ');  // Never pad with zeroes on RHS -- changes the value!
+         send((flags & VG_MSG_ZJUSTIFY) ? '0': ' ');
       }
    }
    return ret;
@@ -493,11 +530,6 @@ VG_(vprintf) ( void(*send)(Char), const Char *format, va_list vargs )
       if (format[i] == '(') {
 	 flags |= VG_MSG_PAREN;
 	 i++;
-      }
-      /* If ',' follows '%', commas will be inserted. */
-      if (format[i] == ',') {
-         flags |= VG_MSG_COMMA;
-         i++;
       }
       /* If '-' follows '%', justify on the left. */
       if (format[i] == '-') {
@@ -1044,34 +1076,9 @@ Bool VG_(string_match) ( Char* pat, Char* str )
    Assertery.
    ------------------------------------------------------------------ */
 
-/* Fake up an ExeContext which is of our actual real CPU state, so we
-   can print a stack trace.  This isn't terribly useful in the case
-   where we were killed by a signal, since we just get a backtrace
-   into the signal handler.  Also, it could be somewhat risky if we
-   actully got the panic/exception within the execontext/stack
-   dump/symtab code.  But it's better than nothing. */
-static inline ExeContext *get_real_execontext(Addr ret)
-{
-   ExeContext *ec;
-   Addr esp, ebp;
-   Addr stacktop;
-
-   asm("movl %%ebp, %0; movl %%esp, %1" : "=r" (ebp), "=r" (esp));
-   stacktop = (Addr)&VG_(stack)[VG_STACK_SIZE_W];
-   if (esp >= (Addr)&VG_(sigstack)[0] && esp < (Addr)&VG_(sigstack)[VG_STACK_SIZE_W])
-      stacktop = (Addr)&VG_(sigstack)[VG_STACK_SIZE_W];
-      
-   ec = VG_(get_ExeContext2)(ret, ebp, esp, stacktop);
-
-   return ec;
-}
-
 __attribute__ ((noreturn))
-static void report_and_quit ( const Char* report )
+static void report_and_quit ( Char* report )
 {
-   ExeContext *ec = get_real_execontext((Addr)__builtin_return_address(0));
-   VG_(pp_ExeContext)(ec);
-   
    VG_(pp_sched_status)();
    VG_(printf)("\n");
    VG_(printf)("Note: see also the FAQ.txt in the source distribution.\n");
@@ -1086,8 +1093,8 @@ static void report_and_quit ( const Char* report )
 }
 
 __attribute__ ((noreturn))
-static void assert_fail ( const Char* expr, const Char* name, const Char* report,
-                          const Char* file, Int line, const Char* fn )
+static void assert_fail ( Char* expr, Char* name, Char* report,
+                          Char* file, Int line,   Char* fn )
 {
    static Bool entered = False;
    if (entered) 
@@ -1098,13 +1105,13 @@ static void assert_fail ( const Char* expr, const Char* name, const Char* report
    report_and_quit(report);
 }
 
-void VG_(skin_assert_fail) ( const Char* expr, const Char* file, Int line, const Char* fn )
+void VG_(skin_assert_fail) ( Char* expr, Char* file, Int line, Char* fn )
 {
    assert_fail(expr, VG_(details).name, VG_(details).bug_reports_to, 
                file, line, fn);
 }
 
-void VG_(core_assert_fail) ( const Char* expr, const Char* file, Int line, const Char* fn )
+void VG_(core_assert_fail) ( Char* expr, Char* file, Int line, Char* fn )
 {
    assert_fail(expr, "valgrind", VG_EMAIL_ADDR, file, line, fn);
 }
@@ -1132,30 +1139,6 @@ void VG_(skin_panic) ( Char* str )
    Primitive support for reading files.
    ------------------------------------------------------------------ */
 
-static inline Bool fd_exists(Int fd)
-{
-   struct vki_stat st;
-
-   return VG_(fstat)(fd, &st) == 0;
-}
-
-/* Move an fd into the Valgrind-safe range */
-Int VG_(safe_fd)(Int oldfd)
-{
-   Int newfd;
-
-   newfd = VG_(fcntl)(oldfd, VKI_F_DUPFD, VG_MAX_FD+1);
-   if (newfd != -1)
-      VG_(close)(oldfd);
-
-   VG_(fcntl)(newfd, VKI_F_SETFD, VKI_FD_CLOEXEC);
-
-   vg_assert(newfd > VG_MAX_FD);
-   return newfd;
-}
-
-
-
 /* Returns -1 on failure. */
 Int VG_(open) ( const Char* pathname, Int flags, Int mode )
 {  
@@ -1168,21 +1151,15 @@ Int VG_(open) ( const Char* pathname, Int flags, Int mode )
    /* fd = open( pathname, O_RDONLY ); */
    /* ... so we go direct to the horse's mouth, which seems to work
       ok: */
-   fd = VG_(do_syscall)(__NR_open, (UInt)pathname, flags, mode);
+   fd = vg_do_syscall3(__NR_open, (UInt)pathname, flags, mode);
    /* VG_(printf)("result = %d\n", fd); */
-   /* return -ve error code */
+   if (VG_(is_kerror)(fd)) fd = -1;
    return fd;
-}
-
-Int VG_(pipe) ( Int fd[2] )
-{
-   Int ret = VG_(do_syscall)(__NR_pipe, fd);
-   return VG_(is_kerror)(ret) ? -1 : 0;
 }
 
 void VG_(close) ( Int fd )
 {
-   VG_(do_syscall)(__NR_close, fd);
+   vg_do_syscall1(__NR_close, fd);
 }
 
 
@@ -1190,52 +1167,38 @@ Int VG_(read) ( Int fd, void* buf, Int count)
 {
    Int res;
    /* res = read( fd, buf, count ); */
-   res = VG_(do_syscall)(__NR_read, fd, (UInt)buf, count);
-   /* return -ERRNO on error */
+   res = vg_do_syscall3(__NR_read, fd, (UInt)buf, count);
+   if (VG_(is_kerror)(res)) res = -1;
    return res;
 }
 
-Int VG_(write) ( Int fd, const void* buf, Int count)
+Int VG_(write) ( Int fd, void* buf, Int count)
 {
    Int res;
    /* res = write( fd, buf, count ); */
-   res = VG_(do_syscall)(__NR_write, fd, (UInt)buf, count);
-   /* return -ERRNO on error */
+   res = vg_do_syscall3(__NR_write, fd, (UInt)buf, count);
+   if (VG_(is_kerror)(res)) res = -1;
    return res;
 }
 
 Int VG_(stat) ( Char* file_name, struct vki_stat* buf )
 {
    Int res;
-   res = VG_(do_syscall)(__NR_stat, (UInt)file_name, (UInt)buf);
-   return res;			/* return -ve error */
-}
-
-Int VG_(fstat) ( Int fd, struct vki_stat* buf )
-{
-   Int res;
-   res = VG_(do_syscall)(__NR_fstat, (UInt)fd, (UInt)buf);
+   res = vg_do_syscall2(__NR_stat, (UInt)file_name, (UInt)buf);
    return VG_(is_kerror)(res) ? (-1) : 0;
-}
-
-Int VG_(dup2) ( Int oldfd, Int newfd )
-{
-   Int res;
-   res = VG_(do_syscall)(__NR_dup2, (UInt)oldfd, (UInt)newfd);
-   return VG_(is_kerror)(res) ? (-1) : res;
 }
 
 Int VG_(rename) ( Char* old_name, Char* new_name )
 {
    Int res;
-   res = VG_(do_syscall)(__NR_rename, (UInt)old_name, (UInt)new_name);
+   res = vg_do_syscall2(__NR_rename, (UInt)old_name, (UInt)new_name);
    return VG_(is_kerror)(res) ? (-1) : 0;
 }
 
 Int VG_(unlink) ( Char* file_name )
 {
    Int res;
-   res = VG_(do_syscall)(__NR_unlink, (UInt)file_name);
+   res = vg_do_syscall1(__NR_unlink, (UInt)file_name);
    return VG_(is_kerror)(res) ? (-1) : 0;
 }
 
@@ -1245,27 +1208,8 @@ Char* VG_(getcwd) ( Char* buf, Int size )
 {
    Int res;
    vg_assert(buf != NULL);
-   res = VG_(do_syscall)(__NR_getcwd, (UInt)buf, (UInt)size);
+   res = vg_do_syscall2(__NR_getcwd, (UInt)buf, (UInt)size);
    return VG_(is_kerror)(res) ? ((Char*)NULL) : (Char*)res;
-}
-
-/* Alternative version that does allocate the memory.  Easier to use. */
-Bool VG_(getcwd_alloc) ( Char** out )
-{
-   UInt size = 4;
-
-   *out = NULL;
-   while (True) {
-      *out = VG_(malloc)(size);
-      if (NULL == VG_(getcwd)(*out, size)) {
-         VG_(free)(*out);
-         if (size > 65535)
-            return False;
-         size *= 2;
-      } else {
-         return True;
-      }
-   }
 }
 
 
@@ -1294,29 +1238,17 @@ Int VG_(getpid) ( void )
 {
    Int res;
    /* res = getpid(); */
-   res = VG_(do_syscall)(__NR_getpid);
-   return res;
-}
-
-Int VG_(getpgrp) ( void )
-{
-   Int res;
-   /* res = getpgid(); */
-   res = VG_(do_syscall)(__NR_getpgrp);
+   res = vg_do_syscall0(__NR_getpid);
    return res;
 }
 
 Int VG_(getppid) ( void )
 {
    Int res;
-   res = VG_(do_syscall)(__NR_getppid);
+   res = vg_do_syscall0(__NR_getppid);
    return res;
 }
 
-Int VG_(setpgid) ( Int pid, Int pgrp )
-{
-   return VG_(do_syscall)(__NR_setpgid, pid, pgrp);
-}
 
 /* Return -1 if error, else 0.  NOTE does not indicate return code of
    child! */
@@ -1326,7 +1258,7 @@ Int VG_(system) ( Char* cmd )
    void* environ[1] = { NULL };
    if (cmd == NULL)
       return 1;
-   pid = VG_(do_syscall)(__NR_fork);
+   pid = vg_do_syscall0(__NR_fork);
    if (VG_(is_kerror)(pid))
       return -1;
    if (pid == 0) {
@@ -1336,13 +1268,13 @@ Int VG_(system) ( Char* cmd )
       argv[1] = "-c";
       argv[2] = cmd;
       argv[3] = 0;
-      (void)VG_(do_syscall)(__NR_execve, 
-			    (UInt)"/bin/sh", (UInt)argv, (UInt)&environ);
+      (void)vg_do_syscall3(__NR_execve, 
+                           (UInt)"/bin/sh", (UInt)argv, (UInt)&environ);
       /* If we're still alive here, execve failed. */
       return -1;
    } else {
       /* parent */
-      res = VG_(do_syscall)(__NR_waitpid, pid, (UInt)NULL, 0);
+      res = vg_do_syscall3(__NR_waitpid, pid, (UInt)NULL, 0);
       if (VG_(is_kerror)(res)) {
          return -1;
       } else {
@@ -1376,9 +1308,7 @@ static ULong              rdtsc_cal_end_raw;
 UInt VG_(read_millisecond_timer) ( void )
 {
    ULong rdtsc_now;
-   // If called before rdtsc setup completed (eg. from SK_(pre_clo_init)())
-   // just return 0.
-   if (rdtsc_calibration_state < 2) return 0;
+   vg_assert(rdtsc_calibration_state == 2);
    rdtsc_now = do_rdtsc_insn();
    vg_assert(rdtsc_now > rdtsc_cal_end_raw);
    rdtsc_now -= rdtsc_cal_end_raw;
@@ -1393,8 +1323,8 @@ void VG_(start_rdtsc_calibration) ( void )
    vg_assert(rdtsc_calibration_state == 0);
    rdtsc_calibration_state = 1;
    rdtsc_cal_start_raw = do_rdtsc_insn();
-   res = VG_(do_syscall)(__NR_gettimeofday, (UInt)&rdtsc_cal_start_timeval, 
-			 (UInt)NULL);
+   res = vg_do_syscall2(__NR_gettimeofday, (UInt)&rdtsc_cal_start_timeval, 
+                                           (UInt)NULL);
    vg_assert(!VG_(is_kerror)(res));
 }
 
@@ -1432,8 +1362,8 @@ void VG_(end_rdtsc_calibration) ( void )
 
    /* Now read both timers, and do the Math. */
    rdtsc_cal_end_raw = do_rdtsc_insn();
-   res = VG_(do_syscall)(__NR_gettimeofday, (UInt)&rdtsc_cal_end_timeval, 
-			 (UInt)NULL);
+   res = vg_do_syscall2(__NR_gettimeofday, (UInt)&rdtsc_cal_end_timeval, 
+                                           (UInt)NULL);
 
    vg_assert(rdtsc_cal_end_raw > rdtsc_cal_start_raw);
    cal_clock_ticks = rdtsc_cal_end_raw - rdtsc_cal_start_raw;
@@ -1498,8 +1428,8 @@ void* VG_(get_memory_from_mmap) ( Int nBytes, Char* who )
    }
 
    VG_(printf)("\n");
-   VG_(printf)("VG_(get_memory_from_mmap): %s's request for %d bytes failed.\n", 
-               who, nBytes);
+   VG_(printf)("VG_(get_memory_from_mmap): request for %d bytes failed.\n", 
+               nBytes);
    VG_(printf)("VG_(get_memory_from_mmap): %d bytes already allocated.\n", 
                tot_alloc);
    VG_(printf)("\n");
@@ -1530,84 +1460,6 @@ Int VG_(log2) ( Int x )
    return -1;
 }
 
-
-// Generic shell sort.  Like stdlib.h's qsort().
-void VG_(ssort)( void* base, UInt nmemb, UInt size,
-                 Int (*compar)(void*, void*) )
-{
-   Int   incs[14] = { 1, 4, 13, 40, 121, 364, 1093, 3280,
-                      9841, 29524, 88573, 265720,
-                      797161, 2391484 };
-   Int   lo = 0;
-   Int   hi = nmemb-1;
-   Int   i, j, h, bigN, hp;
-
-   bigN = hi - lo + 1; if (bigN < 2) return;
-   hp = 0; while (hp < 14 && incs[hp] < bigN) hp++; hp--;
-   vg_assert(0 <= hp && hp < 14);
-
-   #define SORT \
-   for ( ; hp >= 0; hp--) { \
-      h = incs[hp]; \
-      for (i = lo + h; i <= hi; i++) { \
-         ASSIGN(v,0, a,i); \
-         j = i; \
-         while (COMPAR(a,(j-h), v,0) > 0) { \
-            ASSIGN(a,j, a,(j-h)); \
-            j = j - h; \
-            if (j <= (lo + h - 1)) break; \
-         } \
-         ASSIGN(a,j, v,0); \
-      } \
-   }
-
-   // Specialised cases
-   if (sizeof(UInt) == size) {
-
-      #define ASSIGN(dst, dsti, src, srci) \
-      (dst)[(dsti)] = (src)[(srci)];      
-      
-      #define COMPAR(dst, dsti, src, srci) \
-      compar( (void*)(& (dst)[(dsti)]), (void*)(& (src)[(srci)]) )
-
-      UInt* a = (UInt*)base;
-      UInt  v[1];
-
-      SORT;
-
-   } else if (sizeof(UShort) == size) {
-      UShort* a = (UShort*)base;
-      UShort  v[1];
-
-      SORT;
-
-   } else if (sizeof(UChar) == size) {
-      UChar* a = (UChar*)base;
-      UChar  v[1];
-
-      SORT;
-
-      #undef ASSIGN
-      #undef COMPAR
-
-   // General case
-   } else {
-      char* a = base;
-      char  v[size];      // will be at least 'size' bytes
-
-      #define ASSIGN(dst, dsti, src, srci) \
-      VG_(memcpy)( &dst[size*(dsti)], &src[size*(srci)], size );
-
-      #define COMPAR(dst, dsti, src, srci) \
-      compar( &dst[size*(dsti)], &src[size*(srci)] )
-
-      SORT;
-
-      #undef ASSIGN
-      #undef COMPAR
-   }
-   #undef SORT
-}
 
 /* ---------------------------------------------------------------------
    Gruesome hackery for connecting to a logging server over the network.
@@ -1780,7 +1632,7 @@ Int my_socket ( Int domain, Int type, Int protocol )
    args[0] = domain;
    args[1] = type;
    args[2] = protocol;
-   res = VG_(do_syscall)(__NR_socketcall, SYS_SOCKET, (UInt)&args);
+   res = vg_do_syscall2(__NR_socketcall, SYS_SOCKET, (UInt)&args);
    if (VG_(is_kerror)(res)) 
       res = -1;
    return res;
@@ -1795,7 +1647,7 @@ Int my_connect ( Int sockfd, struct vki_sockaddr_in* serv_addr,
    args[0] = sockfd;
    args[1] = (UInt)serv_addr;
    args[2] = addrlen;
-   res = VG_(do_syscall)(__NR_socketcall, SYS_CONNECT, (UInt)&args);
+   res = vg_do_syscall2(__NR_socketcall, SYS_CONNECT, (UInt)&args);
    if (VG_(is_kerror)(res)) 
       res = -1;
    return res;
@@ -1816,7 +1668,7 @@ Int VG_(write_socket)( Int sd, void *msg, Int count )
    args[1] = (UInt)msg;
    args[2] = count;
    args[3] = flags;
-   res = VG_(do_syscall)(__NR_socketcall, SYS_SEND, (UInt)&args);
+   res = vg_do_syscall2(__NR_socketcall, SYS_SEND, (UInt)&args);
    if (VG_(is_kerror)(res)) 
       res = -1;
    return res;

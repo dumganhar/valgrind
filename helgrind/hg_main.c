@@ -1832,14 +1832,11 @@ static void add_HG_Chunk ( ThreadId tid, Addr p, UInt size )
 
 /* Allocate memory and note change in memory available */
 static __inline__
-void* alloc_and_new_mem ( Int size, UInt alignment, Bool is_zeroed )
+void* alloc_and_new_mem ( UInt size, UInt alignment, Bool is_zeroed )
 {
    Addr p;
 
-   if (size < 0) return NULL;
-
    p = (Addr)VG_(cli_malloc)(alignment, size);
-   if (is_zeroed) VG_(memset)((void*)p, 0, size);
    add_HG_Chunk ( VG_(get_current_or_recent_tid)(), p, size );
    eraser_new_mem_heap( p, size, is_zeroed );
 
@@ -1866,10 +1863,17 @@ void* SK_(memalign) ( Int align, Int n )
    return alloc_and_new_mem ( n, align,              /*is_zeroed*/False );
 }
 
-void* SK_(calloc) ( Int nmemb, Int size )
+void* SK_(calloc) ( Int nmemb, Int size1 )
 {
-   return alloc_and_new_mem ( nmemb*size, VG_(clo_alignment),
-                              /*is_zeroed*/True );
+   void* p;
+   Int  size, i;
+
+   size = nmemb * size1;
+
+   p = alloc_and_new_mem ( size, VG_(clo_alignment), /*is_zeroed*/True );
+   for (i = 0; i < size; i++)    /* calloc() is zeroed */
+      ((UChar*)p)[i] = 0;
+   return p;
 }
 
 static
@@ -2129,9 +2133,7 @@ UCodeBlock* SK_(instrument) ( UCodeBlock* cb_in, Addr not_used )
 	       default:
 		  VG_(skin_panic)("bad size");
 	       }
-
-	       /* XXX all registers should be flushed to baseblock
-		  here */
+	    
 	       uInstr1(cb, CCALL, 0, TempReg, u_in->val1);
 	       uCCall(cb, (Addr)help, 1, 1, False);
 	    } else
@@ -2150,8 +2152,6 @@ UCodeBlock* SK_(instrument) ( UCodeBlock* cb_in, Addr not_used )
 	       uInstr2(cb, MOV,   4, Literal, 0, TempReg, t_size);
 	       uLiteral(cb, (UInt)u_in->size);
 
-	       /* XXX all registers should be flushed to baseblock
-		  here */
 	       uInstr2(cb, CCALL, 0, TempReg, u_in->val2, TempReg, t_size);
 	       uCCall(cb, (Addr) & eraser_mem_help_read_N, 2, 2, False);
 
@@ -2176,8 +2176,6 @@ UCodeBlock* SK_(instrument) ( UCodeBlock* cb_in, Addr not_used )
 		  VG_(skin_panic)("bad size");
 	       }
 
-	       /* XXX all registers should be flushed to baseblock
-		  here */
 	       uInstr2(cb, CCALL, 0, TempReg, u_in->val2, TempReg, u_in->val1);
 	       uCCall(cb, (Addr)help, 2, 2, False);
 	    } else
@@ -2195,8 +2193,6 @@ UCodeBlock* SK_(instrument) ( UCodeBlock* cb_in, Addr not_used )
 	    t_size = newTemp(cb);
 	    uInstr2(cb, MOV,   4, Literal, 0, TempReg, t_size);
 	    uLiteral(cb, (UInt)u_in->size);
-	       /* XXX all registers should be flushed to baseblock
-		  here */
 	    uInstr2(cb, CCALL, 0, TempReg, u_in->val2, TempReg, t_size);
 	    uCCall(cb, (Addr) & eraser_mem_help_write_N, 2, 2, False);
 
@@ -2280,8 +2276,6 @@ typedef
       const Char* section;
       /* True if is just-below %esp -- could be a gcc bug. */
       Bool maybe_gcc;
-      /* symbolic address description */
-      Char *expr;
    }
    AddrInfo;
 
@@ -2320,7 +2314,6 @@ void clear_AddrInfo ( AddrInfo* ai )
    ai->section    = "???";
    ai->stack_tid  = VG_INVALID_THREADID;
    ai->maybe_gcc  = False;
-   ai->expr       = NULL;
 }
 
 static __inline__
@@ -2454,8 +2447,6 @@ static void record_eraser_error ( ThreadId tid, Addr a, Bool is_write,
    err_extra.prevstate = prevstate;
    if (clo_execontext)
       err_extra.lasttouched = getExeContext(a);
-   err_extra.addrinfo.expr = VG_(describe_addr)(tid, a);
-
    VG_(maybe_record_error)( tid, EraserErr, a, 
                             (is_write ? "writing" : "reading"),
                             &err_extra);
@@ -2526,10 +2517,6 @@ Bool SK_(eq_SkinError) ( VgRes not_used, Error* e1, Error* e2 )
 
 static void pp_AddrInfo ( Addr a, AddrInfo* ai )
 {
-   if (ai->expr != NULL)
-      VG_(message)(Vg_UserMsg, 
-		   "  Address %p == %s", a, ai->expr);
-   
    switch (ai->akind) {
       case Stack: 
          VG_(message)(Vg_UserMsg, 
@@ -2537,9 +2524,6 @@ static void pp_AddrInfo ( Addr a, AddrInfo* ai )
                       a, ai->stack_tid);
          break;
       case Unknown:
-	 if (ai->expr != NULL)
-	    break;
-
          if (ai->maybe_gcc) {
             VG_(message)(Vg_UserMsg, 
                "  Address %p is just below %%esp.  Possibly a bug in GCC/G++",

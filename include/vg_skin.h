@@ -116,7 +116,7 @@ typedef unsigned char          Bool;
    interface;  if the core and skin major versions don't match, Valgrind
    will abort.  The minor version indicates binary-compatible changes.
 */
-#define VG_CORE_INTERFACE_MAJOR_VERSION   5
+#define VG_CORE_INTERFACE_MAJOR_VERSION   4
 #define VG_CORE_INTERFACE_MINOR_VERSION   0
 
 extern const Int VG_(skin_interface_major_version);
@@ -170,20 +170,18 @@ extern Char** VG_(client_envp);
 typedef
    enum { Vg_UserMsg,         /* '?' == '=' */
           Vg_DebugMsg,        /* '?' == '-' */
-          Vg_DebugExtraMsg,   /* '?' == '+' */
-          Vg_ClientMsg,       /* '?' == '*' */
+          Vg_DebugExtraMsg    /* '?' == '+' */
    }
    VgMsgKind;
 
 /* Functions for building a message from multiple parts. */
-extern int VG_(start_msg)  ( VgMsgKind kind );
-extern int VG_(add_to_msg) ( Char* format, ... );
+extern void VG_(start_msg)  ( VgMsgKind kind );
+extern void VG_(add_to_msg) ( Char* format, ... );
 /* Ends and prints the message.  Appends a newline. */
-extern int VG_(end_msg)    ( void );
+extern void VG_(end_msg)    ( void );
 
 /* Send a single-part message.  Appends a newline. */
-extern int VG_(message)    ( VgMsgKind kind, Char* format, ... );
-extern int VG_(vmessage)   ( VgMsgKind kind, Char* format, va_list vargs );
+extern void VG_(message)    ( VgMsgKind kind, Char* format, ... );
 
 
 /*====================================================================*/
@@ -370,10 +368,6 @@ extern Long  VG_(atoll)  ( Char* str );
 /* Like atoll(), but converts a number of base 2..36 */
 extern Long  VG_(atoll36) ( UInt base, Char* str );
 
-/* Like qsort(), but does shell-sort.  The size==1/2/4 cases are specialised. */
-extern void VG_(ssort)( void* base, UInt nmemb, UInt size,
-                        Int (*compar)(void*, void*) );
-
 
 /* ------------------------------------------------------------------ */
 /* ctype.h */
@@ -422,29 +416,18 @@ extern Int VG_(log2) ( Int x );
 /* unistd.h, fcntl.h, sys/stat.h */
 extern Int  VG_(getpid)  ( void );
 extern Int  VG_(getppid) ( void );
-extern Int  VG_(getpgrp) ( void );
-extern Int  VG_(gettid)	 ( void );
-extern Int  VG_(setpgid) ( Int pid, Int pgrp );
 
 extern Int  VG_(open)   ( const Char* pathname, Int flags, Int mode );
 extern Int  VG_(read)   ( Int fd, void* buf, Int count);
-extern Int  VG_(write)  ( Int fd, const void* buf, Int count);
+extern Int  VG_(write)  ( Int fd, void* buf, Int count);
 extern void VG_(close)  ( Int fd );
-
-extern Int  VG_(pipe)   ( Int fd[2] );
 
 /* Nb: VG_(rename)() declared in stdio.h section above */
 extern Int  VG_(unlink) ( Char* file_name );
 extern Int  VG_(stat)   ( Char* file_name, struct vki_stat* buf );
-extern Int  VG_(fstat)  ( Int   fd,        struct vki_stat* buf );
-extern Int  VG_(dup2)   ( Int oldfd, Int newfd );
 
 extern Char* VG_(getcwd) ( Char* buf, Int size );
 
-/* Easier to use than VG_(getcwd)() -- does the buffer fiddling itself.
-   String put into 'cwd' is VG_(malloc)'d, and should be VG_(free)'d.
-   Returns False if it fails.  Will fail if the pathname is > 65535 bytes. */
-extern Bool VG_(getcwd_alloc) ( Char** cwd );
 
 /* ------------------------------------------------------------------ */
 /* assert.h */
@@ -458,8 +441,8 @@ extern Bool VG_(getcwd_alloc) ( Char** cwd );
                                    __PRETTY_FUNCTION__), 0)))
 
 __attribute__ ((__noreturn__))
-extern void VG_(skin_assert_fail) ( const Char* expr, const Char* file,
-                                    Int line, const Char* fn );
+extern void VG_(skin_assert_fail) ( Char* expr, Char* file,
+                                    Int line, Char* fn );
 
 
 /* ------------------------------------------------------------------ */
@@ -501,21 +484,12 @@ extern Int VG_(ksigaction)   ( Int signum,
                                const vki_ksigaction* act,
                                vki_ksigaction* oldact );
 
-extern Int VG_(ksigtimedwait)( const vki_ksigset_t *, vki_ksiginfo_t *, 
-			       const struct vki_timespec * );
-
 extern Int VG_(ksignal)      ( Int signum, void (*sighandler)(Int) );
 extern Int VG_(ksigaltstack) ( const vki_kstack_t* ss, vki_kstack_t* oss );
 
 extern Int VG_(kkill)        ( Int pid, Int signo );
-extern Int VG_(ktkill)       ( Int pid, Int signo );
 extern Int VG_(ksigpending)  ( vki_ksigset_t* set );
 
-extern Int VG_(waitpid)	     ( Int pid, Int *status, Int options );
-
-/* ------------------------------------------------------------------ */
-/* other, randomly useful functions */
-extern UInt VG_(read_millisecond_timer) ( void );
 
 /*====================================================================*/
 /*=== UCode definition                                             ===*/
@@ -554,7 +528,6 @@ typedef
       CMOV,        /* Used for cmpxchg and cmov       */
 
       /* Arithmetic/logical ops */
-      MUL, UMUL,                	  /* Multiply */
       ADD, ADC, SUB, SBB,                 /* Add/subtract (w/wo carry)     */
       AND, OR,  XOR, NOT,                 /* Boolean ops                   */
       SHL, SHR, SAR, ROL, ROR, RCL, RCR,  /* Shift/rotate (w/wo carry)     */
@@ -1235,7 +1208,6 @@ extern void VG_(emit_testb_lit_reg)      ( Bool upd_cc, UInt lit, Int reg );
 /* zero-extended load emitters */
 extern void VG_(emit_movzbl_offregmem_reg) ( Int off, Int regmem, Int reg );
 extern void VG_(emit_movzwl_offregmem_reg) ( Int off, Int areg, Int reg );
-extern void VG_(emit_movzwl_regmem_reg)    ( Int reg1, Int reg2 );
 
 /* misc instruction emitters */
 extern void VG_(emit_call_reg)         ( Int reg );
@@ -1290,26 +1262,11 @@ extern void VG_(pp_ExeContext) ( ExeContext* );
 */
 extern ExeContext* VG_(get_ExeContext) ( ThreadId tid );
 
-/* Get the nth EIP from the ExeContext.  0 is the EIP of the top function, 1
-   is its caller, etc.  Returns 0 if there isn't one, or if n is greater
-   than VG_(clo_backtrace_size), set by the --num-callers option. */
-extern Addr VG_(get_EIP_from_ExeContext) ( ExeContext* e, UInt n );
-
 /* Just grab the client's EIP, as a much smaller and cheaper
    indication of where they are.  Use is basically same as for
    VG_(get_ExeContext)() above.
 */
 extern Addr VG_(get_EIP)( ThreadId tid );
-
-/* For skins needing more control over stack traces:  walks the stack to get
-   %eips from the top stack frames for thread 'tid'.  Maximum of 'n_eips'
-   addresses put into 'eips';  0 is the top of the stack, 1 is its caller,
-   etc. */
-extern UInt VG_(stack_snapshot) ( ThreadId tid, Addr* eips, UInt n_eips );
-
-/* Does the same thing as VG_(pp_ExeContext)(), just with slightly
-   different input. */
-extern void VG_(mini_stack_dump) ( Addr eips[], UInt n_eips );
 
 
 /*====================================================================*/
@@ -1443,19 +1400,6 @@ extern Bool VG_(get_fnname_if_entry) ( Addr a, Char* fnname, Int n_fnname );
    It doesn't matter if debug info is present or not. */
 extern Bool VG_(get_objname)  ( Addr a, Char* objname,  Int n_objname  );
 
-/* Puts into 'buf' info about the code address %eip:  the address, function
-   name (if known) and filename/line number (if known), like this:
-
-      0x4001BF05: realloc (vg_replace_malloc.c:339)
-
-   'n_buf' gives length of 'buf'.  Returns 'buf'.
-*/
-extern Char* VG_(describe_eip)(Addr eip, Char* buf, Int n_buf);
-
-/* Returns a string containing an expression for the given
-   address. String is malloced with VG_(malloc)() */
-Char *VG_(describe_addr)(ThreadId, Addr);
-
 /* A way to get information about what segments are mapped */
 typedef struct _SegInfo SegInfo;
 
@@ -1505,9 +1449,6 @@ typedef
 /* Make a new table. */
 extern VgHashTable VG_(HT_construct) ( void );
 
-/* Count the number of nodes in a table. */
-extern Int VG_(HT_count_nodes) ( VgHashTable table );
-
 /* Add a node to the table. */
 extern void VG_(HT_add_node) ( VgHashTable t, VgHashNode* node );
 
@@ -1517,9 +1458,10 @@ extern void VG_(HT_add_node) ( VgHashTable t, VgHashNode* node );
 extern VgHashNode* VG_(HT_get_node) ( VgHashTable t, UInt key,
                                     /*OUT*/VgHashNode*** next_ptr );
 
-/* Allocates an array of pointers to all the shadow chunks of malloc'd
-   blocks.  Must be freed with VG_(free)(). */
-extern VgHashNode** VG_(HT_to_array) ( VgHashTable t, /*OUT*/ UInt* n_shadows );
+/* Allocates a sorted array of pointers to all the shadow chunks of malloc'd
+   blocks. */
+extern VgHashNode** VG_(HT_to_sorted_array) ( VgHashTable t,
+                                              /*OUT*/ UInt* n_shadows );
 
 /* Returns first node that matches predicate `p', or NULL if none do.
    Extra arguments can be implicitly passed to `p' using nested functions;
