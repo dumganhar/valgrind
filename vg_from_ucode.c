@@ -25,7 +25,7 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
    02111-1307, USA.
 
-   The GNU General Public License is contained in the file LICENSE.
+   The GNU General Public License is contained in the file COPYING.
 */
 
 #include "vg_include.h"
@@ -1067,43 +1067,6 @@ static void synth_call_baseBlock_method ( Bool ensure_shortform,
    emit_call_star_EBP_off ( 4 * word_offset );
 }
 
-static void synth_ccall_saveRegs ( void )
-{
-   emit_pushv_reg ( 4, R_EAX ); 
-   emit_pushv_reg ( 4, R_ECX ); 
-   emit_pushv_reg ( 4, R_EDX ); 
-}
-   
-static void synth_ccall_pushOneArg ( Int r1 )
-{
-   emit_pushv_reg ( 4, r1 );
-}
-
-static void synth_ccall_pushTwoArgs ( Int r1, Int r2 )
-{
-   /* must push in reverse order */
-   emit_pushv_reg ( 4, r2 );
-   emit_pushv_reg ( 4, r1 );
-}
-
-/* Synthesise a call to *baseBlock[offset], ie,
-   call * (4 x offset)(%ebp) with arguments
-*/
-static void synth_ccall_call_clearStack_restoreRegs ( Int word_offset, 
-                                                      UInt n_args_bytes )
-{
-   vg_assert(word_offset >= 0);
-   vg_assert(word_offset < VG_BASEBLOCK_WORDS);
-   vg_assert(n_args_bytes <= 12);           /* Max 3 word-sized args */
-   vg_assert(0 == (n_args_bytes & 0x3));    /* Divisible by four */
-
-   emit_call_star_EBP_off ( 4 * word_offset );
-   if ( 0 != n_args_bytes )
-      emit_add_lit_to_esp ( n_args_bytes );
-   emit_popv_reg ( 4, R_EDX ); 
-   emit_popv_reg ( 4, R_ECX ); 
-   emit_popv_reg ( 4, R_EAX ); 
-}
 
 static void load_ebp_from_JmpKind ( JmpKind jmpkind )
 {
@@ -1254,29 +1217,29 @@ static void synth_mov_reg_memreg ( Int size, Int reg1, Int reg2 )
 }
 
 
-static void synth_unaryop_reg ( Bool wr_cc,
+static void synth_unaryop_reg ( Bool upd_cc,
                                 Opcode opcode, Int size,
                                 Int reg )
 {
    /* NB! opcode is a uinstr opcode, not an x86 one! */
    switch (size) {
-      case 4: //if (rd_cc) emit_get_eflags();   (never needed --njn)
+      case 4: if (upd_cc) emit_get_eflags();
               emit_unaryopv_reg ( 4, opcode, reg );
-              if (wr_cc) emit_put_eflags();
+              if (upd_cc) emit_put_eflags();
               break;
-      case 2: //if (rd_cc) emit_get_eflags();   (never needed --njn)
+      case 2: if (upd_cc) emit_get_eflags();
               emit_unaryopv_reg ( 2, opcode, reg );
-              if (wr_cc) emit_put_eflags();
+              if (upd_cc) emit_put_eflags();
               break;
       case 1: if (reg < 4) {
-                 //if (rd_cc) emit_get_eflags();    (never needed --njn)
+                 if (upd_cc) emit_get_eflags();
                  emit_unaryopb_reg ( opcode, reg );
-                 if (wr_cc) emit_put_eflags();
+                 if (upd_cc) emit_put_eflags();
               } else {
                  emit_swapl_reg_EAX ( reg );
-                 //if (rd_cc) emit_get_eflags();    (never needed --njn)
+                 if (upd_cc) emit_get_eflags();
                  emit_unaryopb_reg ( opcode, R_AL );
-                 if (wr_cc) emit_put_eflags();
+                 if (upd_cc) emit_put_eflags();
                  emit_swapl_reg_EAX ( reg );
               }
               break;
@@ -1286,19 +1249,19 @@ static void synth_unaryop_reg ( Bool wr_cc,
 
 
 
-static void synth_nonshiftop_reg_reg ( Bool rd_cc, Bool wr_cc,
+static void synth_nonshiftop_reg_reg ( Bool upd_cc, 
                                        Opcode opcode, Int size, 
                                        Int reg1, Int reg2 )
 {
    /* NB! opcode is a uinstr opcode, not an x86 one! */
    switch (size) {
-      case 4: if (rd_cc) emit_get_eflags();
+      case 4: if (upd_cc) emit_get_eflags();
               emit_nonshiftopv_reg_reg ( 4, opcode, reg1, reg2 );
-              if (wr_cc) emit_put_eflags();
+              if (upd_cc) emit_put_eflags();
               break;
-      case 2: if (rd_cc) emit_get_eflags();
+      case 2: if (upd_cc) emit_get_eflags();
               emit_nonshiftopv_reg_reg ( 2, opcode, reg1, reg2 );
-              if (wr_cc) emit_put_eflags();
+              if (upd_cc) emit_put_eflags();
               break;
       case 1: { /* Horrible ... */
          Int s1, s2;
@@ -1307,44 +1270,44 @@ static void synth_nonshiftop_reg_reg ( Bool rd_cc, Bool wr_cc,
             sure s1 != s2 and that neither of them equal either reg1 or
             reg2. Then use them as temporaries to make things work. */
          if (reg1 < 4 && reg2 < 4) {
-            if (rd_cc) emit_get_eflags();
+            if (upd_cc) emit_get_eflags();
             emit_nonshiftopb_reg_reg(opcode, reg1, reg2); 
-            if (wr_cc) emit_put_eflags();
+            if (upd_cc) emit_put_eflags();
             break;
          }
          for (s1 = 0; s1 == reg1 || s1 == reg2; s1++) ;
          if (reg1 >= 4 && reg2 < 4) {
             emit_swapl_reg_reg ( reg1, s1 );
-            if (rd_cc) emit_get_eflags();
+            if (upd_cc) emit_get_eflags();
             emit_nonshiftopb_reg_reg(opcode, s1, reg2);
-            if (wr_cc) emit_put_eflags();
+            if (upd_cc) emit_put_eflags();
             emit_swapl_reg_reg ( reg1, s1 );
             break;
          }
          for (s2 = 0; s2 == reg1 || s2 == reg2 || s2 == s1; s2++) ;
          if (reg1 < 4 && reg2 >= 4) {
             emit_swapl_reg_reg ( reg2, s2 );
-            if (rd_cc) emit_get_eflags();
+            if (upd_cc) emit_get_eflags();
             emit_nonshiftopb_reg_reg(opcode, reg1, s2);
-            if (wr_cc) emit_put_eflags();
+            if (upd_cc) emit_put_eflags();
             emit_swapl_reg_reg ( reg2, s2 );
             break;
          }
          if (reg1 >= 4 && reg2 >= 4 && reg1 != reg2) {
             emit_swapl_reg_reg ( reg1, s1 );
             emit_swapl_reg_reg ( reg2, s2 );
-            if (rd_cc) emit_get_eflags();
+            if (upd_cc) emit_get_eflags();
             emit_nonshiftopb_reg_reg(opcode, s1, s2);
-            if (wr_cc) emit_put_eflags();
+            if (upd_cc) emit_put_eflags();
             emit_swapl_reg_reg ( reg1, s1 );
             emit_swapl_reg_reg ( reg2, s2 );
             break;
          }
          if (reg1 >= 4 && reg2 >= 4 && reg1 == reg2) {
             emit_swapl_reg_reg ( reg1, s1 );
-            if (rd_cc) emit_get_eflags();
+            if (upd_cc) emit_get_eflags();
             emit_nonshiftopb_reg_reg(opcode, s1, s1);
-            if (wr_cc) emit_put_eflags();
+            if (upd_cc) emit_put_eflags();
             emit_swapl_reg_reg ( reg1, s1 );
             break;
          }
@@ -1356,62 +1319,62 @@ static void synth_nonshiftop_reg_reg ( Bool rd_cc, Bool wr_cc,
 
 
 static void synth_nonshiftop_offregmem_reg ( 
-   Bool rd_cc, Bool wr_cc,
+   Bool upd_cc,
    Opcode opcode, Int size, 
    Int off, Int areg, Int reg )
 {
    switch (size) {
       case 4: 
-         if (rd_cc) emit_get_eflags();
+         if (upd_cc) emit_get_eflags();
          emit_nonshiftopv_offregmem_reg ( 4, opcode, off, areg, reg ); 
-         if (wr_cc) emit_put_eflags();
+         if (upd_cc) emit_put_eflags();
          break;
       case 2: 
-         if (rd_cc) emit_get_eflags();
+         if (upd_cc) emit_get_eflags();
          emit_nonshiftopv_offregmem_reg ( 2, opcode, off, areg, reg ); 
-         if (wr_cc) emit_put_eflags();
+         if (upd_cc) emit_put_eflags();
          break;
       case 1: 
          if (reg < 4) {
-            if (rd_cc) emit_get_eflags();
+            if (upd_cc) emit_get_eflags();
             emit_nonshiftopb_offregmem_reg ( opcode, off, areg, reg );
-            if (wr_cc) emit_put_eflags();
+            if (upd_cc) emit_put_eflags();
          } else {
             emit_swapl_reg_EAX ( reg );
-            if (rd_cc) emit_get_eflags();
+            if (upd_cc) emit_get_eflags();
             emit_nonshiftopb_offregmem_reg ( opcode, off, areg, R_AL );
-            if (wr_cc) emit_put_eflags();
+            if (upd_cc) emit_put_eflags();
             emit_swapl_reg_EAX ( reg );
          }
          break;
       default: 
-         VG_(panic)("synth_nonshiftop_offregmem_reg");
+         VG_(panic)("synth_nonshiftop_litmem_reg");
    }
 }
 
 
-static void synth_nonshiftop_lit_reg ( Bool rd_cc, Bool wr_cc,
+static void synth_nonshiftop_lit_reg ( Bool upd_cc,
                                        Opcode opcode, Int size, 
                                        UInt lit, Int reg )
 {
    switch (size) {
-      case 4: if (rd_cc) emit_get_eflags();
+      case 4: if (upd_cc) emit_get_eflags();
               emit_nonshiftopv_lit_reg ( 4, opcode, lit, reg );
-              if (wr_cc) emit_put_eflags();
+              if (upd_cc) emit_put_eflags();
               break;
-      case 2: if (rd_cc) emit_get_eflags();
+      case 2: if (upd_cc) emit_get_eflags();
               emit_nonshiftopv_lit_reg ( 2, opcode, lit, reg );
-              if (wr_cc) emit_put_eflags();
+              if (upd_cc) emit_put_eflags();
               break;
       case 1: if (reg < 4) {
-                 if (rd_cc) emit_get_eflags();
+                 if (upd_cc) emit_get_eflags();
                  emit_nonshiftopb_lit_reg ( opcode, lit, reg );
-                 if (wr_cc) emit_put_eflags();
+                 if (upd_cc) emit_put_eflags();
               } else {
                  emit_swapl_reg_EAX ( reg );
-                 if (rd_cc) emit_get_eflags();
+                 if (upd_cc) emit_get_eflags();
                  emit_nonshiftopb_lit_reg ( opcode, lit, R_AL );
-                 if (wr_cc) emit_put_eflags();
+                 if (upd_cc) emit_put_eflags();
                  emit_swapl_reg_EAX ( reg );
               }
               break;
@@ -1466,51 +1429,51 @@ static void synth_pop_reg ( Int size, Int reg )
 }
 
 
-static void synth_shiftop_reg_reg ( Bool rd_cc, Bool wr_cc,
+static void synth_shiftop_reg_reg ( Bool upd_cc,
                                     Opcode opcode, Int size, 
                                     Int regs, Int regd )
 {
    synth_push_reg ( size, regd );
    if (regs != R_ECX) emit_swapl_reg_ECX ( regs );
-   if (rd_cc) emit_get_eflags();
+   if (upd_cc) emit_get_eflags();
    switch (size) {
       case 4: emit_shiftopv_cl_stack0 ( 4, opcode ); break;
       case 2: emit_shiftopv_cl_stack0 ( 2, opcode ); break;
       case 1: emit_shiftopb_cl_stack0 ( opcode ); break;
       default: VG_(panic)("synth_shiftop_reg_reg");
    }
-   if (wr_cc) emit_put_eflags();
+   if (upd_cc) emit_put_eflags();
    if (regs != R_ECX) emit_swapl_reg_ECX ( regs );
    synth_pop_reg ( size, regd );
 }
 
 
-static void synth_shiftop_lit_reg ( Bool rd_cc, Bool wr_cc,
+static void synth_shiftop_lit_reg ( Bool upd_cc,
                                     Opcode opcode, Int size, 
                                     UInt lit, Int reg )
 {
    switch (size) {
-      case 4: if (rd_cc) emit_get_eflags();
+      case 4: if (upd_cc) emit_get_eflags();
               emit_shiftopv_lit_reg ( 4, opcode, lit, reg );
-              if (wr_cc) emit_put_eflags();
+              if (upd_cc) emit_put_eflags();
               break;
-      case 2: if (rd_cc) emit_get_eflags();
+      case 2: if (upd_cc) emit_get_eflags();
               emit_shiftopv_lit_reg ( 2, opcode, lit, reg );
-              if (wr_cc) emit_put_eflags();
+              if (upd_cc) emit_put_eflags();
               break;
       case 1: if (reg < 4) {
-                 if (rd_cc) emit_get_eflags();
+                 if (upd_cc) emit_get_eflags();
                  emit_shiftopb_lit_reg ( opcode, lit, reg );
-                 if (wr_cc) emit_put_eflags();
+                 if (upd_cc) emit_put_eflags();
               } else {
                  emit_swapl_reg_EAX ( reg );
-                 if (rd_cc) emit_get_eflags();
+                 if (upd_cc) emit_get_eflags();
                  emit_shiftopb_lit_reg ( opcode, lit, R_AL );
-                 if (wr_cc) emit_put_eflags();
+                 if (upd_cc) emit_put_eflags();
                  emit_swapl_reg_EAX ( reg );
               }
               break;
-      default: VG_(panic)("synth_shiftop_lit_reg");
+      default: VG_(panic)("synth_nonshiftop_lit_reg");
    }
 }
 
@@ -2180,16 +2143,6 @@ static void synth_TAG2_op ( VgTagOp op, Int regs, Int regd )
 /*--- Generate code for a single UInstr.           ---*/
 /*----------------------------------------------------*/
 
-static Bool readFlagUse ( UInstr* u )
-{
-   return (u->flags_r != FlagsEmpty); 
-}
-
-static Bool writeFlagUse ( UInstr* u )
-{
-   return (u->flags_w != FlagsEmpty); 
-}
-
 static void emitUInstr ( Int i, UInstr* u )
 {
    if (dis)
@@ -2395,27 +2348,25 @@ static void emitUInstr ( Int i, UInstr* u )
          break;
       }
 
+      case SBB:
+      case ADC:
       case XOR:
       case OR:
       case AND:
       case SUB:
-      case ADD: 
-         vg_assert(! readFlagUse ( u ));
-         /* fall thru */
-      case SBB:
-      case ADC: {
+      case ADD: {
          vg_assert(u->tag2 == RealReg);
          switch (u->tag1) {
             case Literal: synth_nonshiftop_lit_reg (
-                             readFlagUse(u), writeFlagUse(u),
+                             VG_(anyFlagUse)(u), 
                              u->opcode, u->size, u->lit32, u->val2 );
                           break;
             case RealReg: synth_nonshiftop_reg_reg (
-                             readFlagUse(u), writeFlagUse(u),
+                             VG_(anyFlagUse)(u), 
                              u->opcode, u->size, u->val1, u->val2 );
                           break;
             case ArchReg: synth_nonshiftop_offregmem_reg (
-                             readFlagUse(u), writeFlagUse(u),
+                             VG_(anyFlagUse)(u), 
                              u->opcode, u->size, 
                              spillOrArchOffset( u->size, u->tag1, u->val1 ), 
                              R_EBP,
@@ -2426,24 +2377,21 @@ static void emitUInstr ( Int i, UInstr* u )
          break;
       }
 
+      case RCR:
+      case RCL:
       case ROR:
       case ROL:
       case SAR:
       case SHR:
       case SHL: {
-         vg_assert(! readFlagUse ( u ));
-         /* fall thru */
-      case RCR:
-      case RCL:
          vg_assert(u->tag2 == RealReg);
-         vg_assert(! readFlagUse ( u ));
          switch (u->tag1) {
             case Literal: synth_shiftop_lit_reg (
-                             readFlagUse(u), writeFlagUse(u),
+                             VG_(anyFlagUse)(u), 
                              u->opcode, u->size, u->lit32, u->val2 );
                           break;
             case RealReg: synth_shiftop_reg_reg (
-                             readFlagUse(u), writeFlagUse(u),
+                             VG_(anyFlagUse)(u), 
                              u->opcode, u->size, u->val1, u->val2 );
                           break;
             default: VG_(panic)("emitUInstr:non-shift-op");
@@ -2456,9 +2404,8 @@ static void emitUInstr ( Int i, UInstr* u )
       case NEG:
       case NOT:
          vg_assert(u->tag1 == RealReg);
-         vg_assert(! readFlagUse ( u ));
          synth_unaryop_reg ( 
-            writeFlagUse(u), u->opcode, u->size, u->val1 );
+            VG_(anyFlagUse)(u), u->opcode, u->size, u->val1 );
          break;
 
       case BSWAP:
@@ -2570,31 +2517,11 @@ static void emitUInstr ( Int i, UInstr* u )
          vg_assert(u->tag1 == Lit16);
          vg_assert(u->tag2 == NoValue);
          vg_assert(u->size == 0);
-         if (readFlagUse ( u )) 
+         if (u->flags_r != FlagsEmpty || u->flags_w != FlagsEmpty) 
             emit_get_eflags();
          synth_call_baseBlock_method ( False, u->val1 );
-         if (writeFlagUse ( u )) 
+         if (u->flags_w != FlagsEmpty) 
             emit_put_eflags();
-         break;
-
-      case CCALL_1_0:
-         vg_assert(u->tag1 == RealReg);
-         vg_assert(u->tag2 == NoValue);
-         vg_assert(u->size == 0);
-
-         synth_ccall_saveRegs();
-         synth_ccall_pushOneArg ( u->val1 );
-         synth_ccall_call_clearStack_restoreRegs ( u->lit32, 4 );
-         break;
-
-      case CCALL_2_0:
-         vg_assert(u->tag1 == RealReg);
-         vg_assert(u->tag2 == RealReg);
-         vg_assert(u->size == 0);
-
-         synth_ccall_saveRegs();
-         synth_ccall_pushTwoArgs ( u->val1, u->val2 );
-         synth_ccall_call_clearStack_restoreRegs ( u->lit32, 8 );
          break;
 
       case CLEAR:
@@ -2632,11 +2559,11 @@ static void emitUInstr ( Int i, UInstr* u )
       case FPU:
          vg_assert(u->tag1 == Lit16);
          vg_assert(u->tag2 == NoValue);
-         if (readFlagUse ( u )) 
+         if (u->flags_r != FlagsEmpty || u->flags_w != FlagsEmpty) 
             emit_get_eflags();
          synth_fpu_no_mem ( (u->val1 >> 8) & 0xFF,
                             u->val1 & 0xFF );
-         if (writeFlagUse ( u )) 
+         if (u->flags_w != FlagsEmpty) 
             emit_put_eflags();
          break;
 
