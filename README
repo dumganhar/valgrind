@@ -1,6 +1,9 @@
 
-Release notes for Valgrind, version 1.0.0
+Release notes for Valgrind, version 1.0.1
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+1.0.1 contains a new file, CURRENT_BUG_STATUS, giving details of bugs
+fixed relative to 1.0.0.
+
 KDE3 developers: please read also README_KDE3_FOLKS for guidance
 about how to debug KDE3 applications with Valgrind.
 
@@ -51,7 +54,7 @@ GNU libc 2.2.X, for example SuSE 7.1 and Mandrake 8.0.  This version
 least.
 
 Valgrind is licensed under the GNU General Public License, version 2. 
-Read the file LICENSE in the source distribution for details.
+Read the file COPYING in the source distribution for details.
 
 
 Documentation

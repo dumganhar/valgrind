@@ -27,7 +27,7 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
    02111-1307, USA.
 
-   The GNU General Public License is contained in the file LICENSE.
+   The GNU General Public License is contained in the file COPYING.
 */
 
 #include "vg_include.h"
@@ -594,6 +594,11 @@ UCodeBlock* VG_(cachesim_instrument)(UCodeBlock* cb_in, Addr orig_addr)
             vg_assert(instr_size >= 1 && instr_size <= MAX_x86_INSTR_SIZE);
             vg_assert(0 != instr_addr);
 
+            /* Save the caller-save registers before we push our args */
+            uInstr1(cb, PUSH, 4, RealReg, R_EAX);
+            uInstr1(cb, PUSH, 4, RealReg, R_ECX);
+            uInstr1(cb, PUSH, 4, RealReg, R_EDX);
+
             if (!IS_(read) && !IS_(write)) {
                iCC* CC_ptr = (iCC*)(BBCC_ptr);
                vg_assert(INVALID_DATA_SIZE == data_size);
@@ -603,13 +608,7 @@ UCodeBlock* VG_(cachesim_instrument)(UCodeBlock* cb_in, Addr orig_addr)
                if (!BB_seen_before)
                    init_iCC(CC_ptr, instr_addr, instr_size);
 
-               /* 1st arg: CC addr */
-               t_CC_addr = newTemp(cb);
-               uInstr2(cb, MOV,   4, Literal, 0, TempReg, t_CC_addr);
-               uLiteral(cb, BBCC_ptr);
-
-               uInstr1(cb, CCALL_1_0, 0, TempReg, t_CC_addr);
-               uLiteral(cb, VGOFF_(cachesim_log_non_mem_instr));
+               helper = VGOFF_(cachesim_log_non_mem_instr);
 
             } else { 
                CC_type X_CC;
@@ -640,19 +639,31 @@ UCodeBlock* VG_(cachesim_instrument)(UCodeBlock* cb_in, Addr orig_addr)
                             INVALID_TEMPREG != t_write_addr);
                   t_data_addr = t_read_addr;
                }
-#undef IS_
+
                if (!BB_seen_before)
                   init_idCC(X_CC, CC_ptr, instr_addr, instr_size, data_size);
 
-               /* 1st arg: CC addr */
-               t_CC_addr = newTemp(cb);
-               uInstr2(cb, MOV,   4, Literal, 0, TempReg, t_CC_addr);
-               uLiteral(cb, BBCC_ptr);
-
-               uInstr2(cb, CCALL_2_0, 0, TempReg, t_CC_addr, 
-                                         TempReg, t_data_addr);
-               uLiteral(cb, VGOFF_(cachesim_log_mem_instr));
+               /* 2nd arg: data addr */
+               uInstr1(cb, PUSH,  4, TempReg, t_data_addr);
+               stack_used += 4;
             }
+#undef IS_
+
+            /* 1st arg: CC addr */
+            t_CC_addr = newTemp(cb);
+            uInstr2(cb, MOV,   4, Literal, 0, TempReg, t_CC_addr);
+            uLiteral(cb, BBCC_ptr);
+            uInstr1(cb, PUSH,  4, TempReg, t_CC_addr);
+            stack_used += 4;
+
+            /* Call function and return. */
+            uInstr1(cb, CALLM, 0, Lit16,   helper);
+            uInstr1(cb, CLEAR, 0, Lit16,   stack_used);
+
+            /* Restore the caller-save registers now the call is done */
+            uInstr1(cb, POP, 4, RealReg, R_EDX);
+            uInstr1(cb, POP, 4, RealReg, R_ECX);
+            uInstr1(cb, POP, 4, RealReg, R_EAX);
 
             VG_(copyUInstr)(cb, u_in);
 
@@ -871,12 +882,16 @@ Int Intel_cache_info(Int level, cache_t* I1c, cache_t* D1c, cache_t* L2c)
  * #3  The AMD K7 processor's L2 cache must be configured prior to relying 
  *     upon this information. (Whatever that means -- njn)
  *
+ * Also, according to Cyrille Chepelov, Duron stepping A0 processors (model
+ * 0x630) have a bug and misreport their L2 size as 1KB (it's really 64KB),
+ * so we detect that.
+ * 
  * Returns 0 on success, non-zero on failure.
  */
 static
 Int AMD_cache_info(cache_t* I1c, cache_t* D1c, cache_t* L2c)
 {
-   Int dummy, ext_level;
+   Int dummy, model, ext_level;
    Int I1i, D1i, L2i;
    
    cpuid(0x80000000, &ext_level, &dummy, &dummy, &dummy);
@@ -890,6 +905,16 @@ Int AMD_cache_info(cache_t* I1c, cache_t* D1c, cache_t* L2c)
 
    cpuid(0x80000005, &dummy, &dummy, &D1i, &I1i);
    cpuid(0x80000006, &dummy, &dummy, &L2i, &dummy);
+
+   cpuid(0x1, &model, &dummy, &dummy, &dummy);
+   /*VG_(message)(Vg_UserMsg,"CPU model %04x",model);*/
+
+   /* Check for Duron bug */
+   if (model == 0x630) {
+      VG_(message)(Vg_UserMsg,
+         "Buggy Duron stepping A0. Assuming L2 size=65536 bytes");
+      L2i = (64 << 16) | (L2i & 0xffff);
+   }
 
    D1c->size      = (D1i >> 24) & 0xff;
    D1c->assoc     = (D1i >> 16) & 0xff;

@@ -26,7 +26,7 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
    02111-1307, USA.
 
-   The GNU General Public License is contained in the file LICENSE.
+   The GNU General Public License is contained in the file COPYING.
 */
 
 #include "vg_include.h"
@@ -402,8 +402,6 @@ __inline__ Int VG_(rankToRealRegNo) ( Int rank )
          CALLM      L       N       N
          CALLM_S    N       N       N
          CALLM_E    N       N       N
-         CCALL_1_0  T       N       N
-         CCALL_2_0  T       T       N
          PUSH,POP   T       N       N
          CLEAR      L       N       N
 
@@ -523,10 +521,6 @@ Bool VG_(saneUInstr) ( Bool beforeRA, UInstr* u )
          return CC0 && Ls1 && N2 && SZ0 && N3;
       case CALLM:
          return SZ0 && Ls1 && N2 && N3;
-      case CCALL_1_0:
-         return SZ0 && CC0 && TR1 && N2 && N3;
-      case CCALL_2_0:
-         return SZ0 && CC0 && TR1 && TR2 && N3;
       case PUSH: case POP:
          return CC0 && TR1 && N2 && N3;
       case AND: case OR:
@@ -808,8 +802,6 @@ Char* VG_(nameUOpcode) ( Bool upper, Opcode opc )
       case JMP:     return "J"    ;
       case JIFZ:    return "JIFZ" ;
       case CALLM:   return "CALLM";
-      case CCALL_1_0: return "CCALL_1_0";
-      case CCALL_2_0: return "CCALL_2_0";
       case PUSH:    return "PUSH" ;
       case POP:     return "POP"  ;
       case CLEAR:   return "CLEAR";
@@ -936,20 +928,6 @@ void VG_(ppUInstr) ( Int instrNo, UInstr* u )
          ppUOperand(u, 1, u->size, False);
          break;
 
-      case CCALL_1_0:
-         VG_(printf)(" ");
-         ppUOperand(u, 1, 0, False);
-         VG_(printf)(" (%u)", u->lit32);
-         break;
-
-      case CCALL_2_0:
-         VG_(printf)(" ");
-         ppUOperand(u, 1, 0, False);
-         VG_(printf)(", ");
-         ppUOperand(u, 2, 0, False);
-         VG_(printf)(" (%u)", u->lit32);
-         break;
-
       case JIFZ:
          VG_(printf)("\t");
          ppUOperand(u, 1, u->size, False);
@@ -1072,13 +1050,13 @@ Int getTempUsage ( UInstr* u, TempUse* arr )
       case GET:   WR(2); break;
       case PUT:   RD(1); break;
       case LOAD:  RD(1); WR(2); break;
-      case STORE: case CCALL_2_0: RD(1); RD(2); break;
+      case STORE: RD(1); RD(2); break;
       case MOV:   RD(1); WR(2); break;
 
       case JMP:   RD(1); break;
       case CLEAR: case CALLM: break;
 
-      case PUSH: case CCALL_1_0: RD(1); break;
+      case PUSH: RD(1); break;
       case POP:  WR(1); break;
 
       case TAG2:
@@ -3182,7 +3160,6 @@ void VG_(translate) ( ThreadState* tst,
       VG_(jitfree)(final_code);
    } else {
       /* Doing it for real -- return values to caller. */
-      //VG_(printf)("%d %d\n", n_disassembled_bytes, final_code_size);
       *orig_size = n_disassembled_bytes;
       *trans_addr = (Addr)final_code;
       *trans_size = final_code_size;

@@ -26,7 +26,7 @@
    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
    02111-1307, USA.
 
-   The GNU General Public License is contained in the file LICENSE.
+   The GNU General Public License is contained in the file COPYING.
 */
 
 /* Notes:
@@ -199,7 +199,6 @@ miss_treatment:                                                             \
       if (is_miss) { MISS_TREATMENT; }                                      \
                                                                             \
    } else {                                                                 \
-       VG_(printf)("addr: %x  size: %u  sets: %d %d", a, size, set1, set2); \
        VG_(panic)("item straddles more than two cache sets");               \
    }                                                                        \
    return;                                                                  \
