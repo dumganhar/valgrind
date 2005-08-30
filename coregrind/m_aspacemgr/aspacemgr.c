@@ -741,9 +741,9 @@ VG_(map_file_segment)( Addr addr, SizeT len,
       VG_(printf)(
          "\n"
          "map_file_segment(addr=%p len=%lu prot=0x%x flags=0x%x\n"
-         "                 dev=0x%4x ino=%d off=%lld\n"
+         "                 dev=0x%4x ino=%d off=%ld\n"
          "                 filename='%s')\n",
-         addr, len, prot, flags, dev, ino, off, filename);
+         addr, (ULong)len, prot, flags, dev, ino, off, filename);
 
    if (0) VG_(show_segments)("before map_file_segment");
 
@@ -851,13 +851,8 @@ void VG_(map_fd_segment)(Addr addr, SizeT len, UInt prot, UInt flags,
    if (fd != -1 && (flags & SF_FILE)) {
       vg_assert((off & (VKI_PAGE_SIZE-1)) == 0);
 
-      if (VG_(fstat)(fd, &st) < 0) {
+      if (VG_(fstat)(fd, &st) < 0)
 	 flags &= ~SF_FILE;
-      } else {
-         // Note unusual mapping types
-         if (VKI_S_ISCHR(st.st_mode) || VKI_S_ISBLK(st.st_mode))
-            flags |= SF_DEVICE;
-      }
    }
 
    if ((flags & SF_FILE) && filename == NULL && fd != -1)
@@ -1185,8 +1180,7 @@ void VG_(find_root_memory)(void (*add_rootrange)(Addr a, SizeT sz))
 
    for (i = 0; i < segments_used; i++) {
       s = &segments[i];
-      // Note that, for example, we don't want to touch a device page.
-      flags = s->flags & (SF_SHARED|SF_MMAP|SF_VALGRIND|SF_CORE|SF_STACK|SF_DEVICE);
+      flags = s->flags & (SF_SHARED|SF_MMAP|SF_VALGRIND|SF_CORE|SF_STACK);
       if (flags != SF_MMAP && flags != SF_STACK && flags != (SF_MMAP|SF_STACK))
          continue;
       if ((s->prot & (VKI_PROT_READ|VKI_PROT_WRITE)) 

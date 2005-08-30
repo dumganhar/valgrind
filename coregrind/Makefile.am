@@ -1,5 +1,5 @@
 include $(top_srcdir)/Makefile.all.am
-include $(top_srcdir)/Makefile.core.am
+include $(top_srcdir)/Makefile.core-AM_CPPFLAGS.am
 
 .PHONY: @VEX_DIR@/libvex.a
 
@@ -30,13 +30,12 @@ bin_PROGRAMS = \
 
 val_PROGRAMS = \
 	stage2 \
-	vgpreload_core.so
+	vg_preload_core.so
 
 noinst_HEADERS = \
 	coregrind.h		\
 	pub_core_aspacemgr.h	\
 	pub_core_basics.h	\
-	pub_core_coredump.h	\
 	pub_core_cpuid.h	\
 	pub_core_debuginfo.h	\
 	pub_core_debugger.h	\
@@ -58,7 +57,6 @@ noinst_HEADERS = \
 	pub_core_main.h		\
 	pub_core_mallocfree.h	\
 	pub_core_options.h	\
-	pub_core_oset.h		\
 	pub_core_profile.h	\
 	pub_core_pthreadmodel.h	\
 	pub_core_redir.h	\
@@ -96,7 +94,6 @@ valgrind_LDFLAGS=-static -g
 valgrind_LDADD=
 
 stage2_SOURCES = \
-	m_coredump.c \
 	m_cpuid.S \
 	m_debugger.c \
 	m_debuglog.c \
@@ -114,7 +111,6 @@ stage2_SOURCES = \
 	m_main.c \
 	m_mallocfree.c \
 	m_options.c \
-	m_oset.c \
 	m_profile.c \
 	m_pthreadmodel.c \
 	m_redir.c \
@@ -173,12 +169,12 @@ endif
 stage2_LDADD= $(stage2_extra) \
 	-ldl
 
-vgpreload_core_so_SOURCES = vg_preloaded.c
-vgpreload_core_so_CFLAGS = $(AM_CFLAGS) -fpic
-vgpreload_core_so_LDADD = -ldl
-vgpreload_core_so_LDFLAGS = \
+vg_preload_core_so_SOURCES = vg_preloaded.c
+vg_preload_core_so_CFLAGS = $(AM_CFLAGS) -fpic
+vg_preload_core_so_LDADD = -ldl
+vg_preload_core_so_LDFLAGS = \
 	-shared \
-	-Wl,--soname,vgpreload_core.so \
+	-Wl,--soname,vg_preload_core.so \
 	-Wl,-z,initfirst
 
 # Extract ld's default linker script and hack it to our needs.

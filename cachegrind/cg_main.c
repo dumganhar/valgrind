@@ -358,9 +358,10 @@ void log_1I_2D_cache_access(instr_info* n, Addr data_addr1, Addr data_addr2)
 static
 BB_info* get_BB_info(IRBB* bbIn, Addr origAddr, Bool* bbSeenBefore)
 {
-   Int      i, n_instrs;
-   IRStmt*  st;
-   BB_info* bbInfo;
+   Int          i, n_instrs;
+   IRStmt*      st;
+   BB_info*     bbInfo;
+   VgHashNode** dummy;
    
    // Count number of original instrs in BB
    n_instrs = 0;
@@ -370,7 +371,7 @@ BB_info* get_BB_info(IRBB* bbIn, Addr origAddr, Bool* bbSeenBefore)
    }
 
    // Get the BB_info
-   bbInfo = (BB_info*)VG_(HT_lookup)(instr_info_table, origAddr);
+   bbInfo = (BB_info*)VG_(HT_get_node)(instr_info_table, origAddr, &dummy);
    *bbSeenBefore = ( NULL == bbInfo ? False : True );
    if (*bbSeenBefore) {
       // BB must have been translated before, but flushed from the TT
@@ -1079,13 +1080,15 @@ static void cg_fini(Int exitcode)
 // Called when a translation is invalidated due to code unloading.
 static void cg_discard_basic_block_info ( Addr a, SizeT size )
 {
+   VgHashNode** prev_next_ptr;
    VgHashNode*  bbInfo;
 
    if (0) VG_(printf)( "discard_basic_block_info: %p, %llu\n", a, (ULong)size);
 
    // Get BB info, remove from table, free BB info.  Simple!
-   bbInfo = VG_(HT_remove)(instr_info_table, a);
+   bbInfo = VG_(HT_get_node)(instr_info_table, a, &prev_next_ptr);
    tl_assert(NULL != bbInfo);
+   *prev_next_ptr = bbInfo->next;
    VG_(free)(bbInfo);
 }
 

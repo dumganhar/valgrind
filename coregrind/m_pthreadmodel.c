@@ -4,8 +4,8 @@
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is part of Valgrind, a dynamic binary instrumentation
-   framework.
+   This file is part of Valgrind, an extensible x86 protected-mode
+   emulator for monitoring program execution on x86-Unixes.
 
    Copyright (C) 2005 Jeremy Fitzhardinge
       jeremy@goop.org

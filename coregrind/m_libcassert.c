@@ -94,8 +94,7 @@ static void pp_sched_status ( void )
 }
 
 __attribute__ ((noreturn))
-static void report_and_quit ( const Char* report, 
-                              Addr ip, Addr sp, Addr fp, Addr lr )
+static void report_and_quit ( const Char* report, Addr ip, Addr sp, Addr fp )
 {
    Addr stacktop;
    Addr ips[BACKTRACE_DEPTH];
@@ -112,7 +111,7 @@ static void report_and_quit ( const Char* report,
    stacktop = tst->os_state.valgrind_stack_base + 
               tst->os_state.valgrind_stack_szB;
  
-   VG_(get_StackTrace2)(ips, BACKTRACE_DEPTH, ip, sp, fp, lr, sp, stacktop);
+   VG_(get_StackTrace2)(ips, BACKTRACE_DEPTH, ip, sp, fp, sp, stacktop);
    VG_(pp_StackTrace)  (ips, BACKTRACE_DEPTH);
  
    // Don't print this, as it's not terribly interesting and avoids a
@@ -167,30 +166,30 @@ void VG_(assert_fail) ( Bool isCore, const Char* expr, const Char* file,
    if (!VG_STREQ(buf, ""))
       VG_(printf)("%s: %s\n", component, buf );
 
-   report_and_quit(bugs_to, 0,0,0,0);
+   report_and_quit(bugs_to, 0,0,0);
 }
 
 __attribute__ ((noreturn))
 static void panic ( Char* name, Char* report, Char* str,
-                    Addr ip, Addr sp, Addr fp, Addr lr )
+                    Addr ip, Addr sp, Addr fp )
 {
    VG_(printf)("\n%s: the 'impossible' happened:\n   %s\n", name, str);
-   report_and_quit(report, ip, sp, fp, lr);
+   report_and_quit(report, ip, sp, fp);
 }
 
-void VG_(core_panic_at) ( Char* str, Addr ip, Addr sp, Addr fp, Addr lr )
+void VG_(core_panic_at) ( Char* str, Addr ip, Addr sp, Addr fp )
 {
-   panic("valgrind", VG_BUGS_TO, str, ip, sp, fp, lr);
+   panic("valgrind", VG_BUGS_TO, str, ip, sp, fp);
 }
 
 void VG_(core_panic) ( Char* str )
 {
-   VG_(core_panic_at)(str, 0,0,0,0);
+   VG_(core_panic_at)(str, 0,0,0);
 }
 
 void VG_(tool_panic) ( Char* str )
 {
-   panic(VG_(details).name, VG_(details).bug_reports_to, str, 0,0,0,0);
+   panic(VG_(details).name, VG_(details).bug_reports_to, str, 0,0,0);
 }
 
 /* Print some helpful-ish text about unimplemented things, and give up. */

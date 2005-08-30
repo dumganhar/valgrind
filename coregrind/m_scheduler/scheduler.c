@@ -4,8 +4,8 @@
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is part of Valgrind, a dynamic binary instrumentation
-   framework.
+   This file is part of Valgrind, an extensible x86 protected-mode
+   emulator for monitoring program execution on x86-Unixes.
 
    Copyright (C) 2000-2005 Julian Seward 
       jseward@acm.org
@@ -392,26 +392,6 @@ UInt run_thread_for_a_while ( ThreadId tid )
 
    VGP_PUSHCC(VgpRun);
 
-#  if defined(VGA_ppc32)
-   /* This is necessary due to the hacky way vex models reservations
-      on ppc.  It's really quite incorrect for each thread to have its
-      own reservation flag/address, since it's really something that
-      all threads share (that's the whole point).  But having shared
-      guest state is something we can't model with Vex.  However, as
-      per PaulM's 2.4.0ppc, the reservation is modelled using a
-      reservation flag which is cleared at each context switch.  So it
-      is indeed possible to get away with a per thread-reservation if
-      the thread's reservation is cleared before running it.
-
-      This should be abstractified and lifted out.
-   */
-   { Int i;
-     /* Clear any existing reservation.  Be paranoid and clear them all. */
-     for (i = 0; i < VG_N_THREADS; i++)
-        VG_(threads)[i].arch.vex.guest_RESVN = 0;
-   }
-#  endif   
-
    /* there should be no undealt-with signals */
    //vg_assert(VG_(threads)[tid].siginfo.si_signo == 0);
 
@@ -792,24 +772,6 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
                        "run_innerloop detected host "
                        "state invariant failure", trc);
 
-      case VEX_TRC_JMP_SYSENTER_X86:
-         /* Do whatever simulation is appropriate for an x86 sysenter
-            instruction.  Note that it is critical to set this thread's
-            guest_EIP to point at the code to execute after the
-            sysenter, since Vex-generated code will not have set it --
-            vex does not know what it should be.  Vex sets the next
-            address to zero, so if you don't guest_EIP, the thread will
-            jump to zero afterwards and probably die as a result. */
-#        if defined(VGA_x86)
-         //FIXME: VG_(threads)[tid].arch.vex.guest_EIP = ....
-         //handle_sysenter_x86(tid);
-         vg_assert2(0, "VG_(scheduler), phase 3: "
-                       "sysenter_x86 on not yet implemented");
-#        else
-         vg_assert2(0, "VG_(scheduler), phase 3: "
-                       "sysenter_x86 on non-x86 platform?!?!");
-#        endif
-
       default: 
 	 vg_assert2(0, "VG_(scheduler), phase 3: "
                        "unexpected thread return code (%u)", trc);
@@ -943,7 +905,7 @@ void do_client_request ( ThreadId tid )
       case VG_USERREQ__CLIENT_CALL0: {
          UWord (*f)(ThreadId) = (void*)arg[1];
 	 if (f == NULL)
-	    VG_(message)(Vg_DebugMsg, "VG_USERREQ__CLIENT_CALL0: func=%p", f);
+	    VG_(message)(Vg_DebugMsg, "VG_USERREQ__CLIENT_CALL0: func=%p\n", f);
 	 else
 	    SET_CLCALL_RETVAL(tid, f ( tid ), (Addr)f);
          break;
@@ -951,7 +913,7 @@ void do_client_request ( ThreadId tid )
       case VG_USERREQ__CLIENT_CALL1: {
          UWord (*f)(ThreadId, UWord) = (void*)arg[1];
 	 if (f == NULL)
-	    VG_(message)(Vg_DebugMsg, "VG_USERREQ__CLIENT_CALL1: func=%p", f);
+	    VG_(message)(Vg_DebugMsg, "VG_USERREQ__CLIENT_CALL1: func=%p\n", f);
 	 else
 	    SET_CLCALL_RETVAL(tid, f ( tid, arg[2] ), (Addr)f );
          break;
@@ -959,7 +921,7 @@ void do_client_request ( ThreadId tid )
       case VG_USERREQ__CLIENT_CALL2: {
          UWord (*f)(ThreadId, UWord, UWord) = (void*)arg[1];
 	 if (f == NULL)
-	    VG_(message)(Vg_DebugMsg, "VG_USERREQ__CLIENT_CALL2: func=%p", f);
+	    VG_(message)(Vg_DebugMsg, "VG_USERREQ__CLIENT_CALL2: func=%p\n", f);
 	 else
 	    SET_CLCALL_RETVAL(tid, f ( tid, arg[2], arg[3] ), (Addr)f );
          break;
@@ -967,7 +929,7 @@ void do_client_request ( ThreadId tid )
       case VG_USERREQ__CLIENT_CALL3: {
          UWord (*f)(ThreadId, UWord, UWord, UWord) = (void*)arg[1];
 	 if (f == NULL)
-	    VG_(message)(Vg_DebugMsg, "VG_USERREQ__CLIENT_CALL3: func=%p", f);
+	    VG_(message)(Vg_DebugMsg, "VG_USERREQ__CLIENT_CALL3: func=%p\n", f);
 	 else
 	    SET_CLCALL_RETVAL(tid, f ( tid, arg[2], arg[3], arg[4] ), (Addr)f );
          break;
@@ -1027,7 +989,6 @@ void do_client_request ( ThreadId tid )
 	 info->tl___builtin_vec_delete = VG_(tdict).tool___builtin_vec_delete;
 
 	 info->arena_payload_szB       = VG_(arena_payload_szB);
-	 info->mallinfo                = VG_(mallinfo);
 	 info->clo_trace_malloc        = VG_(clo_trace_malloc);
 
          SET_CLREQ_RETVAL( tid, 0 );     /* return value is meaningless */

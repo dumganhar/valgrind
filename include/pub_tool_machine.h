@@ -53,7 +53,6 @@
 extern Addr VG_(get_SP) ( ThreadId tid );
 extern Addr VG_(get_IP) ( ThreadId tid );
 extern Addr VG_(get_FP) ( ThreadId tid );
-extern Addr VG_(get_LR) ( ThreadId tid );
 
 extern void VG_(set_SP) ( ThreadId tid, Addr sp );
 extern void VG_(set_IP) ( ThreadId tid, Addr ip );
@@ -71,11 +70,11 @@ extern void VG_(set_shadow_regs_area) ( ThreadId tid, OffT guest_state_offset,
 // doing leak checking.
 extern void VG_(apply_to_GP_regs)(void (*f)(UWord val));
 
-// This iterator lets you inspect each live thread's stack bounds.  The
-// params are all 'out' params.  Returns False at the end.
-extern void VG_(thread_stack_reset_iter) ( void );
-extern Bool VG_(thread_stack_next)       ( ThreadId* tid, Addr* stack_min,
-                                                          Addr* stack_max );
+// Searches through all thread stacks to see if any match.  Returns
+// VG_INVALID_THREADID if none match.
+extern ThreadId VG_(first_matching_thread_stack)
+                        ( Bool (*p) ( Addr stack_min, Addr stack_max, void* d ),
+                          void* d );
 
 #endif   // __PUB_TOOL_MACHINE_H
 

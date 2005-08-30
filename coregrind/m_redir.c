@@ -1,11 +1,11 @@
-
 /*--------------------------------------------------------------------*/
-/*--- Function replacement and wrapping.                 m_redir.c ---*/
+/*--- Management of function redirection and wrapping.             ---*/
+/*---                                                   vg_redir.c ---*/
 /*--------------------------------------------------------------------*/
 
 /*
-   This file is part of Valgrind, a dynamic binary instrumentation
-   framework.
+   This file is part of Valgrind, an extensible x86 protected-mode
+   emulator for monitoring program execution on x86-Unixes.
 
    Copyright (C) 2000-2005 Julian Seward 
       jseward@acm.org
@@ -366,10 +366,7 @@ void VG_(setup_code_redirect_table) ( void )
 
 #elif defined(VGP_ppc32_linux)
 
-   add_redirect_sym_to_addr(
-      "soname:ld.so.1", "strlen",
-      (Addr)&VG_(ppc32_linux_REDIR_FOR_strlen)
-   );   
+   //CAB: TODO
 
 #else
 #  error Unknown platform
@@ -757,7 +754,3 @@ void VG_(maybe_redir_or_notify) ( Char* symbol, Addr addr )
 //:: 
 //::    VG_(SkipList_Insert)(&wrapper_returns, ret);
 //:: }
-
-/*--------------------------------------------------------------------*/
-/*--- end                                                          ---*/
-/*--------------------------------------------------------------------*/

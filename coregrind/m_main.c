@@ -561,7 +561,7 @@ static Bool scan_colsep(char *colsep, Bool (*func)(const char *))
 
 /* Prepare the client's environment.  This is basically a copy of our
    environment, except:
-     LD_PRELOAD=$VALGRINDLIB/vgpreload_core.so:($VALGRINDLIB/vgpreload_TOOL.so:)?$LD_PRELOAD
+     LD_PRELOAD=$VALGRINDLIB/vg_preload_core.so:($VALGRINDLIB/vgpreload_TOOL.so:)?$LD_PRELOAD
 
    If this is missing, then it is added.
 
@@ -572,7 +572,7 @@ static Bool scan_colsep(char *colsep, Bool (*func)(const char *))
  */
 static char **fix_environment(char **origenv, const char *preload)
 {
-   static const char preload_core_so[]    = "vgpreload_core.so";
+   static const char preload_core_so[]    = "vg_preload_core.so";
    static const char ld_preload[]         = "LD_PRELOAD=";
    static const char valgrind_clo[]       = VALGRINDCLO "=";
    static const int  ld_preload_len       = sizeof(ld_preload)-1;
@@ -586,7 +586,8 @@ static char **fix_environment(char **origenv, const char *preload)
    int envc;
    const int preloadlen = (preload == NULL) ? 0 : strlen(preload);
 
-   // Find the vgpreload_core.so; also make room for the tool preload library
+   /* Find the vg_preload_core.so; also make room for the tool preload
+      library */
    preload_core_path_len = sizeof(preload_core_so) + vgliblen + preloadlen + 16;
    preload_core_path = malloc(preload_core_path_len);
    vg_assert(preload_core_path);
@@ -2829,11 +2830,8 @@ int main(int argc, char **argv, char **envp)
    if (VG_(clo_xml)) {
       HChar buf[50];
       VG_(ctime)(buf);
-      VG_(message)(Vg_UserMsg, "<status>\n"
-                               "  <state>RUNNING</state>\n"
-                               "  <time>%t</time>\n"
-                               "</status>", 
-                               buf);
+      VG_(message)(Vg_UserMsg, "<status> <state>RUNNING</state> "
+                               "<time>%t</time> </status>", buf);
       VG_(message)(Vg_UserMsg, "");
    }
 
@@ -2934,11 +2932,8 @@ void VG_(shutdown_actions_NORETURN) ( ThreadId tid,
          VG_(message)(Vg_UserMsg, "");
       }
       VG_(ctime)(buf);
-      VG_(message)(Vg_UserMsg, "<status>\n"
-                               "  <state>FINISHED</state>\n"
-                               "  <time>%t</time>\n"
-                               "</status>", 
-                               buf);
+      VG_(message)(Vg_UserMsg, "<status> <state>FINISHED</state> "
+                               "<time>%t</time> </status>", buf);
       VG_(message)(Vg_UserMsg, "");
    }
 

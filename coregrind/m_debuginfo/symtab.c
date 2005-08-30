@@ -1709,28 +1709,36 @@ SegInfo *VG_(read_seg_symbols) ( Addr seg_addr, SizeT seg_len,
 */
 static void unload_symbols ( Addr start, SizeT length )
 {
-   SegInfo** prev_next_ptr = &segInfo_list;
-   SegInfo*  curr          =  segInfo_list;
+   SegInfo *prev, *curr;
 
-   while (curr) {
-      if (start == curr->start) {
-         // Found it;  remove from list and free it.
-         if (VG_(clo_verbosity) > 1)
-            VG_(message)(Vg_DebugMsg, 
-                         "discard syms at %p-%p in %s due to munmap()", 
-                         start, start+length,
-                         curr->filename ? curr->filename : (Char *)"???");
-         vg_assert(*prev_next_ptr == curr);
-         *prev_next_ptr = curr->next;
-         freeSegInfo(curr);
-         return;
-      }
-      prev_next_ptr = &curr->next;
-      curr          =  curr->next;
+   prev = NULL;
+   curr = segInfo_list;
+   while (True) {
+      if (curr == NULL) break;
+      if (start == curr->start) break;
+      prev = curr;
+      curr = curr->next;
+   }
+   if (curr == NULL) {
+      VGP_POPCC(VgpReadSyms);
+      return;
    }
 
-   // Not found.
-   VGP_POPCC(VgpReadSyms);
+   if (VG_(clo_verbosity) > 1)
+      VG_(message)(Vg_DebugMsg, 
+                   "discard syms at %p-%p in %s due to munmap()", 
+                   start, start+length, curr->filename ? curr->filename : (Char *)"???");
+
+   vg_assert(prev == NULL || prev->next == curr);
+
+   if (prev == NULL) {
+      segInfo_list = curr->next;
+   } else {
+      prev->next = curr->next;
+   }
+
+   freeSegInfo(curr);
+   return;
 }
 
 void VG_(seginfo_decref)(SegInfo *si, Addr start)

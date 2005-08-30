@@ -653,6 +653,28 @@ static void* dequeue(Queue* q)
 /*--- malloc() et al replacement wrappers                  ---*/
 /*------------------------------------------------------------*/
 
+static __inline__ 
+void add_HP_Chunk(HP_Chunk* hc)
+{
+   n_heap_blocks++;
+   VG_(HT_add_node) ( malloc_list, (VgHashNode*)hc );
+}
+
+static __inline__ 
+HP_Chunk* get_HP_Chunk(void* p, HP_Chunk*** prev_chunks_next_ptr)
+{
+   return (HP_Chunk*)VG_(HT_get_node) ( malloc_list, (UWord)p,
+                                        (VgHashNode***)prev_chunks_next_ptr );
+}
+
+static __inline__
+void remove_HP_Chunk(HP_Chunk* hc, HP_Chunk** prev_chunks_next_ptr)
+{
+   tl_assert(n_heap_blocks > 0);
+   n_heap_blocks--;
+   *prev_chunks_next_ptr = hc->next;
+}
+
 // Forward declaration
 static void hp_census(void);
 
@@ -680,7 +702,7 @@ void* new_block ( ThreadId tid, void* p, SizeT size, SizeT align,
       if (is_zeroed) VG_(memset)(p, 0, size);
    }
 
-   // Make new HP_Chunk node, add to malloc_list
+   // Make new HP_Chunk node, add to malloclist
    hc       = VG_(malloc)(sizeof(HP_Chunk));
    hc->size = size;
    hc->data = (Addr)p;
@@ -690,8 +712,7 @@ void* new_block ( ThreadId tid, void* p, SizeT size, SizeT align,
       if (0 != size) 
          update_XCon(hc->where, size);
    }
-   VG_(HT_add_node)(malloc_list, hc);
-   n_heap_blocks++;
+   add_HP_Chunk( hc );
 
    // do a census!
    hp_census();      
@@ -703,19 +724,19 @@ void* new_block ( ThreadId tid, void* p, SizeT size, SizeT align,
 static __inline__
 void die_block ( void* p, Bool custom_free )
 {
-   HP_Chunk* hc;
+   HP_Chunk *hc, **remove_handle;
    
    VGP_PUSHCC(VgpCliMalloc);
 
    // Update statistics
    n_frees++;
 
-   // Remove HP_Chunk from malloc_list
-   hc = VG_(HT_remove)(malloc_list, (UWord)p);
-   if (NULL == hc)
-      return;   // must have been a bogus free()
-   tl_assert(n_heap_blocks > 0);
-   n_heap_blocks--;
+   // Remove HP_Chunk from malloclist
+   hc = get_HP_Chunk( p, &remove_handle );
+   if (hc == NULL)
+      return;   // must have been a bogus free(), or p==NULL
+   tl_assert(hc->data == (Addr)p);
+   remove_HP_Chunk(hc, remove_handle);
 
    if (clo_heap && hc->size != 0)
       update_XCon(hc->where, -hc->size);
@@ -775,20 +796,23 @@ static void ms___builtin_vec_delete ( ThreadId tid, void* p )
 
 static void* ms_realloc ( ThreadId tid, void* p_old, SizeT new_size )
 {
-   HP_Chunk* hc;
-   void*     p_new;
-   SizeT     old_size;
-   XPt      *old_where, *new_where;
+   HP_Chunk*    hc;
+   HP_Chunk**   remove_handle;
+   Int          i;
+   void*        p_new;
+   SizeT        old_size;
+   XPt         *old_where, *new_where;
    
    VGP_PUSHCC(VgpCliMalloc);
 
-   // Remove the old block
-   hc = VG_(HT_remove)(malloc_list, (UWord)p_old);
+   // First try and find the block.
+   hc = get_HP_Chunk ( p_old, &remove_handle );
    if (hc == NULL) {
       VGP_POPCC(VgpCliMalloc);
-      return NULL;   // must have been a bogus realloc()
+      return NULL;   // must have been a bogus free()
    }
 
+   tl_assert(hc->data == (Addr)p_old);
    old_size = hc->size;
   
    if (new_size <= old_size) {
@@ -798,7 +822,10 @@ static void* ms_realloc ( ThreadId tid, void* p_old, SizeT new_size )
    } else {
       // new size is bigger;  make new block, copy shared contents, free old
       p_new = VG_(cli_malloc)(VG_(clo_alignment), new_size);
-      VG_(memcpy)(p_new, p_old, old_size);
+
+      for (i = 0; i < old_size; i++)
+         ((UChar*)p_new)[i] = ((UChar*)p_old)[i];
+
       VG_(cli_free)(p_old);
    }
    
@@ -816,12 +843,12 @@ static void* ms_realloc ( ThreadId tid, void* p_old, SizeT new_size )
       if (0 != new_size) update_XCon(new_where,  new_size);
    }
 
-   // Now insert the new hc (with a possibly new 'data' field) into
-   // malloc_list.  If this realloc() did not increase the memory size, we
-   // will have removed and then re-added mc unnecessarily.  But that's ok
-   // because shrinking a block with realloc() is (presumably) much rarer
-   // than growing it, and this way simplifies the growing case.
-   VG_(HT_add_node)(malloc_list, hc);
+   // If block has moved, have to remove and reinsert in the malloclist
+   // (since the updated 'data' field is the hash lookup key).
+   if (p_new != p_old) {
+      remove_HP_Chunk(hc, remove_handle);
+      add_HP_Chunk(hc);
+   }
 
    VGP_POPCC(VgpCliMalloc);
    return p_new;
@@ -834,6 +861,13 @@ static void* ms_realloc ( ThreadId tid, void* p_old, SizeT new_size )
 
 static Census censi[MAX_N_CENSI];
 static UInt   curr_census = 0;
+
+// Must return False so that all stacks are traversed
+static Bool count_stack_size( Addr stack_min, Addr stack_max, void *cp )
+{
+   *(UInt *)cp  += (stack_max - stack_min);
+   return False;
+}
 
 static UInt get_xtree_size(XPt* xpt, UInt ix)
 {
@@ -1058,13 +1092,9 @@ static void hp_census(void)
 
    // Stack(s) ---------------------------------------------------------
    if (clo_stacks) {
-      ThreadId tid;
-      Addr     stack_min, stack_max;
       census->stacks_space = sigstacks_space;
-      VG_(thread_stack_reset_iter)();
-      while ( VG_(thread_stack_next)(&tid, &stack_min, &stack_max) ) {
-         census->stacks_space += (stack_max - stack_min);
-      }
+      // slightly abusing this function
+      VG_(first_matching_thread_stack)( count_stack_size, &census->stacks_space );
    }
 
    // Finish, update interval if necessary -----------------------------
@@ -1531,7 +1561,7 @@ static void pp_all_XPts2(Int fd, Queue* q, ULong heap_spacetime,
 //         tl_assert(sum <= xpt->exact_ST_dbld);
 //         tl_assert(sum * 1.05 > xpt->exact_ST_dbld );
 //         if (sum != xpt->exact_ST_dbld) {
-//            VG_(printf)("%lld, %lld\n", sum, xpt->exact_ST_dbld);
+//            VG_(printf)("%ld, %ld\n", sum, xpt->exact_ST_dbld);
 //         }
       }
 
@@ -1817,6 +1847,6 @@ static void ms_pre_clo_init()
 VG_DETERMINE_INTERFACE_VERSION(ms_pre_clo_init, 0)
 
 /*--------------------------------------------------------------------*/
-/*--- end                                                          ---*/
+/*--- end                                                ms_main.c ---*/
 /*--------------------------------------------------------------------*/
 
