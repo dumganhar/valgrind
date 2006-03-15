@@ -58,22 +58,14 @@ extern SegInfo *VG_(read_seg_symbols) ( Addr addr, SizeT len,
 
 extern Bool VG_(get_fnname_nodemangle)( Addr a, Char* fnname, Int n_fnname );
 
+extern Addr VG_(reverse_search_one_symtab) ( const SegInfo* si, const Char* name );
+
 extern Bool VG_(use_CFI_info) ( /*MOD*/Addr* ipP,
                                 /*MOD*/Addr* spP,
                                 /*MOD*/Addr* fpP,
                                 Addr min_accessible,
                                 Addr max_accessible );
 
-/* ppc64-linux only: find the TOC pointer (R2 value) that should be in
-   force at the entry point address of the function containing
-   guest_code_addr.  Returns 0 if not known. */
-extern Addr VG_(get_tocptr) ( Addr guest_code_addr );
-
-/* This is only available to core... don't demangle C++ names, but do
-   do Z-demangling, match anywhere in function, and don't show
-   offsets. */
-extern
-Bool VG_(get_fnname_Z_demangle_only) ( Addr a, Char* buf, Int nbuf );
 
 #endif   // __PUB_CORE_DEBUGINFO_H
 

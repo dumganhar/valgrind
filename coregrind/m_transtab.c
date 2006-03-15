@@ -31,7 +31,7 @@
 
 #include "pub_core_basics.h"
 #include "pub_core_debuglog.h"
-#include "pub_core_machine.h"    // For VG(machine_get_VexArchInfo)
+#include "pub_core_machine.h"    // ppc32: VG_(cache_line_size_ppc32)
 #include "pub_core_libcbase.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcprint.h"
@@ -557,9 +557,6 @@ static Bool sanity_check_eclasses_in_sector ( Sector* sec )
 
 /* Sanity check absolutely everything.  True == check passed. */
 
-/* forward */
-static Bool sanity_check_redir_tt_tc ( void );
-
 static Bool sanity_check_all_sectors ( void )
 {
    Int     sno;
@@ -573,8 +570,6 @@ static Bool sanity_check_all_sectors ( void )
       if (!sane)
          return False;
    }
-   if (!sanity_check_redir_tt_tc() )
-      return False;
    return True;
 }
 
@@ -611,7 +606,7 @@ static inline UInt HASH_TT ( Addr64 key )
 
 static void setFastCacheEntry ( Addr64 key, ULong* tce, UInt* count )
 {
-   UInt cno = (UInt)VG_TT_FAST_HASH(key);
+   UInt cno = ((UInt)key) & VG_TT_FAST_MASK;
    VG_(tt_fast)[cno]  = tce;
    VG_(tt_fastN)[cno] = count;
    n_fast_updates++;
@@ -739,7 +734,7 @@ static void initialiseSector ( Int sno )
 
 static void invalidate_icache ( void *ptr, Int nbytes )
 {
-#  if defined(VGA_ppc32) || defined(VGA_ppc64)
+#  if defined(VGA_ppc32)
    Addr startaddr = (Addr) ptr;
    Addr endaddr   = startaddr + nbytes;
    Addr cls;
@@ -747,7 +742,7 @@ static void invalidate_icache ( void *ptr, Int nbytes )
    VexArchInfo vai;
 
    VG_(machine_get_VexArchInfo)( NULL, &vai );
-   cls = vai.ppc_cache_line_szB;
+   cls = vai.ppc32_cache_line_szB;
 
    /* Stay sane .. */
    vg_assert(cls == 32 || cls == 128);
@@ -962,9 +957,6 @@ Bool VG_(search_transtab) ( /*OUT*/AddrH* result,
 /*-------------------------------------------------------------*/
 /*--- Delete translations.                                  ---*/
 /*-------------------------------------------------------------*/
-
-/* forward */
-static void unredir_discard_translations( Addr64, ULong );
 
 /* Stuff for deleting translations which intersect with a given
    address range.  Unfortunately, to make this run at a reasonable
@@ -1187,9 +1179,6 @@ void VG_(discard_translations) ( Addr64 guest_start, ULong range,
    if (anyDeleted)
       invalidateFastCache();
 
-   /* don't forget the no-redir cache */
-   unredir_discard_translations( guest_start, range );
-
    /* Post-deletion sanity check */
    if (VG_(clo_sanity_level >= 4)) {
       Int      i;
@@ -1209,167 +1198,6 @@ void VG_(discard_translations) ( Addr64 guest_start, ULong range,
             vg_assert(!overlaps( guest_start, range, &tte->vge ));
          }
       }
-   }
-}
-
-
-/*------------------------------------------------------------*/
-/*--- AUXILIARY: the unredirected TT/TC                    ---*/
-/*------------------------------------------------------------*/
-
-/* A very simple translation cache which holds a small number of
-   unredirected translations.  This is completely independent of the
-   main tt/tc structures.  When unredir_tc or unredir_tt becomes full,
-   both structures are simply dumped and we start over.
-
-   Since these translations are unredirected, the search key is (by
-   definition) the first address entry in the .vge field. */
-
-/* Sized to hold 500 translations of average size 1000 bytes. */
-
-#define UNREDIR_SZB   1000
-
-#define N_UNREDIR_TT  500
-#define N_UNREDIR_TCQ (N_UNREDIR_TT * UNREDIR_SZB / sizeof(ULong))
-
-typedef
-   struct {
-      VexGuestExtents vge;
-      Addr            hcode;
-      Bool            inUse;
-   }
-   UTCEntry;
-
-/* We just allocate forwards in _tc, never deleting. */
-static ULong    *unredir_tc;
-static Int      unredir_tc_used = N_UNREDIR_TCQ;
-
-/* Slots in _tt can come into use and out again (.inUse).
-   Nevertheless _tt_highwater is maintained so that invalidations
-   don't have to scan all the slots when only a few are in use.
-   _tt_highwater holds the index of the highest ever allocated
-   slot. */
-static UTCEntry unredir_tt[N_UNREDIR_TT];
-static Int      unredir_tt_highwater;
-
-
-static void init_unredir_tt_tc ( void )
-{
-   Int i;
-   if (unredir_tc == NULL) {
-      SysRes sres = VG_(am_mmap_anon_float_valgrind)( N_UNREDIR_TT * UNREDIR_SZB );
-      if (sres.isError) {
-         VG_(out_of_memory_NORETURN)("init_unredir_tt_tc", N_UNREDIR_TT * UNREDIR_SZB);
-         /*NOTREACHED*/
-      }
-      unredir_tc = (ULong *)sres.val;
-   }
-   unredir_tc_used = 0;
-   for (i = 0; i < N_UNREDIR_TT; i++)
-      unredir_tt[i].inUse = False;
-   unredir_tt_highwater = -1;
-}
-
-/* Do a sanity check; return False on failure. */
-static Bool sanity_check_redir_tt_tc ( void )
-{
-   Int i;
-   if (unredir_tt_highwater < -1) return False;
-   if (unredir_tt_highwater >= N_UNREDIR_TT) return False;
-
-   for (i = unredir_tt_highwater+1; i < N_UNREDIR_TT; i++)
-      if (unredir_tt[i].inUse)
-         return False;
-
-   if (unredir_tc_used < 0) return False;
-   if (unredir_tc_used > N_UNREDIR_TCQ) return False;
-
-   return True;
-}
-
-
-/* Add an UNREDIRECTED translation of vge to TT/TC.  The translation
-   is temporarily in code[0 .. code_len-1].
-*/
-void VG_(add_to_unredir_transtab)( VexGuestExtents* vge,
-                                   Addr64           entry,
-                                   AddrH            code,
-                                   UInt             code_len,
-                                   Bool             is_self_checking )
-{
-   Int   i, j, code_szQ;
-   HChar *srcP, *dstP;
-
-   vg_assert(sanity_check_redir_tt_tc());
-
-   /* This is the whole point: it's not redirected! */
-   vg_assert(entry == vge->base[0]);
-
-   /* How many unredir_tt slots are needed */   
-   code_szQ = (code_len + 7) / 8;
-
-   /* Look for an empty unredir_tc slot */
-   for (i = 0; i < N_UNREDIR_TT; i++)
-      if (!unredir_tt[i].inUse)
-         break;
-
-   if (i >= N_UNREDIR_TT || code_szQ > (N_UNREDIR_TCQ - unredir_tc_used)) {
-      /* It's full; dump everything we currently have */
-      init_unredir_tt_tc();
-      i = 0;
-   }
-
-   vg_assert(unredir_tc_used >= 0);
-   vg_assert(unredir_tc_used <= N_UNREDIR_TCQ);
-   vg_assert(code_szQ > 0);
-   vg_assert(code_szQ + unredir_tc_used <= N_UNREDIR_TCQ);
-   vg_assert(i >= 0 && i < N_UNREDIR_TT);
-   vg_assert(unredir_tt[i].inUse == False);
-
-   if (i > unredir_tt_highwater)
-      unredir_tt_highwater = i;
-
-   dstP = (HChar*)&unredir_tc[unredir_tc_used];
-   srcP = (HChar*)code;
-   for (j = 0; j < code_len; j++)
-      dstP[j] = srcP[j];
-
-   unredir_tt[i].inUse = True;
-   unredir_tt[i].vge   = *vge;
-   unredir_tt[i].hcode = (Addr)dstP;
-
-   unredir_tc_used += code_szQ;
-   vg_assert(unredir_tc_used >= 0);
-   vg_assert(unredir_tc_used <= N_UNREDIR_TCQ);
-
-   vg_assert(&dstP[code_len] <= (HChar*)&unredir_tc[unredir_tc_used]);
-}
-
-Bool VG_(search_unredir_transtab) ( /*OUT*/AddrH* result,
-                                    Addr64        guest_addr )
-{
-   Int i;
-   for (i = 0; i < N_UNREDIR_TT; i++) {
-      if (!unredir_tt[i].inUse)
-         continue;
-      if (unredir_tt[i].vge.base[0] == guest_addr) {
-         *result = (AddrH)unredir_tt[i].hcode;
-         return True;
-      }
-   }
-   return False;
-}
-
-static void unredir_discard_translations( Addr64 guest_start, ULong range )
-{
-   Int i;
-
-   vg_assert(sanity_check_redir_tt_tc());
-
-   for (i = 0; i <= unredir_tt_highwater; i++) {
-      if (unredir_tt[i].inUse
-          && overlaps( guest_start, range, &unredir_tt[i].vge))
-         unredir_tt[i].inUse = False;
    }
 }
 
@@ -1419,9 +1247,6 @@ void VG_(init_tt_tc) ( void )
    /* and the fast caches. */
    invalidateFastCache();
 
-   /* and the unredir tt/tc */
-   init_unredir_tt_tc();
-
    if (VG_(clo_verbosity) > 2) {
       VG_(message)(Vg_DebugMsg,
          "TT/TC: cache: %d sectors of %d bytes each = %d total", 
@@ -1470,16 +1295,16 @@ void VG_(print_tt_tc_stats) ( void )
       n_fast_updates, n_fast_flushes );
 
    VG_(message)(Vg_DebugMsg,
-                " transtab: new        %,lld "
+                "translate: new        %,lld "
                 "(%,llu -> %,llu; ratio %,llu:10) [%,llu scs]",
                 n_in_count, n_in_osize, n_in_tsize,
                 safe_idiv(10*n_in_tsize, n_in_osize),
                 n_in_sc_count);
    VG_(message)(Vg_DebugMsg,
-                " transtab: dumped     %,llu (%,llu -> ?" "?)",
+                "translate: dumped     %,llu (%,llu -> ?" "?)",
                 n_dump_count, n_dump_osize );
    VG_(message)(Vg_DebugMsg,
-                " transtab: discarded  %,llu (%,llu -> ?" "?)",
+                "translate: discarded  %,llu (%,llu -> ?" "?)",
                 n_disc_count, n_disc_osize );
 
    if (0) {

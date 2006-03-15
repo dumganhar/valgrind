@@ -39,6 +39,7 @@
 #include "pub_tool_libcprint.h"
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_options.h"
+#include "pub_tool_profile.h"       // For mac_shared.h
 #include "pub_tool_replacemalloc.h"
 #include "pub_tool_threadstate.h"
 #include "mac_shared.h"
@@ -180,6 +181,7 @@ void* MAC_(new_block) ( ThreadId tid,
                         Addr p, SizeT size, SizeT align, UInt rzB,
                         Bool is_zeroed, MAC_AllocKind kind, VgHashTable table)
 {
+   VGP_PUSHCC(VgpCliMalloc);
    cmalloc_n_mallocs ++;
 
    // Allocate and zero if necessary
@@ -189,6 +191,7 @@ void* MAC_(new_block) ( ThreadId tid,
       tl_assert(MAC_AllocCustom != kind);
       p = (Addr)VG_(cli_malloc)( align, size );
       if (!p) {
+         VGP_POPCC(VgpCliMalloc);
          return NULL;
       }
       if (is_zeroed) VG_(memset)((void*)p, 0, size);
@@ -202,6 +205,8 @@ void* MAC_(new_block) ( ThreadId tid,
    MAC_(ban_mem_heap)( p-rzB, rzB );
    MAC_(new_mem_heap)( p, size, is_zeroed );
    MAC_(ban_mem_heap)( p+size, rzB );
+
+   VGP_POPCC(VgpCliMalloc);
 
    return (void*)p;
 }
@@ -285,6 +290,8 @@ void MAC_(handle_free) ( ThreadId tid, Addr p, UInt rzB, MAC_AllocKind kind )
 {
    MAC_Chunk* mc;
 
+   VGP_PUSHCC(VgpCliMalloc);
+
    cmalloc_n_frees++;
 
    mc = VG_(HT_remove) ( MAC_(malloc_list), (UWord)p );
@@ -297,6 +304,8 @@ void MAC_(handle_free) ( ThreadId tid, Addr p, UInt rzB, MAC_AllocKind kind )
       }
       die_and_free_mem ( tid, mc, rzB );
    }
+
+   VGP_POPCC(VgpCliMalloc);
 }
 
 void MAC_(free) ( ThreadId tid, void* p )
@@ -323,6 +332,8 @@ void* MAC_(realloc) ( ThreadId tid, void* p_old, SizeT new_size )
    void*      p_new;
    SizeT      old_size;
 
+   VGP_PUSHCC(VgpCliMalloc);
+
    cmalloc_n_frees ++;
    cmalloc_n_mallocs ++;
    cmalloc_bs_mallocd += new_size;
@@ -335,6 +346,7 @@ void* MAC_(realloc) ( ThreadId tid, void* p_old, SizeT new_size )
    if (mc == NULL) {
       MAC_(record_free_error) ( tid, (Addr)p_old );
       /* We return to the program regardless. */
+      VGP_POPCC(VgpCliMalloc);
       return NULL;
    }
 
@@ -394,6 +406,7 @@ void* MAC_(realloc) ( ThreadId tid, void* p_old, SizeT new_size )
    // than growing it, and this way simplifies the growing case.
    VG_(HT_add_node)( MAC_(malloc_list), mc );
 
+   VGP_POPCC(VgpCliMalloc);
    return p_new;
 }
 

@@ -37,7 +37,6 @@ typedef
       Addr addr;   /* lowest address of entity */
       UInt size;   /* size in bytes */
       Char *name;  /* name */
-      Addr tocptr; /* ppc64-linux only: value that R2 should have */
    }
    RiSym;
 
@@ -165,8 +164,7 @@ extern void ML_(ppCfiSI)   ( CfiSI* );
 
 
 /* A structure which contains information pertaining to one mapped
-   text segment.  This type is exported only abstractly - in
-   pub_tool_debuginfo.h. */
+   text segment. (typedef in tool.h) */
 struct _SegInfo {
    struct _SegInfo* next;	/* list of SegInfos */
 
@@ -214,17 +212,15 @@ struct _SegInfo {
    */
    OffT   offset;
 
-   /* Bounds of data, BSS, PLT, GOT and OPD (for ppc64-linux) so that
-      tools can see what section an address is in.  In the running image! */
-   Addr	  plt_start_vma;
+   /* Bounds of data, BSS, PLT and GOT, so that tools can see what
+      section an address is in */
+   Addr	  plt_start;
    UInt   plt_size;
-   Addr   got_start_vma;
+   Addr   got_start;
    UInt   got_size;
-   Addr   opd_start_vma;
-   UInt   opd_size;
-   Addr   data_start_vma;
+   Addr   data_start;
    UInt   data_size;
-   Addr   bss_start_vma;
+   Addr   bss_start;
    UInt   bss_size;
 
    /* data used by stabs parser */

@@ -51,6 +51,7 @@
 #include "pub_tool_machine.h"
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_options.h"
+#include "pub_tool_profile.h"
 #include "pub_tool_replacemalloc.h"
 #include "pub_tool_tooliface.h"
 
@@ -1629,6 +1630,8 @@ void set_address_range_state ( Addr a, SizeT len /* in bytes */,
                    "Warning: set address range state: large range %d",
                    len);
 
+   //VGP_PUSHCC(VgpSARP);
+
    /* Remove mutexes in recycled memory range from hash */
    find_mutex_range(a, a+len, cleanmx);
 
@@ -1674,6 +1677,8 @@ void set_address_range_state ( Addr a, SizeT len /* in bytes */,
       VG_(printf)("init_status = %u\n", status);
       VG_(tool_panic)("Unexpected Vge_InitStatus");
    }
+      
+   //VGP_POPCC(VgpSARP);
 }
 
 
@@ -2293,10 +2298,8 @@ UCodeBlock* TL_(instrument) ( UCodeBlock* cb_in, Addr not_used )
 }
 #endif
 static
-IRBB* hg_instrument ( VgCallbackClosure* closure,
-                      IRBB* bb,
-                      VexGuestLayout* layout, 
-                      VexGuestExtents* vge,
+IRBB* hg_instrument ( IRBB* bb_in, VexGuestLayout* layout, 
+                      Addr64 orig_addr_noredir, VexGuestExtents* vge,
                       IRType gWordTy, IRType hWordTy )
 {
    tl_assert(0);  // Need to convert to Vex

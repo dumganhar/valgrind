@@ -54,12 +54,7 @@
 #define PATH_MAX 4096 /* POSIX refers to this a lot but I dunno
                          where it is defined */
 
-#ifndef EM_X86_64
-#define EM_X86_64 62    // elf.h doesn't define this on some older systems
-#endif
-
 /* Report fatal errors */
-__attribute__((noreturn))
 static void barf ( const char *format, ... )
 {
    va_list vargs;
@@ -71,8 +66,6 @@ static void barf ( const char *format, ... )
    va_end(vargs);
 
    exit(1);
-   /*NOTREACHED*/
-   assert(0);
 }
 
 /* Search the path for the client program */
@@ -140,37 +133,26 @@ static const char *select_platform(const char *clientname)
       *interpend = '\0';
 
       platform = select_platform(interp);
-   } else if (memcmp(header, ELFMAG, SELFMAG) == 0) {
+   } else if (memcmp(header, ELFMAG, SELFMAG) == 0 &&
+              header[EI_CLASS] == ELFCLASS32 &&
+              header[EI_DATA] == ELFDATA2LSB) {
+      const Elf32_Ehdr *ehdr = (Elf32_Ehdr *)header;
 
-      if (header[EI_CLASS] == ELFCLASS32) {
-         const Elf32_Ehdr *ehdr = (Elf32_Ehdr *)header;
+      if (ehdr->e_machine == EM_386 &&
+          ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV) {
+         platform = "x86-linux";
+      } else if (ehdr->e_machine == EM_PPC &&
+                 ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV) {
+         platform = "ppc32-linux";
+      }
+   } else if (memcmp(header, ELFMAG, SELFMAG) == 0 &&
+              header[EI_CLASS] == ELFCLASS64 &&
+              header[EI_DATA] == ELFDATA2LSB) {
+      const Elf64_Ehdr *ehdr = (Elf64_Ehdr *)header;
 
-         if (header[EI_DATA] == ELFDATA2LSB) {
-            if (ehdr->e_machine == EM_386 &&
-                ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV) {
-               platform = "x86-linux";
-            }
-         }
-         else if (header[EI_DATA] == ELFDATA2MSB) {
-            if (ehdr->e_machine == EM_PPC &&
-                ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV) {
-               platform = "ppc32-linux";
-            }
-         }
-      } else if (header[EI_CLASS] == ELFCLASS64) {
-         const Elf64_Ehdr *ehdr = (Elf64_Ehdr *)header;
-
-         if (header[EI_DATA] == ELFDATA2LSB) {
-            if (ehdr->e_machine == EM_X86_64 &&
-                ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV) {
-               platform = "amd64-linux";
-            }
-         } else if (header[EI_DATA] == ELFDATA2MSB) {
-            if (ehdr->e_machine == EM_PPC64 &&
-                ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV) {
-               platform = "ppc64-linux";
-            }
-         }
+      if (ehdr->e_machine == EM_X86_64 &&
+          ehdr->e_ident[EI_OSABI] == ELFOSABI_SYSV) {
+         platform = "amd64-linux";
       }
    }
 
@@ -188,7 +170,6 @@ int main(int argc, char** argv, char** envp)
    const char *toolname = NULL;
    const char *clientname = NULL;
    const char *platform;
-   const char *default_platform;
    const char *cp;
    char *toolfile;
    char launcher_name[PATH_MAX+1];
@@ -228,40 +209,15 @@ int main(int argc, char** argv, char** envp)
       toolname = "memcheck";
    }
 
-   /* Select a platform to use if we can't decide that by looking at
-      the executable (eg because it's a shell script).  Note that the
-      default_platform is not necessarily either the primary or
-      secondary build target.  Instead it's chosen to maximise the
-      chances that /bin/sh will work on it.  Hence for a primary
-      target of ppc64-linux we still choose ppc32-linux as the default
-      target, because on most ppc64-linux setups, the basic /bin,
-      /usr/bin, etc, stuff is built in 32-bit mode, not 64-bit
-      mode. */
-   if (0==strcmp(VG_PLATFORM,"x86-linux"))
-      default_platform = "x86-linux";
-   else if (0==strcmp(VG_PLATFORM,"amd64-linux"))
-      default_platform = "amd64-linux";
-   else if (0==strcmp(VG_PLATFORM,"ppc32-linux"))
-      default_platform = "ppc32-linux";
-   else if (0==strcmp(VG_PLATFORM,"ppc64-linux"))
-      default_platform = "ppc32-linux";
-   else
-      barf("Unknown VG_PLATFORM '%s'", VG_PLATFORM);
-
-   /* Work out what platform to use, or use the default platform if
-      not possible. */
+   /* Work out what platform to use */
    if (clientname == NULL) {
-      VG_(debugLog)(1, "launcher", 
-                       "no client specified, defaulting platform to '%s'\n",
-                        default_platform);
-      platform = default_platform;
+      VG_(debugLog)(1, "launcher", "no client specified, defaulting platform to '%s'\n", VG_PLATFORM);
+      platform = VG_PLATFORM;
    } else if ((platform = select_platform(clientname)) != NULL) {
       VG_(debugLog)(1, "launcher", "selected platform '%s'\n", platform);
    } else {
-      VG_(debugLog)(1, "launcher", 
-                       "no platform detected, defaulting platform to '%s'\n",
-                       default_platform);
-      platform = default_platform;
+      VG_(debugLog)(1, "launcher", "no platform detected, defaulting platform to '%s'\n", VG_PLATFORM);
+      platform = VG_PLATFORM;
    }
    
    /* Figure out the name of this executable (viz, the launcher), so

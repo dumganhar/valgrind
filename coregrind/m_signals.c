@@ -207,36 +207,6 @@ typedef struct SigQueue {
       )
 #  define VG_UCONTEXT_LINK_REG(uc)        ((uc)->uc_regs->mc_gregs[VKI_PT_LNK]) 
 
-#elif defined(VGP_ppc64_linux)
-#  define VG_UCONTEXT_INSTR_PTR(uc)       ((uc)->uc_mcontext.gp_regs[VKI_PT_NIP])
-#  define VG_UCONTEXT_STACK_PTR(uc)       ((uc)->uc_mcontext.gp_regs[VKI_PT_R1])
-#  define VG_UCONTEXT_FRAME_PTR(uc)       ((uc)->uc_mcontext.gp_regs[VKI_PT_R1])
-#  define VG_UCONTEXT_SYSCALL_NUM(uc)     ((uc)->uc_mcontext.gp_regs[VKI_PT_R0])
-#if 0
-#  define VG_UCONTEXT_SYSCALL_SYSRES(uc)                            \
-      /* Convert the values in uc_mcontext r3,cr into a SysRes. */  \
-      VG_(mk_SysRes_ppc64_linux)(                                   \
-         (uc)->uc_mcontext.gp_regs[VKI_PT_R3],                      \
-         (((uc)->uc_mcontext.gp_regs[VKI_PT_CCR] >> 28) & 1)        \
-      )
-#else
-   /* Dubious hack: if there is an error, only consider the lowest 8
-      bits of r3.  memcheck/tests/post-syscall shows a case where an
-      interrupted syscall should have produced a ucontext with 0x4
-      (VKI_EINTR) in r3 but is in fact producing 0x204. */
-   /* Awaiting clarification from PaulM.  Evidently 0x204 is
-      ERESTART_RESTARTBLOCK, which shouldn't have made it into user
-      space. */
-   static inline SysRes VG_UCONTEXT_SYSCALL_SYSRES( struct vki_ucontext* uc )
-   {
-      ULong err = (uc->uc_mcontext.gp_regs[VKI_PT_CCR] >> 28) & 1;
-      ULong r3  = uc->uc_mcontext.gp_regs[VKI_PT_R3];
-      if (err) r3 &= 0xFF;
-      return VG_(mk_SysRes_ppc64_linux)( r3, err );
-   }
-#endif
-#  define VG_UCONTEXT_LINK_REG(uc)        ((uc)->uc_mcontext.gp_regs[VKI_PT_LNK]) 
-
 #else
 #  error Unknown platform
 #endif
@@ -492,20 +462,6 @@ extern void my_sigreturn(void);
    "	li	0, " #name "\n" \
    "	sc\n" \
    ".previous\n"
-#elif defined(VGP_ppc64_linux)
-#  define _MYSIG(name) \
-   ".align   2\n" \
-   ".globl   my_sigreturn\n" \
-   ".section \".opd\",\"aw\"\n" \
-   ".align   3\n" \
-   "my_sigreturn:\n" \
-   ".quad    .my_sigreturn,.TOC.@tocbase,0\n" \
-   ".previous\n" \
-   ".type    .my_sigreturn,@function\n" \
-   ".globl   .my_sigreturn\n" \
-   ".my_sigreturn:\n" \
-   "	li	0, " #name "\n" \
-   "	sc\n"
 #else
 #  error Unknown platform
 #endif
@@ -1352,20 +1308,6 @@ void VG_(synth_sigill)(ThreadId tid, Addr addr)
    deliver_signal(tid, &info);
 }
 
-// Synthesise a SIGTRAP.
-void VG_(synth_sigtrap)(ThreadId tid)
-{
-   vki_siginfo_t info;
-
-   vg_assert(VG_(threads)[tid].status == VgTs_Runnable);
-
-   info.si_signo = VKI_SIGTRAP;
-   info.si_code = VKI_TRAP_TRACE; /* jrs: no idea what this should be */
-
-   resume_scheduler(tid);
-   deliver_signal(tid, &info);
-}
-
 /* Make a signal pending for a thread, for later delivery.
    VG_(poll_signals) will arrange for it to be delivered at the right
    time. 
@@ -1716,8 +1658,7 @@ void sync_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext *u
 	       VG_(message)(Vg_DebugMsg, 
 			    "       -> extended stack base to %p", 
                             VG_PGROUNDDN(fault));
-            return; // extension succeeded, restart host (hence guest)
-                    // instruction
+	    return; // extension succeeded, restart instruction
 	 } else
 	    VG_(message)(Vg_UserMsg, 
                          "Stack overflow in thread %d: can't grow stack to %p", 
@@ -1737,7 +1678,7 @@ void sync_signalhandler ( Int sigNo, vki_siginfo_t *info, struct vki_ucontext *u
 	 VG_(set_default_handler)(sigNo);
       }
 
-      if (VG_(in_generated_code)) {
+      if (!VG_(my_fault)) {
 	 /* Can't continue; must longjmp back to the scheduler and thus
 	    enter the sighandler immediately. */
 	 deliver_signal(tid, info);

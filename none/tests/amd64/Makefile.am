@@ -6,7 +6,6 @@ INSN_TESTS = insn_basic insn_mmx insn_sse insn_sse2 insn_fpu
 
 EXTRA_DIST = $(noinst_SCRIPTS) \
 	faultstatus.vgtest faultstatus.stderr.exp \
-	fcmovnu.vgtest fcmovnu.stderr.exp fcmovnu.stdout.exp \
 	fxtract.vgtest fxtract.stderr.exp fxtract.stdout.exp \
 	$(addsuffix .stderr.exp,$(INSN_TESTS)) \
 	$(addsuffix .stdout.exp,$(INSN_TESTS)) \
@@ -18,10 +17,9 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 
 
 check_PROGRAMS = \
-	faultstatus fcmovnu fxtract $(INSN_TESTS) looper jrcxz smc1 shrld
+	faultstatus fxtract $(INSN_TESTS) looper jrcxz smc1 shrld
 
 AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g -I$(top_srcdir)/include
-		@FLAG_M64@
 AM_CXXFLAGS = $(AM_CFLAGS)
 
 # generic C ones

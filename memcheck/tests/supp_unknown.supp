@@ -3,6 +3,6 @@
    <insert a suppression name here>
    Memcheck:Addr1
    obj:*
-   fun:(below main)
+   fun:__libc_start_main
 }
 

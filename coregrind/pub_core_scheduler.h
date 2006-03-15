@@ -81,8 +81,8 @@ extern void VG_(scheduler_init) ( Addr clstack_end, SizeT clstack_size );
 /* Stats ... */
 extern void VG_(print_scheduler_stats) ( void );
 
-/* If False, a fault is Valgrind-internal (ie, a bug) */
-extern Bool VG_(in_generated_code);
+/* If true, a fault is Valgrind-internal (ie, a bug) */
+extern Bool VG_(my_fault);
 
 /* Sanity checks which may be done at any time.  The scheduler decides when. */
 extern void VG_(sanity_check_general) ( Bool force_expensive );

@@ -10,7 +10,6 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	cpuid.stderr.exp cpuid.stdout.exp cpuid.vgtest \
 	cmpxchg8b.stderr.exp cmpxchg8b.stdout.exp cmpxchg8b.vgtest \
 	faultstatus.vgtest faultstatus.stderr.exp \
-	fcmovnu.vgtest fcmovnu.stderr.exp fcmovnu.stdout.exp \
 	fpu_lazy_eflags.stderr.exp fpu_lazy_eflags.stdout.exp \
 	fpu_lazy_eflags.vgtest \
 	fxtract.stdout.exp fxtract.stderr.exp fxtract.vgtest \
@@ -31,7 +30,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 
 check_PROGRAMS = \
 	badseg bt_everything bt_literal cmpxchg8b cpuid \
-	faultstatus fcmovnu fpu_lazy_eflags fxtract \
+	faultstatus fpu_lazy_eflags fxtract \
 	getseg incdec_alt $(INSN_TESTS) \
 	lahf looper int pushpopseg sbbmisc \
 	seg_override sigcontext smc1 yield

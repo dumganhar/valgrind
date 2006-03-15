@@ -46,14 +46,14 @@ usage: valgrind [options] prog-and-args
 
   debugging options for all Valgrind tools:
     --sanity-level=<number>   level of sanity checking to do [1]
+    --profile=no|yes          profile? (tool must be built for it) [no]
     --trace-flags=<XXXXXXXX>   show generated code? (X = 0|1) [00000000]
     --profile-flags=<XXXXXXXX> ditto, but for profiling (X = 0|1) [00000000]
-    --trace-notbelow=<number> only show BBs above <number> [999999999]
+    --trace-notbelow=<number> only show BBs above <number> [0]
     --trace-syscalls=no|yes   show all system calls? [no]
     --trace-signals=no|yes    show signal handling details? [no]
     --trace-symtab=no|yes     show symbol table details? [no]
     --trace-cfi=no|yes        show call-frame-info details? [no]
-    --trace-redir=no|yes      show redirection details? [no]
     --trace-sched=no|yes      show thread scheduler details? [no]
     --wait-for-gdb=yes|no     pause on startup to wait for gdb attach
     --command-line-only=no|yes  only use command line options [no]

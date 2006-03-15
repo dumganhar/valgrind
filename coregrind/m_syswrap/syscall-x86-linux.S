@@ -1,7 +1,7 @@
 
-/*--------------------------------------------------------------------*/
-/*--- Support for doing system calls.          syscall-x86-linux.S ---*/
-/*--------------------------------------------------------------------*/
+##--------------------------------------------------------------------##
+##--- Support for doing system calls.          syscall-x86-linux.S ---##
+##--------------------------------------------------------------------##
 
 /*
   This file is part of Valgrind, a dynamic binary instrumentation
@@ -51,10 +51,9 @@
 	back to regs->m_eax on completion.
 	
 	Returns 0 if the syscall was successfully called (even if the
-	syscall itself failed), or a nonzero error code in the lowest
-        8 bits if one of the sigprocmasks failed (there's no way to
-        determine which one failed).  And there's no obvious way to
-        recover from that either, but nevertheless we want to know.
+	syscall itself failed), or a -ve error code if one of the
+	sigprocmasks failed (there's no way to determine which one
+	failed).
 
 	VG_(fixup_guest_state_after_syscall_interrupted) does the
 	thread state fixup in the case where we were interrupted by a
@@ -62,7 +61,7 @@
 	
 	Prototype:
 
-	UWord ML_(do_syscall_for_client_WRK)(
+	Int ML_(do_syscall_for_client_WRK)(
 	                          Int syscallno,		// 0
 				  void* guest_state,		// 4
 				  const vki_sigset_t *sysmask,	// 8
@@ -95,7 +94,7 @@ ML_(do_syscall_for_client_WRK):
 	movl	16+FSZ(%esp), %esi
 	int	$0x80
 	testl	%eax, %eax
-	js	7f	/* sigprocmask failed */
+	js	5f	/* sigprocmask failed */
 	
 	movl	 4+FSZ(%esp), %eax	/* eax == ThreadState * */
 
@@ -123,29 +122,16 @@ ML_(do_syscall_for_client_WRK):
 	xorl	%edx, %edx
 	movl	16+FSZ(%esp), %esi
 	int	$0x80
-	testl	%eax, %eax
-	js	7f	/* sigprocmask failed */
 
 5:	/* now safe from signals */
-	movl	$0, %eax	/* SUCCESS */
+		
 	popl	%ebp
 	popl	%ebx
 	popl	%edi
 	popl	%esi
-	ret
-
-7:	/* failure: return 0x8000 | error code */
-	negl	%eax
-	andl	$0x7FFF, %eax
-	orl	$0x8000, %eax
-	popl	%ebp
-	popl	%ebx
-	popl	%edi
-	popl	%esi
-	ret
 #undef FSZ
+	ret
 
-	
 .section .rodata
 /* export the ranges so that
    VG_(fixup_guest_state_after_syscall_interrupted) can do the
@@ -166,6 +152,6 @@ ML_(blksys_finished):	.long 5b
 /* Let the linker know we don't need an executable stack */
 .section .note.GNU-stack,"",@progbits
 
-/*--------------------------------------------------------------------*/
-/*--- end                                                          ---*/
-/*--------------------------------------------------------------------*/
+##--------------------------------------------------------------------##
+##--- end                                                          ---##
+##--------------------------------------------------------------------##

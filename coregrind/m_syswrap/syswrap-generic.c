@@ -80,7 +80,7 @@ Bool ML_(valid_client_addr)(Addr start, SizeT size, ThreadId tid,
    if (!ret && syscallname != NULL) {
       VG_(message)(Vg_UserMsg, "Warning: client syscall %s tried "
                                "to modify addresses %p-%p",
-                               syscallname, (void*)start, (void*)(start+size-1));
+                               syscallname, start, start+size-1);
       if (VG_(clo_verbosity) > 1) {
          VG_(get_and_pp_StackTrace)(tid, VG_(clo_backtrace_size));
       }
@@ -3452,7 +3452,7 @@ PRE(sys_ioctl)
    case VKI_SOUND_PCM_READ_RATE:
    case VKI_SOUND_PCM_READ_CHANNELS:
    case VKI_SOUND_PCM_READ_BITS:
-#if !defined(VGA_ppc32) && !defined(VGA_ppc64)
+#if !defined(VGA_ppc32)
    case (VKI_SOUND_PCM_READ_BITS|0x40000000): /* what the fuck ? */
 #endif
    case VKI_SOUND_PCM_READ_FILTER:
@@ -4169,7 +4169,7 @@ POST(sys_ioctl)
    case VKI_SOUND_PCM_READ_RATE:
    case VKI_SOUND_PCM_READ_CHANNELS:
    case VKI_SOUND_PCM_READ_BITS:
-#if !defined(VGA_ppc32) && !defined(VGA_ppc64)
+#if !defined(VGA_ppc32)
    case (VKI_SOUND_PCM_READ_BITS|0x40000000): /* what the fuck ? */
 #endif
    case VKI_SOUND_PCM_READ_FILTER:

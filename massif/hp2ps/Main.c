@@ -66,7 +66,9 @@ intish nidents;
 floatish THRESHOLD_PERCENT = DEFAULT_THRESHOLD;
 int TWENTY = DEFAULT_TWENTY;
 
-int main(int argc, char* argv[])
+int main(argc, argv)
+int argc;
+char* argv[];
 {
 
     programname = copystring(Basename(argv[0]));
@@ -145,16 +147,9 @@ nextarg: ;
 	baseName = copystring(Basename(pathName));
 
         hpfp  = Fp(pathName, &hpfile, ".hp", "r"); 
+	psfp  = Fp(baseName, &psfile, ".ps", "w"); 
 
-        // I changed these two lines to use 'pathName' instead of
-        // 'baseName'.  This means that the .ps and .aux files get put in
-        // the same directory as the .hp file.  This solved Valgrind bugt
-        // #117686.  --njn 
-//	psfp  = Fp(baseName, &psfile, ".ps", "w"); 
-	psfp  = Fp(pathName, &psfile, ".ps", "w"); 
-
-//	if (pflag) auxfp = Fp(baseName, &auxfile, ".aux", "r");
-	if (pflag) auxfp = Fp(pathName, &auxfile, ".aux", "r");
+	if (pflag) auxfp = Fp(baseName, &auxfile, ".aux", "r");
     }
 
     GetHpFile(hpfp);

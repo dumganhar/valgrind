@@ -1,7 +1,3 @@
-
-# For AM_FLAG_M3264_PRI
-include $(top_srcdir)/Makefile.flags.am
-
 SUBDIRS = .
 if VG_X86_LINUX
 SUBDIRS += x86
@@ -11,9 +7,6 @@ SUBDIRS += amd64
 endif
 if VG_PPC32_LINUX
 SUBDIRS += ppc32
-endif
-if VG_PPC64_LINUX
-SUBDIRS += ppc64
 endif
 
 DIST_SUBDIRS = ${VG_ARCH_ALL} .
@@ -46,8 +39,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	execve.vgtest execve.stdout.exp execve.stderr.exp \
 	faultstatus.vgtest faultstatus.stderr.exp \
 	fcntl_setown.vgtest fcntl_setown.stdout.exp fcntl_setown.stderr.exp \
-	fdleak_cmsg.stderr.exp fdleak_cmsg.stderr.exp2 \
-	fdleak_cmsg.stderr.exp3 fdleak_cmsg.stderr.exp4 \
+	fdleak_cmsg.stderr.exp fdleak_cmsg.stderr.exp2 fdleak_cmsg.stderr.exp3 \
 	fdleak_cmsg.vgtest \
 	fdleak_creat.stderr.exp fdleak_creat.stderr.exp2 \
 	fdleak_creat.stderr.exp3 fdleak_creat.vgtest \
@@ -74,8 +66,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	map_unmap.stderr.exp map_unmap.stdout.exp map_unmap.vgtest \
 	mq.stderr.exp mq.vgtest \
 	mremap.stderr.exp mremap.stdout.exp mremap.vgtest \
-	mremap2.stderr.exp \
-	mremap2.stdout.exp mremap2.stdout.exp2 mremap2.vgtest \
+	mremap2.stderr.exp mremap2.stdout.exp mremap2.vgtest \
 	munmap_exe.stderr.exp munmap_exe.vgtest \
 	nestedfns.stderr.exp nestedfns.stdout.exp nestedfns.vgtest \
 	pending.stdout.exp pending.stderr.exp pending.vgtest \
@@ -151,12 +142,12 @@ check_PROGRAMS = \
 	tls tls.so tls2.so vgprintf \
 	coolo_sigaction gxx304
 
-AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g $(AM_FLAG_M3264_PRI)
+AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g
 AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include -I$(top_builddir)/include
 AM_CXXFLAGS = $(AM_CFLAGS)
 
 # Extra stuff for C tests
-ansi_CFLAGS		= $(AM_FLAG_M3264_PRI) -ansi
+ansi_CFLAGS		= -ansi
 floored_LDADD 		= -lm
 manythreads_LDADD	= -lpthread
 mq_LDADD		= -lrt
@@ -186,7 +177,7 @@ tls_so_SOURCES		= tls_so.c
 tls_so_LDADD		= tls2.so
 tls_so_DEPENDENCIES	= tls2.so
 tls_so_LDFLAGS		= -Wl,-rpath,$(top_builddir)/none/tests -shared -fPIC
-tls_so_CFLAGS		= $(AM_FLAG_M3264_PRI) -fPIC
+tls_so_CFLAGS		= -fPIC
 tls2_so_SOURCES		= tls2_so.c
 tls2_so_LDFLAGS		= -shared
 

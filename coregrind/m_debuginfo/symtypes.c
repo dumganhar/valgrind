@@ -703,98 +703,10 @@ static void describe_addr_addbuf(HChar c,void *p) {
 #define MAX_ELEMENTS	5000	/* max number of array elements we scan */
 #define MAX_VARS	10000	/* max number of variables total traversed */
 
-static const Bool memaccount = False; /* match creates to frees */
-static const Bool debug = False;
-
-/* Add a new variable to the list */
-static Bool newvar(Char *name, SymType *ty, Addr valuep, UInt size,
-                   Variable *var, Int *numvars, Int *created,
-                   Variable **newlist, Variable **newlistend) {
-   Variable *v;
-
-   /* have we been here before? */
-   if (has_visited(valuep, ty))
-      return False;
-	    
-   /* are we too deep? */
-   if (var->distance > MAX_PLY)
-      return False;
-
-   /* have we done too much? */
-   if ((*numvars)-- == 0)
-      return False;
-
-   if (memaccount)
-      (*created)++;
-	    
-   v = VG_(arena_malloc)(VG_AR_SYMTAB, sizeof(*v));
-
-   if (name)
-      v->name = VG_(arena_strdup)(VG_AR_SYMTAB, name);
-   else
-      v->name = NULL;
-   v->type = ML_(st_basetype)(ty, False);
-   v->valuep = valuep;
-   v->size = size == -1 ? ty->size : size;
-   v->container = var;
-   v->distance = var->distance + 1;
-   v->next = NULL;
-
-   if (*newlist == NULL)
-      *newlist = *newlistend = v;
-   else {
-      (*newlistend)->next = v;
-      *newlistend = v;
-   }
-	    
-   if (debug)
-      VG_(printf)("    --> %d: name=%s type=%p(%s %s) container=%p &val=%p\n", 
-                  v->distance, v->name, v->type, ppkind(v->type->kind), 
-                  v->type->name ? (char *)v->type->name : "",
-                  v->container, v->valuep);
-   return True;
-}
-
-static void genstring(Variable *v, Variable *inner, Int *len, Char **ep,
-                      Char **sp) {
-   Variable *c = v->container;
-
-   if (c != NULL)
-      genstring(c, v, len, ep, sp);
-
-   if (v->name != NULL) {
-      *len = VG_(strlen)(v->name);
-      VG_(memcpy)(*ep, v->name, *len);
-      (*ep) += *len;
-   }
-
-   switch(v->type->kind) {
-   case TyPointer:
-      /* pointer-to-structure/union handled specially */
-      if (inner == NULL ||
-          !(inner->type->kind == TyStruct || inner->type->kind == TyUnion)) {
-         *--(*sp) = '*';
-         *--(*sp) = '(';
-	 *(*ep)++ = ')';
-      }
-      break;
-
-   case TyStruct:
-   case TyUnion:
-      if (c && c->type->kind == TyPointer) {
-         *(*ep)++ = '-';
-         *(*ep)++ = '>';
-      } else
-         *(*ep)++ = '.';
-      break;
-
-   default:
-      break;
-   }
-}
-
 Char *VG_(describe_addr)(ThreadId tid, Addr addr)
 {
+   static const Bool debug = False;
+   static const Bool memaccount = False; /* match creates to frees */
    Addr eip;			/* thread's EIP */
    Variable *list;		/* worklist */
    Variable *keeplist;		/* container variables */
@@ -847,6 +759,57 @@ Char *VG_(describe_addr)(ThreadId tid, Addr addr)
 	 SymType *type = var->type;
 	 Bool keep = False;
 
+	 /* Add a new variable to the list */
+         // (the declaration avoids a compiler warning)
+	 //static void newvar(Char *name, SymType *ty, Addr valuep, UInt size);
+         void newvar(Char *name, SymType *ty, Addr valuep, UInt size) {
+	    Variable *v;
+
+	    /* have we been here before? */
+	    if (has_visited(valuep, ty))
+	       return;
+	    
+	    /* are we too deep? */
+	    if (var->distance > MAX_PLY)
+	       return;
+
+	    /* have we done too much? */
+	    if (numvars-- == 0)
+	       return;
+
+	    if (memaccount)
+	       created++;
+	    
+	    v = VG_(arena_malloc)(VG_AR_SYMTAB, sizeof(*v));
+
+	    if (name)
+	       v->name = VG_(arena_strdup)(VG_AR_SYMTAB, name);
+	    else
+	       v->name = NULL;
+	    v->type = ML_(st_basetype)(ty, False);
+	    v->valuep = valuep;
+	    v->size = size == -1 ? ty->size : size;
+	    v->container = var;
+	    v->distance = var->distance + 1;
+	    v->next = NULL;
+
+	    if (newlist == NULL)
+	       newlist = newlistend = v;
+	    else {
+	       newlistend->next = v;
+	       newlistend = v;
+	    }
+	    
+	    if (debug)
+	       VG_(printf)("    --> %d: name=%s type=%p(%s %s) container=%p &val=%p\n", 
+			   v->distance, v->name, 
+			   v->type, ppkind(v->type->kind), 
+			   v->type->name ? (char *)v->type->name : "",
+			   v->container, v->valuep);
+	    keep = True;
+	    return;
+	 }
+
 	 next = var->next;
 
 	 if (debug)
@@ -884,10 +847,7 @@ Char *VG_(describe_addr)(ThreadId tid, Addr addr)
 	       VG_(printf)("    %d fields\n", type->u.t_struct.nfield);
 	    for(i = 0; i < type->u.t_struct.nfield; i++) {
 	       StField *f = &type->u.t_struct.fields[i];
-	       if(newvar(f->name, f->type, var->valuep + (f->offset / 8),
-                         (f->size + 7) / 8, var, &numvars, &created, &newlist,
-                         &newlistend))
-                  keep = True;
+	       newvar(f->name, f->type, var->valuep + (f->offset / 8), (f->size + 7) / 8);
 	    }
 	    break;
 	 }
@@ -941,9 +901,7 @@ Char *VG_(describe_addr)(ThreadId tid, Addr addr)
 	    for(i = min; i <= max; i++) {
 	       Char b[10];
 	       VG_(sprintf)(b, "[%d]", i+offset);
-	       if(newvar(b, ty, var->valuep + (i * ty->size), -1, var,
-                         &numvars, &created, &newlist, &newlistend))
-                  keep = True;
+	       newvar(b, ty, var->valuep + (i * ty->size), -1);
 	    }
 
 	    break;
@@ -954,9 +912,7 @@ Char *VG_(describe_addr)(ThreadId tid, Addr addr)
 	    /* XXX work out a way of telling whether a pointer is
 	       actually a decayed array, and treat it accordingly */
 	    if (is_valid_addr(var->valuep))
-	       if(newvar(NULL, type->u.t_pointer.type, *(Addr *)var->valuep,
-                         -1, var, &numvars, &created, &newlist, &newlistend))
-                  keep = True;
+	       newvar(NULL, type->u.t_pointer.type, *(Addr *)var->valuep, -1);
 	    break;
 
 	 case TyUnresolved:
@@ -1026,25 +982,66 @@ Char *VG_(describe_addr)(ThreadId tid, Addr addr)
 	 Char expr[len*2];
 	 Char *sp = &expr[len];	/* pointer at start of string */
 	 Char *ep = sp;		/* pointer at end of string */
-	 Bool ptr = True;
+	 //  static void genstring(Variable *v, Variable *inner);  // avoid warning
+         void genstring(Variable *v, Variable *inner) {
+	    Variable *c = v->container;
 
-	 /* If the result is already a pointer, just use that as the
-            value, otherwise generate &(...) around the expression. */
-         if (found->container && found->container->type->kind == TyPointer) {
-            vg_assert(found->name == NULL);
+	    if (c != NULL)
+	       genstring(c, v);
 
-	    found->name = found->container->name;
-	    found->container->name = NULL;
-	    found->container = found->container->container;
-	 } else {
-            bprintf(describe_addr_addbuf, 0, "&(");
-	    ptr = False;
+	    if (v->name != NULL) {
+	       len = VG_(strlen)(v->name);
+	       VG_(memcpy)(ep, v->name, len);
+	       ep += len;
+	    }
+
+	    switch(v->type->kind) {
+	    case TyPointer:
+	       /* pointer-to-structure/union handled specially */
+	       if (inner == NULL ||
+		   !(inner->type->kind == TyStruct || inner->type->kind == TyUnion)) {
+		  *--sp = '*';
+		  *--sp = '(';
+		  *ep++ = ')';
+	       }
+	       break;
+
+	    case TyStruct:
+	    case TyUnion:
+	       if (c && c->type->kind == TyPointer) {
+		  *ep++ = '-';
+		  *ep++ = '>';
+	       } else
+		  *ep++ = '.';
+	       break;
+
+	    default:
+	       break;
+	    }
 	 }
 
-	 genstring(found, NULL, &len, &ep, &sp);
+	 {
+	    Bool ptr = True;
 
-	 if (!ptr)
-	    *ep++ = ')';
+	    /* If the result is already a pointer, just use that as
+	       the value, otherwise generate &(...) around the
+	       expression. */
+	    if (found->container && found->container->type->kind == TyPointer) {
+	       vg_assert(found->name == NULL);
+
+	       found->name = found->container->name;
+	       found->container->name = NULL;
+	       found->container = found->container->container;
+	    } else {
+               bprintf(describe_addr_addbuf, 0, "&(");
+	       ptr = False;
+	    }
+
+	    genstring(found, NULL);
+
+	    if (!ptr)
+	       *ep++ = ')';
+	 }
 
 	 *ep++ = '\0';
 

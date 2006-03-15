@@ -37,6 +37,7 @@
 #include "pub_core_libcprint.h"
 #include "pub_core_mallocfree.h"
 #include "pub_core_options.h"
+#include "pub_core_profile.h"
 #include "pub_core_tooliface.h"
 #include "valgrind.h"
 
@@ -78,15 +79,6 @@ typedef UChar UByte;
    are related by:
 
       bszB == pszB + 2*sizeof(SizeT) + 2*a->rz_szB
-
-   The minimum overhead per heap block for arenas used by
-   the core is:   
-
-      32-bit platforms:  2*4 + 2*4 == 16 bytes
-      64-bit platforms:  2*8 + 2*8 == 32 bytes
-
-   In both cases extra overhead may be incurred when rounding the payload
-   size up to VG_MIN_MALLOC_SZB.
 
    Furthermore, both size fields in the block have their least-significant
    bit set if the block is not in use, and unset if it is in use.
@@ -437,7 +429,7 @@ void ensure_mm_init ( ArenaId aid )
 {
    static Bool     client_inited = False;
    static Bool  nonclient_inited = False;
-   static SizeT client_rz_szB = 8;     // default: be paranoid
+   static SizeT client_redzone_szB = 8;   // default: be paranoid
 
    /* We use checked red zones (of various sizes) for our internal stuff,
       and an unchecked zone of arbitrary size for the client.  Of
@@ -458,23 +450,23 @@ void ensure_mm_init ( ArenaId aid )
          // redzone size with VG_(needs_malloc_replacement)() after this module
          // has done its first allocation from the client arena.
          if (VG_(needs).malloc_replacement)
-            vg_assert(client_rz_szB == VG_(tdict).tool_client_redzone_szB);
+            vg_assert(client_redzone_szB == VG_(tdict).tool_client_redzone_szB);
          return;
       }
 
       // Check and set the client arena redzone size
       if (VG_(needs).malloc_replacement) {
-         client_rz_szB = VG_(tdict).tool_client_redzone_szB;
+         client_redzone_szB = VG_(tdict).tool_client_redzone_szB;
          // 128 is no special figure, just something not too big
-         if (client_rz_szB > 128) {
+         if (client_redzone_szB > 128) {
             VG_(printf)( "\nTool error:\n"
                          "  specified redzone size is too big (%llu)\n", 
-                         (ULong)client_rz_szB);
+                         (ULong)client_redzone_szB);
             VG_(exit)(1);
          }
       }
       // Initialise the client arena
-      arena_init ( VG_AR_CLIENT,    "client",   client_rz_szB, 1048576 );
+      arena_init ( VG_AR_CLIENT,    "client",   client_redzone_szB, 1048576 );
       client_inited = True;
 
    } else {
@@ -482,13 +474,13 @@ void ensure_mm_init ( ArenaId aid )
          return;
       }
       // Initialise the non-client arenas
-      arena_init ( VG_AR_CORE,      "core",     4,             1048576 );
-      arena_init ( VG_AR_TOOL,      "tool",     4,             1048576 );
-      arena_init ( VG_AR_SYMTAB,    "symtab",   4,             1048576 );
-      arena_init ( VG_AR_DEMANGLE,  "demangle", 4,               65536 );
-      arena_init ( VG_AR_EXECTXT,   "exectxt",  4,              262144 );
-      arena_init ( VG_AR_ERRORS,    "errors",   4,               65536 );
-      arena_init ( VG_AR_TTAUX,     "ttaux",    4,               65536 );
+      arena_init ( VG_AR_CORE,      "core",     4,       CORE_ARENA_MIN_SZB );
+      arena_init ( VG_AR_TOOL,      "tool",     4,                  1048576 );
+      arena_init ( VG_AR_SYMTAB,    "symtab",   4,                  1048576 );
+      arena_init ( VG_AR_DEMANGLE,  "demangle", 4,                    65536 );
+      arena_init ( VG_AR_EXECTXT,   "exectxt",  4,                   262144 );
+      arena_init ( VG_AR_ERRORS,    "errors",   4,                    65536 );
+      arena_init ( VG_AR_TTAUX,     "ttaux",    4,                    65536 );
       nonclient_inited = True;
    }
 
@@ -596,48 +588,13 @@ static
 Superblock* findSb ( Arena* a, Block* b )
 {
    Superblock* sb;
-   static UInt n_search = 0;
-   for (sb = a->sblocks; sb; sb = sb->next) {
-      if ((Block*)&sb->payload_bytes[0] <= b 
+   for (sb = a->sblocks; sb; sb = sb->next)
+      if ((Block*)&sb->payload_bytes[0] <= b
           && b < (Block*)&sb->payload_bytes[sb->n_payload_bytes])
-         break;
-   }
-   if (!sb) {
-      VG_(printf)("findSb: can't find pointer %p in arena '%s'\n", 
-                  b, a->name );
-      VG_(core_panic)("findSb: VG_(arena_free)() in wrong arena?");
-      return NULL; /*NOTREACHED*/
-   }
-
-   /* Start of performance-enhancing hack: once every 128 (chosen
-      hackily after profiling) successful searches, move the found
-      Superblock one step closer to the start of the list.  This makes
-      future searches cheaper. */
-   if ((n_search & 0x7F) == 0) {
-      /* Move sb one step closer to the start of the list. */
-      Superblock* sb0 = a->sblocks;
-      Superblock* sb1 = NULL;
-      Superblock* sb2 = NULL;
-      Superblock* tmp;
-      while (True) {
-         if (sb0 == NULL) break;
-         if (sb0 == sb) break;
-         sb2 = sb1;
-         sb1 = sb0;
-         sb0 = sb0->next;
-      }
-      if (sb0 == sb && sb0 != NULL && sb1 != NULL && sb2 != NULL) {
-         /* sb0 points to sb, sb1 to its predecessor, and sb2 to sb1's
-            predecessor.  Swap sb0 and sb1, that is, move sb0 one step
-            closer to the start of the list. */
-         tmp = sb0->next;
-         sb2->next = sb0;
-         sb0->next = sb1;
-         sb1->next = tmp;
-      }
-   }
-   /* End of performance-enhancing hack. */
-   return sb;
+         return sb;
+   VG_(printf)("findSb: can't find pointer %p in arena '%s'\n", b, a->name );
+   VG_(core_panic)("findSb: VG_(arena_free)() in wrong arena?");
+   return NULL; /*NOTREACHED*/
 }
 
 
@@ -704,12 +661,7 @@ void swizzle ( Arena* a, UInt lno )
    if (p_best == NULL) return;
 
    pn = pp = p_best;
-
-   // This loop bound was 20 for a long time, but experiments showed that
-   // reducing it to 10 gave the same result in all the tests, and 5 got the
-   // same result in 85--100% of cases.  And it's called often enough to be
-   // noticeable in programs that allocated a lot.
-   for (i = 0; i < 5; i++) {
+   for (i = 0; i < 20; i++) {
       pn = get_next_b(pn);
       pp = get_prev_b(pp);
       if (pn < p_best) p_best = pn;
@@ -1001,6 +953,8 @@ void* VG_(arena_malloc) ( ArenaId aid, SizeT req_pszB )
    Arena*      a;
    void*       v;
 
+   VGP_PUSHCC(VgpMalloc);
+
    ensure_mm_init(aid);
    a = arenaId_to_ArenaP(aid);
 
@@ -1072,6 +1026,7 @@ void* VG_(arena_malloc) ( ArenaId aid, SizeT req_pszB )
    sanity_check_malloc_arena(aid);
 #  endif
 
+   VGP_POPCC(VgpMalloc);
    v = get_block_payload(a, b);
    vg_assert( (((Addr)v) & (VG_MIN_MALLOC_SZB-1)) == 0 );
 
@@ -1091,19 +1046,21 @@ void VG_(arena_free) ( ArenaId aid, void* ptr )
    UInt        b_listno;
    Arena*      a;
 
+   VGP_PUSHCC(VgpMalloc);
+
    ensure_mm_init(aid);
    a = arenaId_to_ArenaP(aid);
 
    if (ptr == NULL) {
+      VGP_POPCC(VgpMalloc);
       return;
    }
       
    b = get_payload_block(a, ptr);
 
-   /* If this is one of V's areas, check carefully the block we're
-      getting back.  This picks up simple block-end overruns. */
-   if (aid != VG_AR_CLIENT)
-      vg_assert(blockSane(a, b));
+#  ifdef DEBUG_MALLOC
+   vg_assert(blockSane(a, b));
+#  endif
 
    b_bszB   = get_bszB(b);
    b_pszB   = bszB_to_pszB(a, b_bszB);
@@ -1112,15 +1069,6 @@ void VG_(arena_free) ( ArenaId aid, void* ptr )
    sb_end   = &sb->payload_bytes[sb->n_payload_bytes - 1];
 
    a->bytes_on_loan -= b_pszB;
-
-   /* If this is one of V's areas, fill it up with junk to enhance the
-      chances of catching any later reads of it.  Note, 0xDD is
-      carefully chosen junk :-), in that: (1) 0xDDDDDDDD is an invalid
-      and non-word-aligned address on most systems, and (2) 0xDD is a
-      value which is unlikely to be generated by the new compressed
-      Vbits representation for memcheck. */
-   if (aid != VG_AR_CLIENT)
-      VG_(memset)(ptr, 0xDD, (SizeT)b_pszB);
 
    // Put this chunk back on a list somewhere.
    b_listno = pszB_to_listNo(b_pszB);
@@ -1177,6 +1125,8 @@ void VG_(arena_free) ( ArenaId aid, void* ptr )
 #  endif
 
    //zzVALGRIND_FREELIKE_BLOCK(ptr, 0);
+
+   VGP_POPCC(VgpMalloc);
 }
 
 
@@ -1219,6 +1169,8 @@ void* VG_(arena_memalign) ( ArenaId aid, SizeT req_alignB, SizeT req_pszB )
    UByte  *base_p, *align_p;
    SizeT  saved_bytes_on_loan;
    Arena* a;
+
+   VGP_PUSHCC(VgpMalloc);
 
    ensure_mm_init(aid);
    a = arenaId_to_ArenaP(aid);
@@ -1295,6 +1247,8 @@ void* VG_(arena_memalign) ( ArenaId aid, SizeT req_alignB, SizeT req_pszB )
    sanity_check_malloc_arena(aid);
 #  endif
 
+   VGP_POPCC(VgpMalloc);
+
    vg_assert( (((Addr)align_p) % req_alignB) == 0 );
 
    //zzVALGRIND_MALLOCLIKE_BLOCK(align_p, req_pszB, 0, False);
@@ -1329,6 +1283,8 @@ void* VG_(arena_calloc) ( ArenaId aid, SizeT nmemb, SizeT bytes_per_memb )
    SizeT  size;
    UChar* p;
 
+   VGP_PUSHCC(VgpMalloc);
+
    size = nmemb * bytes_per_memb;
    vg_assert(size >= nmemb && size >= bytes_per_memb);// check against overflow
 
@@ -1338,6 +1294,8 @@ void* VG_(arena_calloc) ( ArenaId aid, SizeT nmemb, SizeT bytes_per_memb )
 
    //zzVALGRIND_MALLOCLIKE_BLOCK(p, size, 0, True);
 
+   VGP_POPCC(VgpMalloc);
+   
    return p;
 }
 
@@ -1348,6 +1306,8 @@ void* VG_(arena_realloc) ( ArenaId aid, void* ptr, SizeT req_pszB )
    SizeT  old_pszB;
    UChar  *p_new;
    Block* b;
+
+   VGP_PUSHCC(VgpMalloc);
 
    ensure_mm_init(aid);
    a = arenaId_to_ArenaP(aid);
@@ -1361,6 +1321,7 @@ void* VG_(arena_realloc) ( ArenaId aid, void* ptr, SizeT req_pszB )
    old_pszB = get_pszB(a, b);
 
    if (req_pszB <= old_pszB) {
+      VGP_POPCC(VgpMalloc);
       return ptr;
    }
 
@@ -1370,6 +1331,7 @@ void* VG_(arena_realloc) ( ArenaId aid, void* ptr, SizeT req_pszB )
 
    VG_(arena_free)(aid, ptr);
 
+   VGP_POPCC(VgpMalloc);
    return p_new;
 }
 

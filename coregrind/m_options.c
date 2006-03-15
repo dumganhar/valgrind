@@ -54,9 +54,10 @@ Bool   VG_(clo_time_stamp)     = False;
 Int    VG_(clo_input_fd)       = 0; /* stdin */
 Int    VG_(clo_n_suppressions) = 0;
 Char*  VG_(clo_suppressions)[VG_CLO_MAX_SFILES];
+Bool   VG_(clo_profile)        = False;
 UChar  VG_(clo_trace_flags)    = 0; // 00000000b
 UChar  VG_(clo_profile_flags)  = 0; // 00000000b
-Int    VG_(clo_trace_notbelow) = 999999999;
+Int    VG_(clo_trace_notbelow) = 0;
 Bool   VG_(clo_trace_syscalls) = False;
 Bool   VG_(clo_trace_signals)  = False;
 Bool   VG_(clo_trace_symtab)   = False;

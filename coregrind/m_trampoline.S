@@ -277,104 +277,6 @@ VG_(ppc32_linux_REDIR_FOR_strchr):
 .global VG_(trampoline_stuff_end)
 VG_(trampoline_stuff_end):
 
-	/* and a trailing page of unexecutable code */
-	UD2_PAGE
-
-#	undef UD2_16
-#	undef UD2_64
-#	undef UD2_256
-#	undef UD2_1024
-#	undef UD2_PAGE
-
-/*---------------- ppc64-linux ----------------*/
-#else
-#if defined(VGP_ppc64_linux)
-
-#	define UD2_16     trap ; trap ; trap; trap
-#	define UD2_64     UD2_16   ; UD2_16   ; UD2_16   ; UD2_16
-#	define UD2_256    UD2_64   ; UD2_64   ; UD2_64   ; UD2_64
-#	define UD2_1024   UD2_256  ; UD2_256  ; UD2_256  ; UD2_256
-#	define UD2_PAGE   UD2_1024 ; UD2_1024 ; UD2_1024 ; UD2_1024  
-
-	/* a leading page of unexecutable code */
-	UD2_PAGE
-
-.global VG_(trampoline_stuff_start)
-VG_(trampoline_stuff_start):
-
-	/* See comment in pub_core_trampoline.h for what this is for */
-.global VG_(ppc64_linux_magic_redirect_return_stub)
-VG_(ppc64_linux_magic_redirect_return_stub):
-	trap
-
-	/* this function is written using the "dotless" ABI convention */
-	.align 2
-	.globl VG_(ppc64_linux_REDIR_FOR_strlen)
-	.section        ".opd","aw"
-	.align 3
-VG_(ppc64_linux_REDIR_FOR_strlen):
-	.quad   .L.VG_(ppc64_linux_REDIR_FOR_strlen),.TOC.@tocbase,0
-	.previous
-	.size	VG_(ppc64_linux_REDIR_FOR_strlen), \
-			.L0end-.L.VG_(ppc64_linux_REDIR_FOR_strlen)
-	.type	VG_(ppc64_linux_REDIR_FOR_strlen), @function
-
-.L.VG_(ppc64_linux_REDIR_FOR_strlen):
-        mr 9,3
-        lbz 0,0(3)
-        li 3,0
-        cmpwi 7,0,0
-        beqlr 7
-        li 3,0
-.L01:
-        addi 0,3,1
-        extsw 3,0
-        lbzx 0,9,3
-        cmpwi 7,0,0
-        bne 7,.L01
-        blr
-        .long 0
-        .byte 0,0,0,0,0,0,0,0
-.L0end:
-
-        /* this function is written using the "dotless" ABI convention */
-        .align 2
-        .globl VG_(ppc64_linux_REDIR_FOR_strchr)
-	.section        ".opd","aw"
-	.align 3
-VG_(ppc64_linux_REDIR_FOR_strchr):
-        .quad   .L.VG_(ppc64_linux_REDIR_FOR_strchr),.TOC.@tocbase,0
-        .previous
-        .size   VG_(ppc64_linux_REDIR_FOR_strchr), \
-                        .L1end-.L.VG_(ppc64_linux_REDIR_FOR_strchr)
-        .type   VG_(ppc64_linux_REDIR_FOR_strchr),@function
-	
-.L.VG_(ppc64_linux_REDIR_FOR_strchr):
-        rldicl 4,4,0,56
-        li 9,0
-.L11:
-        lbz 0,0(3)
-        cmpw 7,0,4
-        bne+ 7,.L12
-        mr 9,3
-.L12:
-        lbz 0,0(3)
-        addi 3,3,1
-        cmpwi 7,0,0
-        bne+ 7,.L11
-        mr 3,9
-        blr
-        .long 0
-        .byte 0,0,0,0,0,0,0,0
-.L1end:
-
-	
-.global VG_(trampoline_stuff_end)
-VG_(trampoline_stuff_end):
-
-	/* and a trailing page of unexecutable code */
-	UD2_PAGE
-
 #	undef UD2_16
 #	undef UD2_64
 #	undef UD2_256
@@ -385,7 +287,6 @@ VG_(trampoline_stuff_end):
 #else
 #  error Unknown platform
 
-#endif
 #endif
 #endif
 #endif

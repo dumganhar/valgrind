@@ -42,8 +42,7 @@
 // - First is the AVL metadata, which is three words: a left pointer, a
 //   right pointer, and a word containing balancing information and a
 //   "magic" value which provides some checking that the user has not
-//   corrupted the metadata.  So the overhead is 12 bytes on 32-bit
-//   platforms and 24 bytes on 64-bit platforms.
+//   corrupted the metadata.
 // - Second is the user's data.  This can be anything.  Note that because it
 //   comes after the metadata, it will only be word-aligned, even if the
 //   user data is a struct that would normally be doubleword-aligned.
@@ -96,7 +95,7 @@ struct _OSetNode {
    AvlNode* left;
    AvlNode* right;
    Char     balance;
-   Char     padding[sizeof(void*)-sizeof(Char)-sizeof(Short)];
+   Char     padding[sizeof(void*)-3];
    Short    magic;
 };
 
@@ -294,7 +293,7 @@ AvlTree* VG_(OSet_Create)(OffT _keyOff, OSetCmp_t _cmp,
 }
 
 // Destructor, frees up all memory held by remaining nodes.
-void VG_(OSet_Destroy)(AvlTree* t, OSetNodeDestroy_t destroyNode)
+void VG_(OSet_Destroy)(AvlTree* t)
 {
    AvlNode* n;
    Int i, sz = 0;
@@ -317,7 +316,6 @@ void VG_(OSet_Destroy)(AvlTree* t, OSetNodeDestroy_t destroyNode)
          if (n->right) stackPush(t, n->right, 1);
          break;
       case 3:
-         if (destroyNode) destroyNode(n);
          t->free(n);
          sz++;
          break;

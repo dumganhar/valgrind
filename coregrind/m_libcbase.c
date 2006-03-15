@@ -372,19 +372,10 @@ void* VG_(memcpy) ( void *dest, const void *src, SizeT sz )
 void* VG_(memset) ( void *dest, Int c, SizeT sz )
 {
    Char *d = (Char *)dest;
-   while (sz >= 4) {
-      d[0] = c;
-      d[1] = c;
-      d[2] = c;
-      d[3] = c;
-      d += 4;
-      sz -= 4;
-   }
-   while (sz > 0) {
-      d[0] = c;
-      d++;
-      sz--;
-   }
+
+   while (sz--)
+      *d++ = c;
+
    return dest;
 }
 
@@ -413,7 +404,6 @@ Int VG_(memcmp) ( const void* s1, const void* s2, SizeT n )
    Misc useful functions
    ------------------------------------------------------------------ */
 
-/* Returns the base-2 logarithm of x.  Returns -1 if x is not a power of two. */
 Int VG_(log2) ( Int x ) 
 {
    Int i;

@@ -17,30 +17,19 @@ typedef int    Bool;
 char* all_archs[] = {
    "amd64",
    "ppc32",
-   "ppc64",
    "x86",
    NULL
 };
 
-#if defined(__powerpc__) && !defined(__powerpc64__)
+#ifdef __powerpc__
 static Bool go(char* cpu)
 {
    if ( strcmp( cpu, "ppc32" ) == 0 )
       return True;
-   return False;
+   else 
+      return False;
 }
-#endif // __powerpc__ (32)
-
-#if defined(__powerpc__) && defined(__powerpc64__)
-static Bool go(char* cpu)
-{
-   if ( strcmp( cpu, "ppc64" ) == 0 )
-      return True;
-   if ( strcmp( cpu, "ppc32" ) == 0 )
-      return True;
-   return False;
-}
-#endif // __powerpc__ (64)
+#endif // __powerpc__
 
 #if defined(__i386__) || defined(__x86_64__)
 static void cpuid ( unsigned int n,

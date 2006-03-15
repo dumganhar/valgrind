@@ -1,8 +1,8 @@
 
-/*--------------------------------------------------------------------*/
-/*--- The core dispatch loop, for jumping to a code address.       ---*/
-/*---                                             dispatch-amd64.S ---*/
-/*--------------------------------------------------------------------*/
+##--------------------------------------------------------------------##
+##--- The core dispatch loop, for jumping to a code address.       ---##
+##---                                             dispatch-amd64.S ---##
+##--------------------------------------------------------------------##
 
 /*
   This file is part of Valgrind, a dynamic binary instrumentation
@@ -36,25 +36,14 @@
 
 
 /*------------------------------------------------------------*/
-/*---                                                      ---*/
-/*--- The dispatch loop.  VG_(run_innerloop) is used to    ---*/
-/*--- run all translations except no-redir ones.           ---*/
-/*---                                                      ---*/
+/*--- The dispatch loop.                                   ---*/
 /*------------------------------------------------------------*/
 
-/*----------------------------------------------------*/
-/*--- Preamble (set everything up)                 ---*/
-/*----------------------------------------------------*/
+/* signature: UWord VG_(run_innerloop) ( void* guest_state ) */
 
-/* signature:
-UWord VG_(run_innerloop) ( void* guest_state, UWord do_profiling );
-*/
-
-.text
 .globl VG_(run_innerloop)
 VG_(run_innerloop):
 	/* %rdi holds guest_state */
-	/* %rsi holds do_profiling */
 	
 	/* ----- entry point to VG_(run_innerloop) ----- */
 	pushq	%rbx
@@ -70,13 +59,12 @@ VG_(run_innerloop):
 	pushq	%r13
 	pushq	%r14
 	pushq	%r15
-	pushq	%rdi  /* guest_state */
+	pushq	%rdi
 
-	movq	VG_(dispatch_ctr)@GOTPCREL(%rip), %r15
-	movl	(%r15), %r15d
-	pushq	%r15
+	movq	VG_(dispatch_ctr)@GOTPCREL(%rip), %rsi
+	pushq	(%rsi)
 
-	/* 8(%rsp) holds cached copy of guest_state ptr */
+	/* 8(%rsp) holds cached copy of guest_state */
 	/* 0(%rsp) holds cached copy of VG_(dispatch_ctr) */
 
 	/* Set up the guest state pointer */
@@ -102,26 +90,12 @@ VG_(run_innerloop):
 	/* set dir flag to known value */
 	cld
 
-	/* fall into main loop  (the right one) */
-	cmpq	$0, %rsi
-	je	VG_(run_innerloop__dispatch_unprofiled)
-	jmp	VG_(run_innerloop__dispatch_profiled)
-	/*NOTREACHED*/	
+	/* fall into main loop */
 
-/*----------------------------------------------------*/
-/*--- NO-PROFILING (standard) dispatcher           ---*/
-/*----------------------------------------------------*/
+	/* Here, %rax is the only live (real) register.  The entire
+	   simulated state is saved in the ThreadState. */
 
-.align	16
-.global	VG_(run_innerloop__dispatch_unprofiled)
-VG_(run_innerloop__dispatch_unprofiled):
-	/* AT ENTRY: %rax is next guest addr, %rbp is possibly
-           modified guest state ptr */
-
-	/* Has the guest state pointer been messed with?  If yes, exit. */
-	cmpq	8(%rsp), %rbp
-	jnz	gsp_changed
-
+dispatch_boring:
 	/* save the jump address in the guest state */
 	movq	%rax, OFFSET_amd64_RIP(%rbp)
 
@@ -130,96 +104,37 @@ VG_(run_innerloop__dispatch_unprofiled):
 	jz	counter_is_zero
 
 	/* try a fast lookup in the translation cache */
-	movq	VG_(tt_fast)@GOTPCREL(%rip), %rcx
-	movq	%rax, %rbx
-	andq	$VG_TT_FAST_MASK, %rbx
-	movq	(%rcx,%rbx,8), %rcx
-	cmpq	%rax, (%rcx)
-	jnz	fast_lookup_failed
-
-	/* Found a match.  Call tce[1], which is 8 bytes along, since
-           each tce element is a 64-bit int. */
-	addq 	$8, %rcx
-	jmp 	*%rcx
-	ud2	/* persuade insn decoders not to speculate past here */
-	/* generated code should run, then jump back to
-	   VG_(run_innerloop__dispatch_unprofiled). */
-	/*NOTREACHED*/
-
-/*----------------------------------------------------*/
-/*--- PROFILING dispatcher (can be much slower)    ---*/
-/*----------------------------------------------------*/
-
-.align	16
-.global	VG_(run_innerloop__dispatch_profiled)
-VG_(run_innerloop__dispatch_profiled):
-	/* AT ENTRY: %rax is next guest addr, %rbp is possibly
-           modified guest state ptr */
-
-	/* Has the guest state pointer been messed with?  If yes, exit. */
-	cmpq	8(%rsp), %rbp
-	jnz	gsp_changed
-
-	/* save the jump address in the guest state */
-	movq	%rax, OFFSET_amd64_RIP(%rbp)
-
-	/* Are we out of timeslice?  If yes, defer to scheduler. */
-	subl	$1, 0(%rsp)
-	jz	counter_is_zero
-
-	/* try a fast lookup in the translation cache */
-	movq	VG_(tt_fast)@GOTPCREL(%rip), %rcx
-	movq	%rax, %rbx
-	andq	$VG_TT_FAST_MASK, %rbx
-	movq	(%rcx,%rbx,8), %rcx
-	cmpq	%rax, (%rcx)
-	jnz	fast_lookup_failed
-
+	movq %rax, %rbx
+	andq $VG_TT_FAST_MASK, %rbx
+	movq VG_(tt_fast)@GOTPCREL(%rip), %rcx
+	movq (%rcx,%rbx,8), %rcx
+	cmpq %rax, (%rcx)
+	jnz  fast_lookup_failed
 	/* increment bb profile counter */
-	movq	VG_(tt_fastN)@GOTPCREL(%rip), %rdx
-	movq	(%rdx,%rbx,8), %rdx
-	addl	$1, (%rdx)
+	movq VG_(tt_fastN)@GOTPCREL(%rip), %rdx
+	movq (%rdx,%rbx,8), %rdx
+	incl (%rdx)
 
 	/* Found a match.  Call tce[1], which is 8 bytes along, since
            each tce element is a 64-bit int. */
 	addq 	$8, %rcx
-	jmp 	*%rcx
-	ud2	/* persuade insn decoders not to speculate past here */
-	/* generated code should run, then jump back to
-	   VG_(run_innerloop__dispatch_profiled). */
-	/*NOTREACHED*/
+	call 	*%rcx
 
-/*----------------------------------------------------*/
-/*--- exit points                                  ---*/
-/*----------------------------------------------------*/
+	/* 
+	   %rax holds destination (original) address.
+	   %rbp indicates further details of the control transfer
+	   requested to the address in %rax.
+	
+	   If rbp is unchanged (== * 8(%rsp)), just jump next to %rax.
 
-gsp_changed:
-	/* Someone messed with the gsp.  Have to
-           defer to scheduler to resolve this.  dispatch ctr
-	   is not yet decremented, so no need to increment. */
-	/* %RIP is NOT up to date here.  First, need to write
-	   %rax back to %RIP, but without trashing %rbp since
-	   that holds the value we want to return to the scheduler.
-	   Hence use %r15 transiently for the guest state pointer. */
-	movq	8(%rsp), %r15
-	movq	%rax, OFFSET_amd64_RIP(%r15)
-	movq	%rbp, %rax
-	jmp	run_innerloop_exit
-	/*NOTREACHED*/
+	   Otherwise fall out, back to the scheduler, and let it
+	   figure out what to do next.
+	*/
 
-counter_is_zero:
-	/* %RIP is up to date here */
-	/* back out decrement of the dispatch counter */
-	addl	$1, 0(%rsp)
-	movq	$VG_TRC_INNER_COUNTERZERO, %rax
-	jmp	run_innerloop_exit
+	cmpq	8(%rsp), %rbp
+	jz	dispatch_boring
 
-fast_lookup_failed:
-	/* %RIP is up to date here */
-	/* back out decrement of the dispatch counter */
-	addl	$1, 0(%rsp)
-	movq	$VG_TRC_INNER_FASTMISS, %rax
-	jmp	run_innerloop_exit
+	jmp	dispatch_exceptional
 
 
 
@@ -235,14 +150,14 @@ run_innerloop_exit:
 	pushq	$0
 	fstcw	(%rsp)
 	cmpl	$0x027F, (%rsp)
-	popq	%r15 /* get rid of the word without trashing %eflags */
+	popq	%r11 /* get rid of the word without trashing %eflags */
 	jnz	invariant_violation
 #endif
 	pushq	$0
 	stmxcsr	(%rsp)
 	andl	$0xFFFFFFC0, (%rsp)  /* mask out status flags */
 	cmpl	$0x1F80, (%rsp)
-	popq	%r15
+	popq	%r11
 	jnz	invariant_violation
 	/* otherwise we're OK */
 	jmp	run_innerloop_exit_REALLY
@@ -252,12 +167,8 @@ invariant_violation:
 	jmp	run_innerloop_exit_REALLY
 
 run_innerloop_exit_REALLY:
-
-	/* restore VG_(dispatch_ctr) */	
-	popq	%r14
-	movq	VG_(dispatch_ctr)@GOTPCREL(%rip), %r15
-	movl	%r14d, (%r15)
-
+	movq	VG_(dispatch_ctr)@GOTPCREL(%rip), %rsi
+	popq	(%rsi)
 	popq	%rdi
 	popq	%r15
 	popq	%r14
@@ -275,59 +186,35 @@ run_innerloop_exit_REALLY:
 	ret	
 
 	
-/*------------------------------------------------------------*/
-/*---                                                      ---*/
-/*--- A special dispatcher, for running no-redir           ---*/
-/*--- translations.  Just runs the given translation once. ---*/
-/*---                                                      ---*/
-/*------------------------------------------------------------*/
-
-/* signature:
-void VG_(run_a_noredir_translation) ( UWord* argblock );
+	
+/* Other ways of getting out of the inner loop.  Placed out-of-line to
+   make it look cleaner. 
 */
+dispatch_exceptional:
+	/* this is jumped to only, not fallen-through from above */
 
-/* Run a no-redir translation.  argblock points to 4 UWords, 2 to carry args
-   and 2 to carry results:
-      0: input:  ptr to translation
-      1: input:  ptr to guest state
-      2: output: next guest PC
-      3: output: guest state pointer afterwards (== thread return code)
-*/
-.align 16
-.global VG_(run_a_noredir_translation)
-VG_(run_a_noredir_translation):
-	/* Save callee-saves regs */
-	pushq %rbx
-	pushq %rbp
-	pushq %r12
-	pushq %r13
-	pushq %r14
-	pushq %r15
+	/* save %rax in %RIP and defer to sched */
+	movq	8(%rsp), %rdi
+	movq	%rax, OFFSET_amd64_RIP(%rdi)
+	movq	%rbp, %rax
+	jmp	run_innerloop_exit
 
-	pushq %rdi  /* we will need it after running the translation */
-	movq 8(%rdi), %rbp
-	jmp *0(%rdi)
-	/*NOTREACHED*/
-	ud2
-	/* If the translation has been correctly constructed, we
-	should resume at the the following label. */
-.global VG_(run_a_noredir_translation__return_point)
-VG_(run_a_noredir_translation__return_point):
-	popq %rdi
-	movq %rax, 16(%rdi)
-	movq %rbp, 24(%rdi)
+fast_lookup_failed:
+	/* %RIP is up to date here since dispatch_boring dominates */
+	addl	$1, 0(%rsp)
+	movq	$VG_TRC_INNER_FASTMISS, %rax
+	jmp	run_innerloop_exit
 
-	popq  %r15
-	popq  %r14
-	popq  %r13
-	popq  %r12
-	popq  %rbp
-	popq  %rbx
-	ret
+counter_is_zero:
+	/* %RIP is up to date here since dispatch_boring dominates */
+	addl	$1, 0(%rsp)
+	movq	$VG_TRC_INNER_COUNTERZERO, %rax
+	jmp	run_innerloop_exit
+
 
 /* Let the linker know we don't need an executable stack */
 .section .note.GNU-stack,"",@progbits
 
-/*--------------------------------------------------------------------*/
-/*--- end                                                          ---*/
-/*--------------------------------------------------------------------*/
+##--------------------------------------------------------------------##
+##--- end                                                          ---##
+##--------------------------------------------------------------------##

@@ -40,6 +40,7 @@
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_machine.h"
 #include "pub_tool_options.h"
+#include "pub_tool_profile.h"       // For mac_shared.h
 #include "pub_tool_replacemalloc.h"
 #include "pub_tool_threadstate.h"
 #include "mac_shared.h"
@@ -745,6 +746,7 @@ Bool MAC_(error_matches_suppression)(Error* err, Supp* su)
 
 Char* MAC_(get_error_name) ( Error* err )
 {
+   Char* s;
    switch (VG_(get_error_kind)(err)) {
    case ParamErr:           return "Param";
    case UserErr:            return NULL;  /* Can't suppress User errors */
@@ -776,8 +778,7 @@ Char* MAC_(get_error_name) ( Error* err )
    case LeakErr:            return "Leak";
    default:                 VG_(tool_panic)("get_error_name: unexpected type");
    }
-   /*NOTREACHED*/
-   return "??get_error_name??";
+   VG_(printf)(s);
 }
 
 void MAC_(print_extra_suppression_info) ( Error* err )

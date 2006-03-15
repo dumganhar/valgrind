@@ -43,32 +43,33 @@
 
 #include "pub_tool_redir.h"
 
-
 //--------------------------------------------------------------------
-// Notifications - by which we are told of state changes
-//--------------------------------------------------------------------
-
-/* Notify the module of a new SegInfo (called from m_debuginfo). */
-extern void VG_(redir_notify_new_SegInfo)( SegInfo* );
-
-/* Notify the module of the disappearance of a SegInfo (also called
-   from m_debuginfo). */
-extern void VG_(redir_notify_delete_SegInfo)( SegInfo* );
-
-/* Initialise the module, and load initial "hardwired" redirects. */
-extern void VG_(redir_initialise)( void );
-
-
-//--------------------------------------------------------------------
-// Queries
+// General
 //--------------------------------------------------------------------
 
-/* This is the crucial redirection function.  It answers the question:
-   should this code address be redirected somewhere else?  It's used
-   just before translating a basic block.  If a redir is found,
-   *isWrap allows to distinguish wrap- from replace- style
-   redirections. */
-extern Addr VG_(redir_do_lookup) ( Addr orig, Bool* isWrap );
+// This module needs be told about all the symbols that get loaded, so 
+// it can check if it needs to do anything special.  This is the function
+// that does that checking.  It modifies 'symbol' in-place by Z-decoding
+// it if necessary.
+void VG_(maybe_redir_or_notify) ( Char* symbol, Addr addr );
+
+//--------------------------------------------------------------------
+// Code replacement
+//--------------------------------------------------------------------
+
+// See include/pub_tool_redir.h for details on how to do code replacement.
+
+typedef struct _CodeRedirect CodeRedirect;
+
+// This is the crucial redirection function.  It answers the question: 
+// should this code address be redirected somewhere else?  It's used just
+// before translating a basic block.
+extern Addr VG_(code_redirect) ( Addr orig );
+
+/* Set up some default redirects. */
+extern void VG_(setup_code_redirect_table) ( void );
+
+extern void VG_(resolve_existing_redirs_with_seginfo)(SegInfo *si);
 
 
 //--------------------------------------------------------------------
@@ -84,10 +85,12 @@ extern Addr VG_(redir_do_lookup) ( Addr orig, Bool* isWrap );
    Functions named with this macro should be in client space, ie. in
    vgpreload_<tool>.h or vgpreload_core.h. */
 
-#define VG_NOTIFY_ON_LOAD(name)           _vgnU_##name
-#define VG_NOTIFY_ON_LOAD_PREFIX          "_vgnU_"
-#define VG_NOTIFY_ON_LOAD_PREFIX_LEN      6
+#define VG_NOTIFY_ON_LOAD(name)           _vgw_##name
+#define VG_NOTIFY_ON_LOAD_PREFIX          "_vgw_"
+#define VG_NOTIFY_ON_LOAD_PREFIX_LEN      5
 
+// Called by m_main to get our __libc_freeres wrapper.
+extern Addr VG_(get_libc_freeres_wrapper)(void);
 
 //--------------------------------------------------------------------
 // Function wrapping
@@ -96,27 +99,27 @@ extern Addr VG_(redir_do_lookup) ( Addr orig, Bool* isWrap );
 // This is currently not working(?) --njn
 
 /* Wrapping machinery */
-//enum return_type {
-  //   RT_RETURN,
-   //   RT_LONGJMP,
-   //   RT_EXIT,
-   //};
-//
-//typedef struct _FuncWrapper FuncWrapper;
-//struct _FuncWrapper {
-  //   void *(*before)(va_list args);
-  //   void  (*after) (void *nonce, enum return_type, Word retval);
-  //};
-//
-//extern void VG_(wrap_function)(Addr eip, const FuncWrapper *wrapper);
-//extern const FuncWrapper *VG_(is_wrapped)(Addr eip);
-//extern Bool VG_(is_wrapper_return)(Addr eip);
+enum return_type {
+   RT_RETURN,
+   RT_LONGJMP,
+   RT_EXIT,
+};
+
+typedef struct _FuncWrapper FuncWrapper;
+struct _FuncWrapper {
+   void *(*before)(va_list args);
+   void  (*after) (void *nonce, enum return_type, Word retval);
+};
+
+extern void VG_(wrap_function)(Addr eip, const FuncWrapper *wrapper);
+extern const FuncWrapper *VG_(is_wrapped)(Addr eip);
+extern Bool VG_(is_wrapper_return)(Addr eip);
 
 /* Primary interface for adding wrappers for client-side functions. */
-//extern CodeRedirect *VG_(add_wrapper)(const Char *from_lib, const Char *from_sym,
-//				      const FuncWrapper *wrapper);
-//
-//extern Bool VG_(is_resolved)(const CodeRedirect *redir);
+extern CodeRedirect *VG_(add_wrapper)(const Char *from_lib, const Char *from_sym,
+				      const FuncWrapper *wrapper);
+
+extern Bool VG_(is_resolved)(const CodeRedirect *redir);
 
 #endif   // __PUB_CORE_REDIR_H
 

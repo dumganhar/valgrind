@@ -16,7 +16,7 @@ TOOLS =		memcheck \
 # And we want to include Addrcheck in the distro, but not compile/test it.
 # Put docs last because building the HTML is slow and we want to get
 # everything else working before we try it.
-SUBDIRS = include coregrind . tests perf auxprogs $(TOOLS) helgrind docs
+SUBDIRS = include coregrind . tests auxprogs $(TOOLS) helgrind docs
 DIST_SUBDIRS  = $(SUBDIRS) addrcheck
 
 SUPP_FILES = \
@@ -47,20 +47,12 @@ if VG_PPC32_LINUX
 BUILT_SOURCES += valt_load_address_ppc32_linux.lds
 CLEANFILES += valt_load_address_ppc32_linux.lds
 endif
-if VG_PPC64_LINUX
-BUILT_SOURCES += valt_load_address_ppc64_linux.lds
-CLEANFILES += valt_load_address_ppc64_linux.lds
-endif
 
 default.supp: $(SUPP_FILES)
 
 ## Preprend @PERL@ because tests/vg_regtest isn't executable
 regtest: check
 	@PERL@ tests/vg_regtest $(TOOLS)
-
-## Preprend @PERL@ because tests/vg_per isn't executable
-perf: check
-	@PERL@ perf/vg_perf perf
 
 EXTRA_DIST = \
 	ACKNOWLEDGEMENTS \
@@ -90,7 +82,6 @@ VEX_PUBLIC_HDRS = \
 	@VEX_DIR@/pub/libvex_guest_amd64.h \
 	@VEX_DIR@/pub/libvex_ir.h \
 	@VEX_DIR@/pub/libvex_guest_ppc32.h \
-	@VEX_DIR@/pub/libvex_guest_ppc64.h \
 	@VEX_DIR@/pub/libvex_basictypes.h \
 	@VEX_DIR@/pub/libvex_guest_offsets.h \
 	@VEX_DIR@/pub/libvex_emwarn.h \
@@ -110,7 +101,6 @@ VEX_PRIMARY_SOURCES = \
 	VEX/pub/libvex_guest_amd64.h \
 	VEX/pub/libvex_ir.h \
 	VEX/pub/libvex_guest_ppc32.h \
-	VEX/pub/libvex_guest_ppc64.h \
 	VEX/pub/libvex_basictypes.h \
 	VEX/pub/libvex_guest_offsets.h \
 	VEX/pub/libvex_emwarn.h \
@@ -123,9 +113,9 @@ VEX_PRIMARY_SOURCES = \
 	VEX/priv/ir/irdefs.c \
 	VEX/priv/ir/iropt.c \
 	VEX/priv/ir/iropt.h \
-	VEX/priv/host-ppc/isel.c \
-	VEX/priv/host-ppc/hdefs.c \
-	VEX/priv/host-ppc/hdefs.h \
+	VEX/priv/host-ppc32/isel.c \
+	VEX/priv/host-ppc32/hdefs.c \
+	VEX/priv/host-ppc32/hdefs.h \
 	VEX/priv/main/vex_svnversion.h \
 	VEX/priv/main/vex_globals.c \
 	VEX/priv/main/vex_globals.h \
@@ -151,9 +141,9 @@ VEX_PRIMARY_SOURCES = \
 	VEX/priv/guest-amd64/ghelpers.c \
 	VEX/priv/guest-amd64/gdefs.h \
 	VEX/priv/guest-amd64/toIR.c \
-	VEX/priv/guest-ppc/ghelpers.c \
-	VEX/priv/guest-ppc/gdefs.h \
-	VEX/priv/guest-ppc/toIR.c \
+	VEX/priv/guest-ppc32/ghelpers.c \
+	VEX/priv/guest-ppc32/gdefs.h \
+	VEX/priv/guest-ppc32/toIR.c \
 	VEX/priv/host-generic/reg_alloc2.c \
 	VEX/priv/host-generic/h_generic_regs.c \
 	VEX/priv/host-generic/h_generic_regs.h \
@@ -199,14 +189,7 @@ valt_load_address_amd64_linux.lds: Makefile
 	|| rm -f $@
 
 valt_load_address_ppc32_linux.lds: Makefile
-	$(CC) @FLAG_M32@ -Wl,--verbose -nostdlib 2>&1 | sed \
-		-e '1,/^=====\+$$/d' \
-		-e '/^=====\+$$/d' \
-		-e '/\. = 0x[0-9A-Fa-f]\+ + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \
-	|| rm -f $@
-
-valt_load_address_ppc64_linux.lds: Makefile
-	$(CC) -m64 -Wl,--verbose -nostdlib 2>&1 | sed \
+	$(CC) -Wl,--verbose -nostdlib 2>&1 | sed \
 		-e '1,/^=====\+$$/d' \
 		-e '/^=====\+$$/d' \
 		-e '/\. = 0x[0-9A-Fa-f]\+ + SIZEOF_HEADERS/s/0x[0-9A-Fa-f]\+/valt_load_address/g' > $@ \

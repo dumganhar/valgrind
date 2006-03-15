@@ -767,8 +767,7 @@ void VG_(show_all_errors) ( void )
          StackTrace ips = VG_(extract_StackTrace)(p_min->where);
          VG_(translate) ( 0 /* dummy ThreadId; irrelevant due to debugging*/,
                           ips[0], /*debugging*/True, 0xFE/*verbosity*/,
-                          /*bbs_done*/0,
-                          /*allow redir?*/True);
+                          /*bbs_done*/0);
       }
 
       p_min->count = 1 << 30;
@@ -1110,17 +1109,12 @@ Bool supp_matches_callers(Error* err, Supp* su)
             break; 
 
          case FunName: 
-            // Nb: mangled names used in suppressions.  Do, though,
-            // Z-demangle them, since otherwise it's possible to wind
-            // up comparing "malloc" in the suppression against
-            // "_vgrZU_libcZdsoZa_malloc" in the backtrace, and the
-            // two of them need to be made to match.
-            if (!VG_(get_fnname_Z_demangle_only)(a, caller_name, ERRTXT_LEN))
+            // Nb: mangled names used in suppressions
+            if (!VG_(get_fnname_nodemangle)(a, caller_name, ERRTXT_LEN))
                VG_(strcpy)(caller_name, "???");
             break;
          default: VG_(tool_panic)("supp_matches_callers");
       }
-      if (0) VG_(printf)("cmp %s %s\n", su->callers[i].name, caller_name);
       if (!VG_(string_match)(su->callers[i].name, caller_name))
          return False;
    }

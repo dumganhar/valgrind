@@ -47,6 +47,7 @@
 #include "pub_tool_machine.h"
 #include "pub_tool_mallocfree.h"
 #include "pub_tool_options.h"
+#include "pub_tool_profile.h"       // For mac_shared.h
 #include "pub_tool_replacemalloc.h"
 #include "pub_tool_tooliface.h"
 #include "pub_tool_threadstate.h"
@@ -55,13 +56,8 @@
 #include "memcheck.h"   /* for client requests */
 
 
-#ifdef HAVE_BUILTIN_EXPECT
 #define EXPECTED_TAKEN(cond)     __builtin_expect((cond),1)
 #define EXPECTED_NOT_TAKEN(cond) __builtin_expect((cond),0)
-#else
-#define EXPECTED_TAKEN(cond)     (cond)
-#define EXPECTED_NOT_TAKEN(cond) (cond)
-#endif
 
 /* Define to debug the mem audit system.  Set to:
       0  no debugging, fast cases are used
@@ -352,7 +348,7 @@ static inline UWord byte_offset_w ( UWord wordszB, Bool bigendian,
 
 /* --------------- Fundamental functions --------------- */
 
-static inline
+static 
 void get_abit_and_vbyte ( /*OUT*/UWord* abit, 
                           /*OUT*/UWord* vbyte,
                           Addr a )
@@ -362,7 +358,7 @@ void get_abit_and_vbyte ( /*OUT*/UWord* abit,
    *abit  = read_bit_array(sm->abits, a & 0xFFFF);
 } 
 
-static inline
+static 
 UWord get_abit ( Addr a )
 {
    SecMap* sm = get_secmap_readable(a);
@@ -741,22 +737,6 @@ static void mc_make_readable ( Addr a, SizeT len )
    set_address_range_perms ( a, len, VGM_BIT_VALID, VGM_BIT_VALID );
 }
 
-/* For each byte in [a,a+len), if the byte is addressable, make it be
-   defined, but if it isn't addressible, leave it alone.  In other
-   words a version of mc_make_readable that doesn't mess with
-   addressibility.  Low-performance implementation. */
-static void mc_make_defined ( Addr a, SizeT len )
-{
-   SizeT i;
-   UWord abit, vbyte;
-   DEBUG("mc_make_defined(%p, %llu)\n", a, (ULong)len);
-   for (i = 0; i < len; i++) {
-      get_abit_and_vbyte( &abit, &vbyte, a+i );
-      if (EXPECTED_TAKEN(abit == VGM_BIT_VALID))
-         set_vbyte(a+i, VGM_BYTE_VALID);
-   }
-}
-
 
 /* --- Block-copy permissions (needed for implementing realloc() and
        sys_mremap). --- */
@@ -1022,7 +1002,6 @@ void MC_(helperc_MAKE_STACK_UNINIT) ( Addr base, UWord len )
       any attempt to access it will elicit an addressing error,
       and that's good enough.
    */
-   /* 128 bytes (16 ULongs) is the magic value for ELF amd64. */
    if (EXPECTED_TAKEN( len == 128
                        && VG_IS_8_ALIGNED(base) 
       )) {
@@ -1067,74 +1046,7 @@ void MC_(helperc_MAKE_STACK_UNINIT) ( Addr base, UWord len )
       }
    }
 
-   /* 288 bytes (36 ULongs) is the magic value for ELF ppc64. */
-   if (EXPECTED_TAKEN( len == 288
-                       && VG_IS_8_ALIGNED(base) 
-      )) {
-      /* Now we know the address range is suitably sized and
-         aligned. */
-      UWord a_lo   = (UWord)base;
-      UWord a_hi   = (UWord)(base + 287);
-      UWord sec_lo = a_lo >> 16;
-      UWord sec_hi = a_hi >> 16;
-
-      if (EXPECTED_TAKEN( sec_lo == sec_hi 
-                          && sec_lo <= N_PRIMARY_MAP
-         )) {
-         /* Now we know that the entire address range falls within a
-            single secondary map, and that that secondary 'lives' in
-            the main primary map. */
-         SecMap* sm = primary_map[sec_lo];
-
-         if (EXPECTED_TAKEN( !is_distinguished_sm(sm) )) {
-            /* And finally, now we know that the secondary in question
-               is modifiable. */
-            UWord   v_off = a_lo & 0xFFFF;
-            ULong*  p     = (ULong*)(&sm->vbyte[v_off]);
-            p[ 0] =  VGM_WORD64_INVALID;
-            p[ 1] =  VGM_WORD64_INVALID;
-            p[ 2] =  VGM_WORD64_INVALID;
-            p[ 3] =  VGM_WORD64_INVALID;
-            p[ 4] =  VGM_WORD64_INVALID;
-            p[ 5] =  VGM_WORD64_INVALID;
-            p[ 6] =  VGM_WORD64_INVALID;
-            p[ 7] =  VGM_WORD64_INVALID;
-            p[ 8] =  VGM_WORD64_INVALID;
-            p[ 9] =  VGM_WORD64_INVALID;
-            p[10] =  VGM_WORD64_INVALID;
-            p[11] =  VGM_WORD64_INVALID;
-            p[12] =  VGM_WORD64_INVALID;
-            p[13] =  VGM_WORD64_INVALID;
-            p[14] =  VGM_WORD64_INVALID;
-            p[15] =  VGM_WORD64_INVALID;
-            p[16] =  VGM_WORD64_INVALID;
-            p[17] =  VGM_WORD64_INVALID;
-            p[18] =  VGM_WORD64_INVALID;
-            p[19] =  VGM_WORD64_INVALID;
-            p[20] =  VGM_WORD64_INVALID;
-            p[21] =  VGM_WORD64_INVALID;
-            p[22] =  VGM_WORD64_INVALID;
-            p[23] =  VGM_WORD64_INVALID;
-            p[24] =  VGM_WORD64_INVALID;
-            p[25] =  VGM_WORD64_INVALID;
-            p[26] =  VGM_WORD64_INVALID;
-            p[27] =  VGM_WORD64_INVALID;
-            p[28] =  VGM_WORD64_INVALID;
-            p[29] =  VGM_WORD64_INVALID;
-            p[30] =  VGM_WORD64_INVALID;
-            p[31] =  VGM_WORD64_INVALID;
-            p[32] =  VGM_WORD64_INVALID;
-            p[33] =  VGM_WORD64_INVALID;
-            p[34] =  VGM_WORD64_INVALID;
-            p[35] =  VGM_WORD64_INVALID;
-            return;
-	 }
-      }
-   }
-
    /* else fall into slow case */
-   if (0) VG_(printf)("MC_(helperc_MAKE_STACK_UNINIT): "
-                      "slow case, %d\n", len);
    mc_make_writable(base, len);
 }
 
@@ -1267,6 +1179,8 @@ void mc_check_is_writable ( CorePart part, ThreadId tid, Char* s,
    Bool ok;
    Addr bad_addr;
 
+   VGP_PUSHCC(VgpCheckMem);
+
    /* VG_(message)(Vg_DebugMsg,"check is writable: %x .. %x",
                                base,base+size-1); */
    ok = mc_check_writable ( base, size, &bad_addr );
@@ -1286,6 +1200,8 @@ void mc_check_is_writable ( CorePart part, ThreadId tid, Char* s,
          VG_(tool_panic)("mc_check_is_writable: unexpected CorePart");
       }
    }
+
+   VGP_POPCC(VgpCheckMem);
 }
 
 static
@@ -1295,6 +1211,8 @@ void mc_check_is_readable ( CorePart part, ThreadId tid, Char* s,
    Addr bad_addr;
    MC_ReadResult res;
 
+   VGP_PUSHCC(VgpCheckMem);
+   
    res = mc_check_readable ( base, size, &bad_addr );
 
    if (0)
@@ -1310,7 +1228,6 @@ void mc_check_is_readable ( CorePart part, ThreadId tid, Char* s,
                                     isUnaddr, s );
          break;
       
-      case Vg_CoreClientReq: /* KLUDGE */
       case Vg_CorePThread:
          MAC_(record_core_mem_error)( tid, isUnaddr, s );
          break;
@@ -1325,6 +1242,7 @@ void mc_check_is_readable ( CorePart part, ThreadId tid, Char* s,
          VG_(tool_panic)("mc_check_is_readable: unexpected CorePart");
       }
    }
+   VGP_POPCC(VgpCheckMem);
 }
 
 static
@@ -1335,12 +1253,16 @@ void mc_check_is_readable_asciiz ( CorePart part, ThreadId tid,
    Addr bad_addr = 0;   // shut GCC up
    /* VG_(message)(Vg_DebugMsg,"check is readable asciiz: 0x%x",str); */
 
+   VGP_PUSHCC(VgpCheckMem);
+
    tl_assert(part == Vg_CoreSysCall);
    res = mc_check_readable_asciiz ( (Addr)str, &bad_addr );
    if (MC_Ok != res) {
       Bool isUnaddr = ( MC_AddrErr == res ? True : False );
       MAC_(record_param_error) ( tid, bad_addr, /*isReg*/False, isUnaddr, s );
    }
+
+   VGP_POPCC(VgpCheckMem);
 }
 
 static
@@ -1381,18 +1303,15 @@ void mc_post_mem_write(CorePart part, ThreadId tid, Addr a, SizeT len)
 
 /* When some chunk of guest state is written, mark the corresponding
    shadow area as valid.  This is used to initialise arbitrarily large
-   chunks of guest state, hence the _SIZE value, which has to be as
-   big as the biggest guest state.
+   chunks of guest state, hence the (somewhat arbitrary) 1024 limit.
 */
 static void mc_post_reg_write ( CorePart part, ThreadId tid, 
                                 OffT offset, SizeT size)
 {
-#  define MAX_REG_WRITE_SIZE 1392
-   UChar area[MAX_REG_WRITE_SIZE];
-   tl_assert(size <= MAX_REG_WRITE_SIZE);
+   UChar area[1024];
+   tl_assert(size <= 1024);
    VG_(memset)(area, VGM_BYTE_VALID, size);
    VG_(set_shadow_regs_area)( tid, offset, size, area );
-#  undef MAX_REG_WRITE_SIZE
 }
 
 static 
@@ -2036,78 +1955,77 @@ VG_REGPARM(1) void MC_(helperc_complain_undef) ( HWord sz )
 }
 
 
-/*------------------------------------------------------------*/
-/*--- Metadata get/set functions, for client requests.     ---*/
-/*------------------------------------------------------------*/
-
-/* Copy Vbits for src into vbits. Returns: 1 == OK, 2 == alignment
-   error [no longer used], 3 == addressing error. */
-static Int mc_get_or_set_vbits_for_client ( 
-   ThreadId tid,
-   Addr dataV, 
-   Addr vbitsV, 
-   SizeT size, 
-   Bool setting /* True <=> set vbits,  False <=> get vbits */ 
-)
-{
-   Bool   addressibleD = True;
-   Bool   addressibleV = True;
-   UChar* data         = (UChar*)dataV;
-   UChar* vbits        = (UChar*)vbitsV;
-   UChar* dataP        = NULL; /* bogus init to keep gcc happy */
-   UChar* vbitsP       = NULL; /* ditto */
-   SizeT i;
-
-   if (size < 0)
-      return 2;
-  
-   /* Check that arrays are addressible. */
-   for (i = 0; i < size; i++) {
-      dataP  = &data[i];
-      vbitsP = &vbits[i];
-      if (get_abit((Addr)dataP) != VGM_BIT_VALID) {
-         addressibleD = False;
-         break;
-      }
-      if (get_abit((Addr)vbitsP) != VGM_BIT_VALID) {
-         addressibleV = False;
-         break;
-      }
-   }
-   if (!addressibleD) {
-      MAC_(record_address_error)( tid, (Addr)dataP, 1, 
-                                  setting ? True : False );
-      return 3;
-   }
-   if (!addressibleV) {
-      MAC_(record_address_error)( tid, (Addr)vbitsP, 1, 
-                                  setting ? False : True );
-      return 3;
-   }
- 
-   /* Do the copy */
-   if (setting) {
-      /* setting */
-      mc_check_is_readable(Vg_CoreClientReq, tid, "SET_VBITS(vbits)",
-                           (Addr)vbits, size);
-      for (i = 0; i < size; i++) {
-         set_vbyte( (Addr)&data[i], vbits[i] );
-      }
-   } else {
-      /* getting */
-      for (i = 0; i < size; i++) {
-         UWord abit, vbyte;
-         get_abit_and_vbyte(&abit, &vbyte, (Addr)&data[i]);
-         /* above checks should ensure this */
-         tl_assert(abit == VGM_BIT_VALID);
-         vbits[i] = (UChar)vbyte;
-      }
-      // The bytes in vbits[] have now been set, so mark them as such.
-      mc_make_readable((Addr)vbits, size);
-  }
-
-   return 1;
-}
+//zz /*------------------------------------------------------------*/
+//zz /*--- Metadata get/set functions, for client requests.     ---*/
+//zz /*------------------------------------------------------------*/
+//zz 
+//zz /* Copy Vbits for src into vbits. Returns: 1 == OK, 2 == alignment
+//zz    error, 3 == addressing error. */
+//zz static Int mc_get_or_set_vbits_for_client ( 
+//zz    ThreadId tid,
+//zz    Addr dataV, 
+//zz    Addr vbitsV, 
+//zz    SizeT size, 
+//zz    Bool setting /* True <=> set vbits,  False <=> get vbits */ 
+//zz )
+//zz {
+//zz    Bool addressibleD = True;
+//zz    Bool addressibleV = True;
+//zz    UInt* data  = (UInt*)dataV;
+//zz    UInt* vbits = (UInt*)vbitsV;
+//zz    SizeT szW   = size / 4; /* sigh */
+//zz    SizeT i;
+//zz    UInt* dataP  = NULL; /* bogus init to keep gcc happy */
+//zz    UInt* vbitsP = NULL; /* ditto */
+//zz 
+//zz    /* Check alignment of args. */
+//zz    if (!(VG_IS_4_ALIGNED(data) && VG_IS_4_ALIGNED(vbits)))
+//zz       return 2;
+//zz    if ((size & 3) != 0)
+//zz       return 2;
+//zz   
+//zz    /* Check that arrays are addressible. */
+//zz    for (i = 0; i < szW; i++) {
+//zz       dataP  = &data[i];
+//zz       vbitsP = &vbits[i];
+//zz       if (get_abits4_ALIGNED((Addr)dataP) != VGM_NIBBLE_VALID) {
+//zz          addressibleD = False;
+//zz          break;
+//zz       }
+//zz       if (get_abits4_ALIGNED((Addr)vbitsP) != VGM_NIBBLE_VALID) {
+//zz          addressibleV = False;
+//zz          break;
+//zz       }
+//zz    }
+//zz    if (!addressibleD) {
+//zz       MAC_(record_address_error)( tid, (Addr)dataP, 4, 
+//zz                                   setting ? True : False );
+//zz       return 3;
+//zz    }
+//zz    if (!addressibleV) {
+//zz       MAC_(record_address_error)( tid, (Addr)vbitsP, 4, 
+//zz                                   setting ? False : True );
+//zz       return 3;
+//zz    }
+//zz  
+//zz    /* Do the copy */
+//zz    if (setting) {
+//zz       /* setting */
+//zz       for (i = 0; i < szW; i++) {
+//zz          if (get_vbytes4_ALIGNED( (Addr)&vbits[i] ) != VGM_WORD_VALID)
+//zz             mc_record_value_error(tid, 4);
+//zz          set_vbytes4_ALIGNED( (Addr)&data[i], vbits[i] );
+//zz       }
+//zz    } else {
+//zz       /* getting */
+//zz       for (i = 0; i < szW; i++) {
+//zz          vbits[i] = get_vbytes4_ALIGNED( (Addr)&data[i] );
+//zz          set_vbytes4_ALIGNED( (Addr)&vbits[i], VGM_WORD_VALID );
+//zz       }
+//zz    }
+//zz 
+//zz    return 1;
+//zz }
 
 
 /*------------------------------------------------------------*/
@@ -2535,11 +2453,6 @@ static Bool mc_handle_client_request ( ThreadId tid, UWord* arg, UWord* ret )
          *ret = -1;
          break;
 
-      case VG_USERREQ__MAKE_DEFINED: /* make defined */
-         mc_make_defined ( arg[1], arg[2] );
-         *ret = -1;
-         break;
-
       case VG_USERREQ__CREATE_BLOCK: /* describe a block */
          if (arg[1] != 0 && arg[2] != 0) {
             i = alloc_client_block();
@@ -2568,21 +2481,21 @@ static Bool mc_handle_client_request ( ThreadId tid, UWord* arg, UWord* ret )
          }
          break;
 
-      case VG_USERREQ__GET_VBITS:
-         /* Returns: 1 == OK, 2 == alignment error, 3 == addressing
-            error. */
-         /* VG_(printf)("get_vbits %p %p %d\n", arg[1], arg[2], arg[3] ); */
-         *ret = mc_get_or_set_vbits_for_client
-                   ( tid, arg[1], arg[2], arg[3], False /* get them */ );
-         break;
-
-      case VG_USERREQ__SET_VBITS:
-         /* Returns: 1 == OK, 2 == alignment error, 3 == addressing
-            error. */
-         /* VG_(printf)("set_vbits %p %p %d\n", arg[1], arg[2], arg[3] ); */
-         *ret = mc_get_or_set_vbits_for_client
-                   ( tid, arg[1], arg[2], arg[3], True /* set them */ );
-         break;
+//zz       case VG_USERREQ__GET_VBITS:
+//zz          /* Returns: 1 == OK, 2 == alignment error, 3 == addressing
+//zz             error. */
+//zz          /* VG_(printf)("get_vbits %p %p %d\n", arg[1], arg[2], arg[3] ); */
+//zz          *ret = mc_get_or_set_vbits_for_client
+//zz                    ( tid, arg[1], arg[2], arg[3], False /* get them */ );
+//zz          break;
+//zz 
+//zz       case VG_USERREQ__SET_VBITS:
+//zz          /* Returns: 1 == OK, 2 == alignment error, 3 == addressing
+//zz             error. */
+//zz          /* VG_(printf)("set_vbits %p %p %d\n", arg[1], arg[2], arg[3] ); */
+//zz          *ret = mc_get_or_set_vbits_for_client
+//zz                    ( tid, arg[1], arg[2], arg[3], True /* set them */ );
+//zz          break;
 
       default:
          if (MAC_(handle_common_client_requests)(tid, arg, ret )) {
@@ -2736,27 +2649,19 @@ static void mc_pre_clo_init(void)
    VG_(track_die_mem_brk)         ( & mc_make_noaccess );
    VG_(track_die_mem_munmap)      ( & mc_make_noaccess ); 
 
-   VG_(track_new_mem_stack_4)     ( & MAC_(new_mem_stack_4)   );
-   VG_(track_new_mem_stack_8)     ( & MAC_(new_mem_stack_8)   );
-   VG_(track_new_mem_stack_12)    ( & MAC_(new_mem_stack_12)  );
-   VG_(track_new_mem_stack_16)    ( & MAC_(new_mem_stack_16)  );
-   VG_(track_new_mem_stack_32)    ( & MAC_(new_mem_stack_32)  );
-   VG_(track_new_mem_stack_112)   ( & MAC_(new_mem_stack_112) );
-   VG_(track_new_mem_stack_128)   ( & MAC_(new_mem_stack_128) );
-   VG_(track_new_mem_stack_144)   ( & MAC_(new_mem_stack_144) );
-   VG_(track_new_mem_stack_160)   ( & MAC_(new_mem_stack_160) );
-   VG_(track_new_mem_stack)       ( & MAC_(new_mem_stack)     );
+   VG_(track_new_mem_stack_4)     ( & MAC_(new_mem_stack_4)  );
+   VG_(track_new_mem_stack_8)     ( & MAC_(new_mem_stack_8)  );
+   VG_(track_new_mem_stack_12)    ( & MAC_(new_mem_stack_12) );
+   VG_(track_new_mem_stack_16)    ( & MAC_(new_mem_stack_16) );
+   VG_(track_new_mem_stack_32)    ( & MAC_(new_mem_stack_32) );
+   VG_(track_new_mem_stack)       ( & MAC_(new_mem_stack)    );
 
-   VG_(track_die_mem_stack_4)     ( & MAC_(die_mem_stack_4)   );
-   VG_(track_die_mem_stack_8)     ( & MAC_(die_mem_stack_8)   );
-   VG_(track_die_mem_stack_12)    ( & MAC_(die_mem_stack_12)  );
-   VG_(track_die_mem_stack_16)    ( & MAC_(die_mem_stack_16)  );
-   VG_(track_die_mem_stack_32)    ( & MAC_(die_mem_stack_32)  );
-   VG_(track_die_mem_stack_112)   ( & MAC_(die_mem_stack_112) );
-   VG_(track_die_mem_stack_128)   ( & MAC_(die_mem_stack_128) );
-   VG_(track_die_mem_stack_144)   ( & MAC_(die_mem_stack_144) );
-   VG_(track_die_mem_stack_160)   ( & MAC_(die_mem_stack_160) );
-   VG_(track_die_mem_stack)       ( & MAC_(die_mem_stack)     );
+   VG_(track_die_mem_stack_4)     ( & MAC_(die_mem_stack_4)  );
+   VG_(track_die_mem_stack_8)     ( & MAC_(die_mem_stack_8)  );
+   VG_(track_die_mem_stack_12)    ( & MAC_(die_mem_stack_12) );
+   VG_(track_die_mem_stack_16)    ( & MAC_(die_mem_stack_16) );
+   VG_(track_die_mem_stack_32)    ( & MAC_(die_mem_stack_32) );
+   VG_(track_die_mem_stack)       ( & MAC_(die_mem_stack)    );
    
    VG_(track_ban_mem_stack)       ( & mc_make_noaccess );
 
@@ -2769,6 +2674,10 @@ static void mc_pre_clo_init(void)
 
    VG_(track_post_reg_write)                  ( & mc_post_reg_write );
    VG_(track_post_reg_write_clientcall_return)( & mc_post_reg_write_clientcall );
+
+   VG_(register_profile_event) ( VgpSetMem,   "set-mem-perms" );
+   VG_(register_profile_event) ( VgpCheckMem, "check-mem-perms" );
+   VG_(register_profile_event) ( VgpESPAdj,   "adjust-ESP" );
 
    /* Additional block description for VG_(describe_addr)() */
    MAC_(describe_addr_supp) = client_perm_maybe_describe;

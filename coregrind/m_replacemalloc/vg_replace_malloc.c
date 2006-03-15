@@ -44,12 +44,13 @@
    traces, so we want the name to be (hopefully!) meaningful to users.
    ------------------------------------------------------------------ */
 
+#include "valgrind.h"               // for VALGRIND_NON_SIMD_CALL[12]
+#include "coregrind.h"              // for VALGRIND_INTERNAL_PRINTF
+
 #include "pub_core_basics.h"
-#include "pub_core_clreq.h"         // for VALGRIND_INTERNAL_PRINTF,
-                                    //   VALGRIND_NON_SIMD_CALL[12]
 #include "pub_core_debuginfo.h"     // needed for pub_core_redir.h :(
 #include "pub_core_mallocfree.h"    // for VG_MIN_MALLOC_SZB, VG_AR_CLIENT
-#include "pub_core_redir.h"         // for VG_REDIRECT_FUNCTION_*
+#include "pub_core_redir.h"         // for VG_REPLACE_FUNCTION
 #include "pub_core_replacemalloc.h"
 
 /* Some handy Z-encoded names */
@@ -90,11 +91,10 @@ static void init(void) __attribute__((constructor));
    __builtin_delete, calloc, realloc, memalign, and friends.
 
    None of these functions are called directly - they are not meant to
-   be found by the dynamic linker.  But ALL client calls to malloc()
-   and friends wind up here eventually.  They get called because
-   vg_replace_malloc installs a bunch of code redirects which causes
-   Valgrind to use these functions rather than the ones they're
-   replacing.
+   be found by the dynamic linker.  But ALL client calls to malloc() and
+   friends wind up here eventually.  They get called because vg_replace_malloc
+   installs a bunch of code redirects which causes Valgrind to use these
+   functions rather than the ones they're replacing.
 */
 
 /* Generate a replacement for 'fnname' in object 'soname', which calls
@@ -102,13 +102,13 @@ static void init(void) __attribute__((constructor));
 */
 #define ALLOC_or_NULL(soname, fnname, vg_replacement) \
    \
-   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) (SizeT n); \
-   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) (SizeT n)  \
+   void* VG_REPLACE_FUNCTION(soname,fnname) (SizeT n); \
+   void* VG_REPLACE_FUNCTION(soname,fnname) (SizeT n)  \
    { \
       void* v; \
       \
-      if (!init_done) init(); \
       MALLOC_TRACE(#fnname "(%llu)", (ULong)n ); \
+      if (!init_done) init(); \
       \
       v = (void*)VALGRIND_NON_SIMD_CALL1( info.tl_##vg_replacement, n ); \
       MALLOC_TRACE(" = %p", v ); \
@@ -122,13 +122,13 @@ static void init(void) __attribute__((constructor));
 */
 #define ALLOC_or_BOMB(soname, fnname, vg_replacement)  \
    \
-   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) (SizeT n); \
-   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) (SizeT n)  \
+   void* VG_REPLACE_FUNCTION(soname,fnname) (SizeT n); \
+   void* VG_REPLACE_FUNCTION(soname,fnname) (SizeT n)  \
    { \
       void* v; \
       \
-      if (!init_done) init(); \
       MALLOC_TRACE(#fnname "(%llu)", (ULong)n );        \
+      if (!init_done) init(); \
       \
       v = (void*)VALGRIND_NON_SIMD_CALL1( info.tl_##vg_replacement, n ); \
       MALLOC_TRACE(" = %p", v ); \
@@ -148,6 +148,14 @@ static void init(void) __attribute__((constructor));
 ALLOC_or_NULL(m_libstc_plus_plus_star, malloc,      malloc);
 ALLOC_or_NULL(m_libc_dot_so_star,      malloc,      malloc);
 //ALLOC_or_NULL(m_libpgc_dot_so,         malloc,      malloc);
+
+
+// operator new(unsigned int), unmangled for some bizarre reason
+ALLOC_or_BOMB(m_libstc_plus_plus_star, builtin_new,    __builtin_new);
+ALLOC_or_BOMB(m_libc_dot_so_star,      builtin_new,    __builtin_new);
+
+ALLOC_or_BOMB(m_libstc_plus_plus_star, __builtin_new,  __builtin_new);
+ALLOC_or_BOMB(m_libc_dot_so_star,      __builtin_new,  __builtin_new);
 
 
 // operator new(unsigned int), GNU mangling, 32-bit platforms
@@ -176,6 +184,11 @@ ALLOC_or_NULL(m_libc_dot_so_star,      malloc,      malloc);
  ALLOC_or_NULL(m_libstc_plus_plus_star, _ZnwmRKSt9nothrow_t,  __builtin_new);
  ALLOC_or_NULL(m_libc_dot_so_star,      _ZnwmRKSt9nothrow_t,  __builtin_new);
 #endif
+
+
+// operator new[](unsigned int), unmangled for some bizarre reason
+ALLOC_or_BOMB(m_libstc_plus_plus_star, __builtin_vec_new, __builtin_vec_new );
+ALLOC_or_BOMB(m_libc_dot_so_star,      __builtin_vec_new, __builtin_vec_new );
 
 
 // operator new[](unsigned int), GNU mangling, 32-bit platforms
@@ -207,13 +220,13 @@ ALLOC_or_NULL(m_libc_dot_so_star,      malloc,      malloc);
 */
 #define FREE(soname, fnname, vg_replacement) \
    \
-   void VG_REPLACE_FUNCTION_ZU(soname,fnname) (void *p); \
-   void VG_REPLACE_FUNCTION_ZU(soname,fnname) (void *p)  \
+   void VG_REPLACE_FUNCTION(soname,fnname) (void *p); \
+   void VG_REPLACE_FUNCTION(soname,fnname) (void *p)  \
    { \
-      if (!init_done) init(); \
       MALLOC_TRACE(#vg_replacement "(%p)", p ); \
       if (p == NULL)  \
          return; \
+      if (!init_done) init(); \
       (void)VALGRIND_NON_SIMD_CALL1( info.tl_##vg_replacement, p ); \
    }
 
@@ -225,6 +238,10 @@ FREE(m_libc_dot_so_star,       free,                 free );
 FREE(m_libstc_plus_plus_star,  cfree,                free );
 FREE(m_libc_dot_so_star,       cfree,                free );
 
+// do we really need these?
+FREE(m_libstc_plus_plus_star,  __builtin_delete,     __builtin_delete );
+FREE(m_libc_dot_so_star,       __builtin_delete,     __builtin_delete );
+
 // operator delete(void*), GNU mangling
 FREE(m_libstc_plus_plus_star,  _ZdlPv,               __builtin_delete );
 FREE(m_libc_dot_so_star,       _ZdlPv,               __builtin_delete );
@@ -234,6 +251,8 @@ FREE(m_libstc_plus_plus_star, _ZdlPvRKSt9nothrow_t,  __builtin_delete );
 FREE(m_libc_dot_so_star,      _ZdlPvRKSt9nothrow_t,  __builtin_delete );
 
 // operator delete[](void*), GNU mangling
+FREE(m_libstc_plus_plus_star,  __builtin_vec_delete, __builtin_vec_delete );
+FREE(m_libc_dot_so_star,       __builtin_vec_delete, __builtin_vec_delete );
 FREE(m_libstc_plus_plus_star,  _ZdaPv,               __builtin_vec_delete );
 FREE(m_libc_dot_so_star,       _ZdaPv,               __builtin_vec_delete );
 
@@ -244,14 +263,14 @@ FREE(m_libc_dot_so_star,       _ZdaPvRKSt9nothrow_t, __builtin_vec_delete );
 
 #define CALLOC(soname, fnname) \
    \
-   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( SizeT nmemb, SizeT size ); \
-   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( SizeT nmemb, SizeT size )  \
+   void* VG_REPLACE_FUNCTION(soname,fnname) ( SizeT nmemb, SizeT size ); \
+   void* VG_REPLACE_FUNCTION(soname,fnname) ( SizeT nmemb, SizeT size )  \
    { \
       void* v; \
       \
-      if (!init_done) init(); \
       MALLOC_TRACE("calloc(%llu,%llu)", (ULong)nmemb, (ULong)size ); \
       \
+      if (!init_done) init(); \
       v = (void*)VALGRIND_NON_SIMD_CALL2( info.tl_calloc, nmemb, size ); \
       MALLOC_TRACE(" = %p", v ); \
       return v; \
@@ -262,23 +281,23 @@ CALLOC(m_libc_dot_so_star, calloc);
 
 #define REALLOC(soname, fnname) \
    \
-   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( void* ptrV, SizeT new_size );\
-   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( void* ptrV, SizeT new_size ) \
+   void* VG_REPLACE_FUNCTION(soname,fnname) ( void* ptrV, SizeT new_size );\
+   void* VG_REPLACE_FUNCTION(soname,fnname) ( void* ptrV, SizeT new_size ) \
    { \
       void* v; \
       \
-      if (!init_done) init(); \
       MALLOC_TRACE("realloc(%p,%llu)", ptrV, (ULong)new_size ); \
       \
       if (ptrV == NULL) \
          /* We need to call a malloc-like function; so let's use \
             one which we know exists. */ \
-         return VG_REPLACE_FUNCTION_ZU(libcZdsoZa,malloc) (new_size); \
+         return VG_REPLACE_FUNCTION(libcZdsoZa,malloc) (new_size); \
       if (new_size <= 0) { \
-         VG_REPLACE_FUNCTION_ZU(libcZdsoZa,free)(ptrV); \
+         VG_REPLACE_FUNCTION(libcZdsoZa,free)(ptrV); \
          MALLOC_TRACE(" = 0"); \
          return NULL; \
       } \
+      if (!init_done) init(); \
       v = (void*)VALGRIND_NON_SIMD_CALL2( info.tl_realloc, ptrV, new_size ); \
       MALLOC_TRACE(" = %p", v ); \
       return v; \
@@ -289,12 +308,11 @@ REALLOC(m_libc_dot_so_star, realloc);
 
 #define MEMALIGN(soname, fnname) \
    \
-   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( SizeT alignment, SizeT n ); \
-   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( SizeT alignment, SizeT n )  \
+   void* VG_REPLACE_FUNCTION(soname,fnname) ( SizeT alignment, SizeT n ); \
+   void* VG_REPLACE_FUNCTION(soname,fnname) ( SizeT alignment, SizeT n )  \
    { \
       void* v; \
       \
-      if (!init_done) init(); \
       MALLOC_TRACE("memalign(al %llu, size %llu)", \
                    (ULong)alignment, (ULong)n ); \
       \
@@ -305,6 +323,7 @@ REALLOC(m_libc_dot_so_star, realloc);
       /* Round up to nearest power-of-two if necessary (like glibc). */ \
       while (0 != (alignment & (alignment - 1))) alignment++; \
       \
+      if (!init_done) init(); \
       v = (void*)VALGRIND_NON_SIMD_CALL2( info.tl_memalign, alignment, n ); \
       MALLOC_TRACE(" = %p", v ); \
       return v; \
@@ -315,10 +334,10 @@ MEMALIGN(m_libc_dot_so_star, memalign);
 
 #define VALLOC(soname, fnname) \
    \
-   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( SizeT size ); \
-   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( SizeT size )  \
+   void* VG_REPLACE_FUNCTION(soname,fnname) ( SizeT size ); \
+   void* VG_REPLACE_FUNCTION(soname,fnname) ( SizeT size )  \
    { \
-      return VG_REPLACE_FUNCTION_ZU(libcZdsoZa,memalign)(VKI_PAGE_SIZE, size); \
+      return VG_REPLACE_FUNCTION(libcZdsoZa,memalign)(VKI_PAGE_SIZE, size); \
    }
 
 VALLOC(m_libc_dot_so_star, valloc);
@@ -328,8 +347,8 @@ VALLOC(m_libc_dot_so_star, valloc);
 
 #define MALLOPT(soname, fnname) \
    \
-   int VG_REPLACE_FUNCTION_ZU(soname, fnname) ( int cmd, int value ); \
-   int VG_REPLACE_FUNCTION_ZU(soname, fnname) ( int cmd, int value )  \
+   int VG_REPLACE_FUNCTION(soname, fnname) ( int cmd, int value ); \
+   int VG_REPLACE_FUNCTION(soname, fnname) ( int cmd, int value )  \
    { \
       /* In glibc-2.2.4, 1 denotes a successful return value for \
          mallopt */ \
@@ -341,10 +360,8 @@ MALLOPT(m_libc_dot_so_star, mallopt);
 
 #define POSIX_MEMALIGN(soname, fnname) \
    \
-   int VG_REPLACE_FUNCTION_ZU(soname, fnname) ( void **memptr, \
-                                                 SizeT alignment, SizeT size ); \
-   int VG_REPLACE_FUNCTION_ZU(soname, fnname) ( void **memptr, \
-                                                 SizeT alignment, SizeT size )  \
+   int VG_REPLACE_FUNCTION(soname, fnname) ( void **memptr, SizeT alignment, SizeT size ); \
+   int VG_REPLACE_FUNCTION(soname, fnname) ( void **memptr, SizeT alignment, SizeT size )  \
    { \
       void *mem; \
       \
@@ -354,7 +371,7 @@ MALLOPT(m_libc_dot_so_star, mallopt);
           || (alignment & (alignment - 1)) != 0) \
          return VKI_EINVAL; \
       \
-      mem = VG_REPLACE_FUNCTION_ZU(libcZdsoZa,memalign)(alignment, size); \
+      mem = VG_REPLACE_FUNCTION(libcZdsoZa,memalign)(alignment, size); \
       \
       if (mem != NULL) { \
         *memptr = mem; \
@@ -369,16 +386,16 @@ POSIX_MEMALIGN(m_libc_dot_so_star, posix_memalign);
 
 #define MALLOC_USABLE_SIZE(soname, fnname) \
    \
-   int VG_REPLACE_FUNCTION_ZU(soname, fnname) ( void* p ); \
-   int VG_REPLACE_FUNCTION_ZU(soname, fnname) ( void* p )  \
+   int VG_REPLACE_FUNCTION(soname, fnname) ( void* p ); \
+   int VG_REPLACE_FUNCTION(soname, fnname) ( void* p )  \
    {  \
       SizeT pszB; \
       \
-      if (!init_done) init(); \
       MALLOC_TRACE("malloc_usable_size(%p)", p ); \
       if (NULL == p) \
          return 0; \
       \
+      if (!init_done) init(); \
       pszB = (SizeT)VALGRIND_NON_SIMD_CALL2( info.arena_payload_szB, \
                                              VG_AR_CLIENT, p ); \
       MALLOC_TRACE(" = %llu", (ULong)pszB ); \
@@ -400,8 +417,8 @@ static void panic(const char *str)
 
 #define PANIC(soname, fnname) \
    \
-   void VG_REPLACE_FUNCTION_ZU(soname, fnname) ( void ); \
-   void VG_REPLACE_FUNCTION_ZU(soname, fnname) ( void )  \
+   void VG_REPLACE_FUNCTION(soname, fnname) ( void ); \
+   void VG_REPLACE_FUNCTION(soname, fnname) ( void )  \
    { \
       panic(#fnname); \
    }
@@ -417,12 +434,12 @@ PANIC(m_libc_dot_so_star, malloc_set_state);
 // doesn't know that the call to mallinfo fills in mi.
 #define MALLINFO(soname, fnname) \
    \
-   struct vg_mallinfo VG_REPLACE_FUNCTION_ZU(soname, fnname) ( void ); \
-   struct vg_mallinfo VG_REPLACE_FUNCTION_ZU(soname, fnname) ( void )  \
+   struct vg_mallinfo VG_REPLACE_FUNCTION(soname, fnname) ( void ); \
+   struct vg_mallinfo VG_REPLACE_FUNCTION(soname, fnname) ( void )  \
    { \
       static struct vg_mallinfo mi; \
-      if (!init_done) init(); \
       MALLOC_TRACE("mallinfo()"); \
+      if (!init_done) init(); \
       (void)VALGRIND_NON_SIMD_CALL1( info.mallinfo, &mi ); \
       return mi; \
    }
@@ -441,8 +458,8 @@ static void init(void)
 
    init_done = 1;
 
-   VALGRIND_DO_CLIENT_REQUEST(res, -1, VG_USERREQ__GET_MALLOCFUNCS, &info,
-                              0, 0, 0, 0);
+   VALGRIND_MAGIC_SEQUENCE(res, -1, VG_USERREQ__GET_MALLOCFUNCS, &info,
+                           0, 0, 0);
 }
 
 /*--------------------------------------------------------------------*/

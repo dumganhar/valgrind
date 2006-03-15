@@ -70,8 +70,6 @@
 #  include "vki_posixtypes-amd64-linux.h"
 #elif defined(VGA_ppc32)
 #  include "vki_posixtypes-ppc32-linux.h"
-#elif defined(VGA_ppc64)
-#  include "vki_posixtypes-ppc64-linux.h"
 #else
 #  error Unknown platform
 #endif
@@ -152,8 +150,6 @@ typedef unsigned int	        vki_uint;
 #  include "vki-amd64-linux.h"
 #elif defined(VGA_ppc32)
 #  include "vki-ppc32-linux.h"
-#elif defined(VGA_ppc64)
-#  include "vki-ppc64-linux.h"
 #else
 #  error Unknown platform
 #endif
@@ -428,12 +424,6 @@ typedef struct vki_siginfo {
 #define VKI_BUS_ADRALN	(__VKI_SI_FAULT|1)	/* invalid address alignment */
 #define VKI_BUS_ADRERR	(__VKI_SI_FAULT|2)	/* non-existant physical address */
 #define VKI_BUS_OBJERR	(__VKI_SI_FAULT|3)	/* object specific hardware error */
-
-/*
- * SIGTRAP si_codes
- */
-#define VKI_TRAP_BRKPT      (__VKI_SI_FAULT|1)  /* process breakpoint */
-#define VKI_TRAP_TRACE      (__VKI_SI_FAULT|2)  /* process trace trap */
 
 /*
  * This works because the alignment is ok on all current architectures

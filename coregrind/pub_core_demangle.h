@@ -32,33 +32,11 @@
 #define __PUB_CORE_DEMANGLE_H
 
 //--------------------------------------------------------------------
-// PURPOSE: This module exports functions for demangling C++ and 
-// Z-encoded names.
+// PURPOSE: This module exports a single function for demangling C++
+// names.
 //--------------------------------------------------------------------
 
-/* This is the main, standard demangler entry point. */
-
-extern 
-void VG_(demangle) ( Bool do_cxx_demangle,
-                     Char* orig, Char* result, Int result_size );
-
-/* Demangle a Z-encoded name as described in pub_tool_redir.h. 
-   Z-encoded names are used by Valgrind for doing function 
-   interception/wrapping.
-
-   Demangle 'sym' into its soname and fnname parts, putting them in
-   the specified buffers.  Returns a Bool indicating whether the
-   demangled failed or not.  A failure can occur because the prefix
-   isn't recognised, the internal Z-escaping is wrong, or because one
-   or the other (or both) of the output buffers becomes full.  Passing
-   'so' as NULL is acceptable if the caller is only interested in the
-   function name part. */
-
-extern 
-Bool VG_(maybe_Z_demangle) ( const HChar* sym, 
-                             /*OUT*/HChar* so, Int soLen,
-                             /*OUT*/HChar* fn, Int fnLen,
-                             /*OUT*/Bool* isWrap );
+extern void VG_(demangle) ( Char* orig, Char* result, Int result_size );
 
 #endif   // __PUB_CORE_DEMANGLE_H
 

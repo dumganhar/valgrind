@@ -93,7 +93,7 @@ struct ume_auxv *VG_(find_auxv)(UWord* sp)
       sp++;
    sp++;
    
-#if defined(VGA_ppc32) || defined(VGA_ppc64)
+#if defined(VGA_ppc32)
 # if defined AT_IGNOREPPC
    while (*sp == AT_IGNOREPPC)        // skip AT_IGNOREPPC entries
       sp += 2;
@@ -315,7 +315,7 @@ static Bool match_ELF(const char *hdr, Int len)
 
    - The entry point in INFO is set to the interpreter's entry point,
      and we're done.  */
-static Int load_ELF(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
+static Int load_ELF(Int fd, const char *name, /*MOD*/struct exeinfo *info)
 {
    SysRes sres;
    struct elfinfo *e;
@@ -328,11 +328,6 @@ static Int load_ELF(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
    Int i;
    void *entry;
    ESZ(Addr) ebase = 0;
-
-   /* The difference between where the interpreter got mapped and
-      where it asked to be mapped.  Needed for computing the ppc64 ELF
-      entry point and initial tocptr (R2) value. */
-   ESZ(Word) interp_offset = 0;
 
 #ifdef HAVE_PIE
    ebase = info->exe_base;
@@ -489,7 +484,6 @@ static Int load_ELF(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
 
       entry = (void *)(advised - interp_addr + interp->e.e_entry);
       info->interp_base = (ESZ(Addr))advised;
-      interp_offset = advised - interp_addr;
 
       VG_(free)(interp->p);
       VG_(free)(interp);
@@ -499,19 +493,8 @@ static Int load_ELF(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
    info->exe_base = minaddr + ebase;
    info->exe_end  = maxaddr + ebase;
 
-#if defined(VGP_ppc64_linux)
-   /* On PPC64, a func ptr is represented by a TOC entry ptr.  This
-      TOC entry contains three words; the first word is the function
-      address, the second word is the TOC ptr (r2), and the third word
-      is the static chain value. */
-   info->init_ip  = ((ULong*)entry)[0];
-   info->init_toc = ((ULong*)entry)[1];
-   info->init_ip  += interp_offset;
-   info->init_toc += interp_offset;
-#else
-   info->init_ip  = (Addr)entry;
-   info->init_toc = 0; /* meaningless on this platform */
-#endif
+   info->init_eip = (Addr)entry;
+
    VG_(free)(e->p);
    VG_(free)(e);
 
@@ -542,10 +525,10 @@ static Bool match_script(char *hdr, Int len)
 }
 
 // Forward declaration.
-static Int do_exec_inner(const HChar* exe, ExeInfo* info);
+static Int do_exec_inner(const char *exe, struct exeinfo *info);
 
 /* returns: 0 = success, non-0 is failure */
-static Int load_script(Int fd, const HChar* name, ExeInfo* info)
+static Int load_script(Int fd, const char *name, struct exeinfo *info)
 {
    Char  hdr[VKI_PAGE_SIZE];
    Int   len = VKI_PAGE_SIZE;
@@ -618,7 +601,7 @@ typedef enum {
 } ExeFormat;
 
 // Check the file looks executable.
-SysRes VG_(pre_exec_check)(const HChar* exe_name, Int* out_fd)
+SysRes VG_(pre_exec_check)(const Char* exe_name, Int* out_fd)
 {
    Int fd, ret;
    SysRes res;
@@ -673,7 +656,7 @@ SysRes VG_(pre_exec_check)(const HChar* exe_name, Int* out_fd)
 // We can execute only ELF binaries or scripts that begin with "#!".  (Not,
 // for example, scripts that don't begin with "#!";  see the VG_(do_exec)()
 // invocation from m_main.c for how that's handled.)
-static Int do_exec_inner(const HChar *exe, ExeInfo* info)
+static Int do_exec_inner(const char *exe, struct exeinfo *info)
 {
    SysRes res;
    Int fd;
@@ -738,8 +721,8 @@ static Bool is_binary_file(Char* f)
 // bash as a guide).  It's worth noting that the shell can execute some
 // things that VG_(do_exec)() (which subsitutes for the kernel's exec())
 // will refuse to (eg. scripts lacking a "#!" prefix).
-static Int do_exec_shell_followup(Int ret, HChar* exe_name,
-                                  ExeInfo* info)
+static Int do_exec_shell_followup(Int ret, Char* exe_name,
+                                  struct exeinfo* info)
 {
    Char*  default_interp_name = "/bin/sh";
    SysRes res;
@@ -807,7 +790,7 @@ static Int do_exec_shell_followup(Int ret, HChar* exe_name,
 // See ume.h for an indication of which entries of 'info' are inputs, which
 // are outputs, and which are both.
 /* returns: 0 = success, non-0 is failure */
-Int VG_(do_exec)(const HChar* exe_name, ExeInfo* info)
+Int VG_(do_exec)(const char *exe_name, struct exeinfo *info)
 {
    Int ret;
    

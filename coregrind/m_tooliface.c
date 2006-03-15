@@ -40,8 +40,8 @@ VgToolInterface VG_(tdict);
 
 void VG_(basic_tool_funcs)(
    void(*post_clo_init)(void),
-   IRBB*(*instrument)(VgCallbackClosure*, IRBB*, 
-                      VexGuestLayout*, VexGuestExtents*, IRType, IRType),
+   IRBB*(*instrument)(IRBB*, VexGuestLayout*, 
+                      Addr64, VexGuestExtents*, IRType, IRType ),
    void(*fini)(Int)
 )
 {
@@ -111,15 +111,11 @@ Bool VG_(sanity_check_needs)(Char** failmsg)
    CHECK_NOT(VG_(details).copyright_author, NULL);
    CHECK_NOT(VG_(details).bug_reports_to,   NULL);
 
-   if ( (VG_(tdict).track_new_mem_stack_4   ||
-         VG_(tdict).track_new_mem_stack_8   ||
-         VG_(tdict).track_new_mem_stack_12  ||
-         VG_(tdict).track_new_mem_stack_16  ||
-         VG_(tdict).track_new_mem_stack_32  ||
-         VG_(tdict).track_new_mem_stack_112 ||
-         VG_(tdict).track_new_mem_stack_128 ||
-         VG_(tdict).track_new_mem_stack_144 ||
-         VG_(tdict).track_new_mem_stack_160 ) &&
+   if ( (VG_(tdict).track_new_mem_stack_4  ||
+         VG_(tdict).track_new_mem_stack_8  ||
+         VG_(tdict).track_new_mem_stack_12 ||
+         VG_(tdict).track_new_mem_stack_16 ||
+         VG_(tdict).track_new_mem_stack_32 ) &&
        ! VG_(tdict).track_new_mem_stack) 
    {
       *failmsg = "Tool error: one of the specialised 'new_mem_stack_n'\n"
@@ -128,15 +124,11 @@ Bool VG_(sanity_check_needs)(Char** failmsg)
       return False;
    }
 
-   if ( (VG_(tdict).track_die_mem_stack_4   ||
-         VG_(tdict).track_die_mem_stack_8   ||
-         VG_(tdict).track_die_mem_stack_12  ||
-         VG_(tdict).track_die_mem_stack_16  ||
-         VG_(tdict).track_die_mem_stack_32  ||
-         VG_(tdict).track_die_mem_stack_112 ||
-         VG_(tdict).track_die_mem_stack_128 ||
-         VG_(tdict).track_die_mem_stack_144 ||
-         VG_(tdict).track_die_mem_stack_160 ) &&
+   if ( (VG_(tdict).track_die_mem_stack_4  ||
+         VG_(tdict).track_die_mem_stack_8  ||
+         VG_(tdict).track_die_mem_stack_12 ||
+         VG_(tdict).track_die_mem_stack_16 ||
+         VG_(tdict).track_die_mem_stack_32 ) &&
        ! VG_(tdict).track_die_mem_stack) 
    {
       *failmsg = "Tool error: one of the specialised 'die_mem_stack_n'\n"
@@ -290,10 +282,6 @@ DEF2(track_new_mem_stack_8,      Addr)
 DEF2(track_new_mem_stack_12,     Addr)
 DEF2(track_new_mem_stack_16,     Addr)
 DEF2(track_new_mem_stack_32,     Addr)
-DEF2(track_new_mem_stack_112,    Addr)
-DEF2(track_new_mem_stack_128,    Addr)
-DEF2(track_new_mem_stack_144,    Addr)
-DEF2(track_new_mem_stack_160,    Addr)
 DEF (track_new_mem_stack,        Addr, SizeT)
 
 DEF2(track_die_mem_stack_4,      Addr)
@@ -301,10 +289,6 @@ DEF2(track_die_mem_stack_8,      Addr)
 DEF2(track_die_mem_stack_12,     Addr)
 DEF2(track_die_mem_stack_16,     Addr)
 DEF2(track_die_mem_stack_32,     Addr)
-DEF2(track_die_mem_stack_112,    Addr)
-DEF2(track_die_mem_stack_128,    Addr)
-DEF2(track_die_mem_stack_144,    Addr)
-DEF2(track_die_mem_stack_160,    Addr)
 DEF (track_die_mem_stack,        Addr, SizeT)
 
 DEF(track_ban_mem_stack,         Addr, SizeT)

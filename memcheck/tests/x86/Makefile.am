@@ -17,20 +17,14 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	scalar_supp.stderr.exp scalar_supp.stderr.exp2 \
 	scalar_supp.vgtest scalar_supp.supp \
 	scalar_vfork.stderr.exp scalar_vfork.vgtest \
-	sse1_memory.stderr.exp sse1_memory.stdout.exp sse1_memory.vgtest \
-	sse2_memory.stderr.exp sse2_memory.stdout.exp sse2_memory.vgtest \
-	tronical.stderr.exp tronical.vgtest \
-	more_x86_fp.stderr.exp more_x86_fp.stdout.exp more_x86_fp.vgtest \
-	fprem.stderr.exp fprem.stdout.exp fprem.vgtest
+	tronical.stderr.exp tronical.vgtest
 
 check_PROGRAMS = \
 	scalar_exit_group scalar_fork scalar_supp scalar_vfork \
-	fpeflags pushfpopf scalar sse_memory tronical \
-	more_x86_fp fprem
+	fpeflags pushfpopf scalar tronical
 
 AM_CPPFLAGS  = -I$(top_srcdir)/include
-AM_CFLAGS    = $(WERROR) @FLAG_M32@ -Winline -Wall -Wshadow -g \
-		$(FLAG_MMMX) $(FLAG_MSSE)
+AM_CFLAGS    = $(WERROR) @FLAG_M32@ -Winline -Wall -Wshadow -g 
 AM_CXXFLAGS  = $(AM_CFLAGS)
 AM_CCASFLAGS = @FLAG_M32@
 
@@ -38,5 +32,3 @@ AM_CCASFLAGS = @FLAG_M32@
 fpeflags_CFLAGS		= $(AM_CFLAGS) -march=i686
 pushfpopf_SOURCES 	= pushfpopf_c.c pushfpopf_s.s
 tronical_SOURCES 	= tronical.S
-
-more_x86_fp_LDADD	= -lm

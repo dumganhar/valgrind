@@ -73,19 +73,6 @@ extern const ToolInfo VG_(tool_info);
 /* ------------------------------------------------------------------ */
 /* Basic tool functions */
 
-/* The tool_instrument function is passed as a callback to
-   LibVEX_Translate.  VgInstrumentClosure carries additional info
-   which the instrumenter might like to know, but which is opaque to
-   Vex.
-*/
-typedef 
-   struct {
-      Addr64   nraddr; /* non-redirected guest address */
-      Addr64   readdr; /* redirected guest address */
-      ThreadId tid;    /* tid requesting translation */
-   }
-   VgCallbackClosure;
-
 extern void VG_(basic_tool_funcs)(
    // Do any initialisation that can only be done after command line
    // processing.
@@ -97,10 +84,9 @@ extern void VG_(basic_tool_funcs)(
    // strange...  Note that orig_addr_noredir is not necessarily the
    // same as the address of the first instruction in the IR, due to
    // function redirection.
-   IRBB*(*instrument)(VgCallbackClosure*, 
-                      IRBB* bb_in, 
-                      VexGuestLayout*, VexGuestExtents*, 
-                      IRType gWordTy, IRType hWordTy),
+   IRBB* (*instrument)(IRBB* bb_in, VexGuestLayout* layout,
+                       Addr64 orig_addr_noredir, VexGuestExtents* vge, 
+                       IRType gWordTy, IRType hWordTy ),
 
    // Finish up, print out any results, etc.  `exitcode' is program's exit
    // code.  The shadow can be found with VG_(get_exit_status_shadow)().
@@ -347,27 +333,19 @@ void VG_(track_die_mem_munmap)      (void(*f)(Addr a, SizeT len));
 
    Nb: all the specialised ones must use the VG_REGPARM(n) attribute.
  */
-void VG_(track_new_mem_stack_4)  (VG_REGPARM(1) void(*f)(Addr new_ESP));
-void VG_(track_new_mem_stack_8)  (VG_REGPARM(1) void(*f)(Addr new_ESP));
-void VG_(track_new_mem_stack_12) (VG_REGPARM(1) void(*f)(Addr new_ESP));
-void VG_(track_new_mem_stack_16) (VG_REGPARM(1) void(*f)(Addr new_ESP));
-void VG_(track_new_mem_stack_32) (VG_REGPARM(1) void(*f)(Addr new_ESP));
-void VG_(track_new_mem_stack_112)(VG_REGPARM(1) void(*f)(Addr new_ESP));
-void VG_(track_new_mem_stack_128)(VG_REGPARM(1) void(*f)(Addr new_ESP));
-void VG_(track_new_mem_stack_144)(VG_REGPARM(1) void(*f)(Addr new_ESP));
-void VG_(track_new_mem_stack_160)(VG_REGPARM(1) void(*f)(Addr new_ESP));
-void VG_(track_new_mem_stack)                  (void(*f)(Addr a, SizeT len));
+void VG_(track_new_mem_stack_4) (VG_REGPARM(1) void(*f)(Addr new_ESP));
+void VG_(track_new_mem_stack_8) (VG_REGPARM(1) void(*f)(Addr new_ESP));
+void VG_(track_new_mem_stack_12)(VG_REGPARM(1) void(*f)(Addr new_ESP));
+void VG_(track_new_mem_stack_16)(VG_REGPARM(1) void(*f)(Addr new_ESP));
+void VG_(track_new_mem_stack_32)(VG_REGPARM(1) void(*f)(Addr new_ESP));
+void VG_(track_new_mem_stack)                 (void(*f)(Addr a, SizeT len));
 
-void VG_(track_die_mem_stack_4)  (VG_REGPARM(1) void(*f)(Addr die_ESP));
-void VG_(track_die_mem_stack_8)  (VG_REGPARM(1) void(*f)(Addr die_ESP));
-void VG_(track_die_mem_stack_12) (VG_REGPARM(1) void(*f)(Addr die_ESP));
-void VG_(track_die_mem_stack_16) (VG_REGPARM(1) void(*f)(Addr die_ESP));
-void VG_(track_die_mem_stack_32) (VG_REGPARM(1) void(*f)(Addr die_ESP));
-void VG_(track_die_mem_stack_112)(VG_REGPARM(1) void(*f)(Addr die_ESP));
-void VG_(track_die_mem_stack_128)(VG_REGPARM(1) void(*f)(Addr die_ESP));
-void VG_(track_die_mem_stack_144)(VG_REGPARM(1) void(*f)(Addr die_ESP));
-void VG_(track_die_mem_stack_160)(VG_REGPARM(1) void(*f)(Addr die_ESP));
-void VG_(track_die_mem_stack)                  (void(*f)(Addr a, SizeT len));
+void VG_(track_die_mem_stack_4) (VG_REGPARM(1) void(*f)(Addr die_ESP));
+void VG_(track_die_mem_stack_8) (VG_REGPARM(1) void(*f)(Addr die_ESP));
+void VG_(track_die_mem_stack_12)(VG_REGPARM(1) void(*f)(Addr die_ESP));
+void VG_(track_die_mem_stack_16)(VG_REGPARM(1) void(*f)(Addr die_ESP));
+void VG_(track_die_mem_stack_32)(VG_REGPARM(1) void(*f)(Addr die_ESP));
+void VG_(track_die_mem_stack)                 (void(*f)(Addr a, SizeT len));
 
 /* Used for redzone at end of thread stacks */
 void VG_(track_ban_mem_stack)      (void(*f)(Addr a, SizeT len));

@@ -1,7 +1,3 @@
-
-# For AM_FLAG_M3264_PRI
-include $(top_srcdir)/Makefile.flags.am
-
 noinst_SCRIPTS = filter_stderr
 
 EXTRA_DIST = $(noinst_SCRIPTS) \
@@ -10,7 +6,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
         true_html.stderr.exp true_html.vgtest \
         true_text.stderr.exp true_text.vgtest
 
-AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g $(AM_FLAG_M3264_PRI)
+AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g 
 
 check_PROGRAMS = \
 	basic_malloc

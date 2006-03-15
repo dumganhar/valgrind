@@ -47,7 +47,7 @@
 // every comparison can be high during lookup.  If no comparison function is
 // provided, we assume that keys are (signed or unsigned) words, and that
 // the key is the first word in each element.  This fast comparison is
-// suitable for an OSet of Words, or an OSet containing structs where the
+// suitable for an OSet of Ints, or an OSet containing structs where the
 // first element is an Addr, for example.
 //
 // Each OSet also has an iterator, which makes it simple to traverse all the
@@ -68,7 +68,6 @@ typedef struct _OSetNode OSetNode;
 typedef Word  (*OSetCmp_t)         ( void* key, void* elem );
 typedef void* (*OSetAlloc_t)       ( SizeT szB );
 typedef void  (*OSetFree_t)        ( void* p );
-typedef void  (*OSetNodeDestroy_t) ( void* elem );
 
 /*--------------------------------------------------------------------*/
 /*--- Creating and destroying OSets and OSet members               ---*/
@@ -86,9 +85,7 @@ typedef void  (*OSetNodeDestroy_t) ( void* elem );
 //   If cmp is NULL, keyOff must be zero.  This is checked.
 //
 // * Destroy: frees all nodes in the table, plus the memory used by
-//   the table itself.  The passed-in function is called on each node first
-//   to allow the destruction of any attached resources;  if NULL it is not
-//   called.
+//   the table itself.
 //
 // * AllocNode: Allocate and zero memory for a node to go into the OSet.
 //   Uses the alloc function given to VG_(OSet_Create)() to allocated a node
@@ -104,7 +101,7 @@ typedef void  (*OSetNodeDestroy_t) ( void* elem );
 
 extern OSet* VG_(OSet_Create)    ( OffT keyOff, OSetCmp_t cmp,
                                    OSetAlloc_t alloc, OSetFree_t free );
-extern void  VG_(OSet_Destroy)   ( OSet* os, OSetNodeDestroy_t destroyNode );
+extern void  VG_(OSet_Destroy)   ( OSet* os );
 extern void* VG_(OSet_AllocNode) ( OSet* os, SizeT elemSize );
 extern void  VG_(OSet_FreeNode)  ( OSet* os, void* elem );
 

@@ -51,10 +51,6 @@
 #  define VG_ELF_DATA2XXX     ELFDATA2MSB
 #  define VG_ELF_MACHINE      EM_PPC
 #  define VG_ELF_CLASS        ELFCLASS32
-#elif defined(VGA_ppc64)
-#  define VG_ELF_DATA2XXX     ELFDATA2MSB
-#  define VG_ELF_MACHINE      EM_PPC64
-#  define VG_ELF_CLASS        ELFCLASS64
 #else
 #  error Unknown arch
 #endif
@@ -71,10 +67,6 @@
 #  define VG_INSTR_PTR        guest_CIA
 #  define VG_STACK_PTR        guest_GPR1
 #  define VG_FRAME_PTR        guest_GPR1   // No frame ptr for PPC
-#elif defined(VGA_ppc64)
-#  define VG_INSTR_PTR        guest_CIA
-#  define VG_STACK_PTR        guest_GPR1
-#  define VG_FRAME_PTR        guest_GPR1   // No frame ptr for PPC
 #else
 #  error Unknown arch
 #endif
@@ -87,7 +79,7 @@
 //-------------------------------------------------------------
 /* Details about the capabilities of the underlying (host) CPU.  These
    details are acquired by (1) enquiring with the CPU at startup, or
-   (2) from the AT_SYSINFO entries the kernel gave us (ppc cache
+   (2) from the AT_SYSINFO entries the kernel gave us (ppc32 cache
    line size).  It's a bit nasty in the sense that there's no obvious
    way to stop uses of some of this info before it's ready to go.
 
@@ -108,12 +100,6 @@
           then safe to use VG_(machine_get_VexArchInfo) 
                        and VG_(machine_ppc32_has_FP)
                        and VG_(machine_ppc32_has_VMX)
-   -------------
-   ppc64: initially:  call VG_(machine_get_hwcaps)
-                      call VG_(machine_ppc64_set_clszB)
-
-          then safe to use VG_(machine_get_VexArchInfo) 
-                       and VG_(machine_ppc64_has_VMX)
 
    VG_(machine_get_hwcaps) may use signals (although it attempts to
    leave signal state unchanged) and therefore should only be
@@ -132,10 +118,6 @@ extern void VG_(machine_get_VexArchInfo)( /*OUT*/VexArch*,
 /* Notify host cpu cache line size, as per above comment. */
 #if defined(VGA_ppc32)
 extern void VG_(machine_ppc32_set_clszB)( Int );
-#endif
-
-#if defined(VGA_ppc64)
-extern void VG_(machine_ppc64_set_clszB)( Int );
 #endif
 
 /* X86: set to 1 if the host is able to do {ld,st}mxcsr (load/store
@@ -157,13 +139,6 @@ extern UInt VG_(machine_ppc32_has_FP);
    change from a 32-bit int. */
 #if defined(VGA_ppc32)
 extern UInt VG_(machine_ppc32_has_VMX);
-#endif
-
-/* PPC64: set to 1 if Altivec instructions are supported in
-   user-space, else 0.  Is referenced from assembly code, so do not
-   change from a 64-bit int. */
-#if defined(VGA_ppc64)
-extern ULong VG_(machine_ppc64_has_VMX);
 #endif
 
 #endif   // __PUB_CORE_MACHINE_H

@@ -183,7 +183,7 @@ void example1(void)
    OSet_Print(oset1, "foo", wordToStr);
 
    // Destroy the OSet
-   VG_(OSet_Destroy)(oset1, NULL);
+   VG_(OSet_Destroy)(oset1);
 }
 
 
@@ -354,7 +354,7 @@ void example2(void)
    }
 
    // Destroy the OSet
-   VG_(OSet_Destroy)(oset2, NULL);
+   VG_(OSet_Destroy)(oset2);
 }
 
 //-----------------------------------------------------------------------

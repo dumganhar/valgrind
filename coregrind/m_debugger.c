@@ -131,9 +131,6 @@ static Int ptrace_setregs(Int pid, VexGuestArchState* vex)
                      (void*)LibVEX_GuestPPC32_get_XER(vex));
    return rc;
 
-#elif defined(VGA_ppc64)
-   I_die_here;
-
 #else
 #  error Unknown arch
 #endif

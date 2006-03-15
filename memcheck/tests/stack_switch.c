@@ -24,7 +24,6 @@ static int thread_main(void *arg)
 
    memset( buffer, 1, sizeof( buffer ) );
 
-   sleep(2); /* ppc64-linux hack */
    return memchr( buffer, 1, sizeof( buffer ) ) == NULL;
 }
 
@@ -34,8 +33,7 @@ int main(int argc, char **argv)
    int stackid;
    pid_t pid;
 
-   /* "2*" is a ppc64-linux hack */
-   if ( ( stack = mmap( NULL, 2* STACK_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0 ) ) == MAP_FAILED )
+   if ( ( stack = mmap( NULL, STACK_SIZE, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0 ) ) == MAP_FAILED )
    {
       perror( "mmap" );
       exit( 1 );

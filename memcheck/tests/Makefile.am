@@ -1,7 +1,3 @@
-
-# For AM_FLAG_M3264_PRI
-include $(top_srcdir)/Makefile.flags.am
-
 SUBDIRS = .
 if VG_X86_LINUX
 SUBDIRS += x86
@@ -11,9 +7,6 @@ SUBDIRS += amd64
 endif
 if VG_PPC32_LINUX
 SUBDIRS += ppc32
-endif
-if VG_PPC64_LINUX
-SUBDIRS += ppc64
 endif
 
 DIST_SUBDIRS = ${VG_ARCH_ALL} .
@@ -79,7 +72,6 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	overlap.stderr.exp overlap.stdout.exp overlap.vgtest \
 	oset_test.stderr.exp oset_test.stdout.exp oset_test.vgtest \
 	partiallydefinedeq.vgtest partiallydefinedeq.stderr.exp \
-	partiallydefinedeq.stderr.exp2 \
 	partiallydefinedeq.stdout.exp \
 	partial_load_ok.vgtest partial_load_ok.stderr.exp partial_load_ok.stderr.exp64 \
 	partial_load_dflt.vgtest partial_load_dflt.stderr.exp partial_load_dflt.stderr.exp64 \
@@ -94,8 +86,7 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	sigkill.stderr.exp sigkill.stderr.exp2 sigkill.stderr.exp3 sigkill.vgtest \
 	signal2.stderr.exp signal2.stdout.exp signal2.vgtest \
 	sigprocmask.stderr.exp sigprocmask.stderr.exp2 sigprocmask.vgtest \
-	stack_changes.stderr.exp stack_changes.stdout.exp \
-	stack_changes.stdout.exp2 stack_changes.vgtest \
+	stack_changes.stderr.exp stack_changes.stdout.exp stack_changes.vgtest \
 	stack_switch.stderr.exp stack_switch.vgtest \
 	strchr.stderr.exp strchr.stderr.exp2 strchr.vgtest \
 	str_tester.stderr.exp str_tester.vgtest \
@@ -106,20 +97,9 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	suppfree.stderr.exp suppfree.vgtest \
 	toobig-allocs.stderr.exp toobig-allocs.vgtest \
 	trivialleak.stderr.exp trivialleak.vgtest \
-	metadata.stderr.exp metadata.stdout.exp metadata.vgtest \
-	vcpu_bz2.stdout.exp vcpu_bz2.stderr.exp vcpu_bz2.vgtest \
-	vcpu_fbench.stdout.exp vcpu_fbench.stderr.exp vcpu_fbench.vgtest \
+	metadata.stderr.exp metadata.stdout.exp metadata.vgtest-HIDING \
 	vcpu_fnfns.stdout.exp vcpu_fnfns.stderr.exp vcpu_fnfns.vgtest \
 	vgtest_ume.stderr.exp vgtest_ume.disabled \
-	wrap1.vgtest wrap1.stdout.exp wrap1.stderr.exp \
-	wrap2.vgtest wrap2.stdout.exp wrap2.stderr.exp \
-	wrap3.vgtest wrap3.stdout.exp wrap3.stderr.exp \
-	wrap4.vgtest wrap4.stdout.exp wrap4.stderr.exp \
-	wrap5.vgtest wrap5.stdout.exp wrap5.stderr.exp \
-	wrap6.vgtest wrap6.stdout.exp wrap6.stderr.exp \
-	wrap7.vgtest wrap7.stdout.exp wrap7.stderr.exp \
-	wrap8.vgtest wrap8.stdout.exp wrap8.stderr.exp \
-	wrap8.stdout.exp2 wrap8.stderr.exp2 \
 	writev.stderr.exp writev.stderr.exp2 writev.stderr.exp3 writev.vgtest \
 	xml1.stderr.exp xml1.stderr.exp2 xml1.stderr.exp3 \
 	xml1.stderr.exp64 xml1.stderr.exp64_2 xml1.stdout.exp \
@@ -152,29 +132,17 @@ check_PROGRAMS = \
 	supp_unknown supp1 supp2 suppfree \
 	trivialleak \
 	mismatches new_override metadata \
-	vcpu_bz2 vcpu_fbench vcpu_fnfns \
-	xml1 \
-	wrap1 wrap2 wrap3 wrap4 wrap5 wrap6 wrap7 wrap7so.so wrap8 \
+	vcpu_fnfns xml1 \
 	writev zeropage
 
 
-AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include \
-		-I$(top_srcdir)/coregrind -I$(top_builddir)/include \
-		-I@VEX_DIR@/pub
-AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g $(AM_FLAG_M3264_PRI)
+AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include -I$(top_srcdir)/coregrind -I$(top_builddir)/include -I@VEX_DIR@/pub
+AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g 
 AM_CXXFLAGS = $(AM_CFLAGS)
 
 # Extra stuff for C tests
-memcmptest_CFLAGS	= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -fno-builtin-memcmp
-oset_test_CFLAGS	= $(AM_FLAG_M3264_PRI) \
-				-DVGA_$(VG_ARCH)=1 -DVGO_$(VG_OS)=1 \
-				-DVGP_$(VG_ARCH)_$(VG_OS)=1
-vcpu_bz2_CFLAGS		= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O2 -g
-vcpu_fbench_CFLAGS	= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O2 -g
-vcpu_fnfns_CFLAGS	= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O2 -g
-vcpu_fnfns_LDADD	= -lm
-wrap6_CFLAGS		= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O2 -g
-
+memcmptest_CFLAGS	= $(AM_CFLAGS) -fno-builtin-memcmp
+oset_test_CFLAGS	= -DVGA_$(VG_ARCH) -DVGO_$(VG_OS) -DVGP_$(VG_PLATFORM)
 # Don't allow GCC to inline memcpy(), because then we can't intercept it
 overlap_CFLAGS		= $(AM_CFLAGS) -fno-builtin-memcpy
 stack_switch_LDADD      = -lpthread
@@ -182,24 +150,13 @@ str_tester_CFLAGS	= $(AM_CFLAGS) -Wno-shadow
 supp_unknown_SOURCES	= badjump.c
 supp1_SOURCES		= supp.c
 supp2_SOURCES		= supp.c
+vcpu_fnfns_CFLAGS       = $(AM_CFLAGS) -O2 -g
+vcpu_fnfns_LDADD        = -lm
 
 # C++ tests
 mismatches_SOURCES	= mismatches.cpp
 new_nothrow_SOURCES 	= new_nothrow.cpp
 new_override_SOURCES 	= new_override.cpp
-
-# Build shared object for wrap7
-wrap7_SOURCES           = wrap7.c
-wrap7_DEPENDENCIES      = wrap7so.so
-wrap7_LDFLAGS           = $(AM_FLAG_M3264_PRI) \
-				-Wl,-rpath,$(top_builddir)/memcheck/tests
-wrap7_LDADD             = wrap7so.so
-wrap7so_so_SOURCES      = wrap7so.c
-wrap7so_so_LDADD        = 
-wrap7so_so_DEPENDENCIES = 
-wrap7so_so_LDFLAGS      = -fpic $(AM_FLAG_M3264_PRI) \
-				-Wl,-soname -Wl,wrap7so.so -shared
-wrap7so_so_CFLAGS       = -fpic $(AM_FLAG_M3264_PRI)
 
 # Valgrind unit self-tests
 #hello_LDFLAGS		= -Wl,-defsym,valt_load_address=0x50000000 \

@@ -1,14 +1,5 @@
-
-##------------------------------------------------------------##
-# 
-# The multiple-architecture stuff in this file is pretty
-# cryptic.  Read docs/internals/multiple-architectures.txt
-# for at least a partial explanation of what is going on.
-#
-##------------------------------------------------------------##
-
 # Process this file with autoconf to produce a configure script.
-AC_INIT(Valgrind, 3.2.0.SVN, valgrind-users@lists.sourceforge.net)
+AC_INIT(Valgrind, 3.1.1, valgrind-users@lists.sourceforge.net)
 AC_CONFIG_SRCDIR(coregrind/m_main.c)
 AM_CONFIG_HEADER(config.h)
 AM_INIT_AUTOMAKE
@@ -82,6 +73,11 @@ ASFLAGS=""
 AC_SUBST(ASFLAGS)
 ])
 
+# This variable will collect the individual suppression files
+# depending on the results of autoconf
+
+DEFAULT_SUPP=""
+
 
 # We don't want gcc < 3.0
 AC_MSG_CHECKING([for a supported version of gcc])
@@ -113,10 +109,8 @@ AC_CANONICAL_HOST
 
 AC_MSG_CHECKING([for a supported CPU])
 AC_SUBST(VG_ARCH)
-
 AC_SUBST(VG_ARCH_ALL)
-VG_ARCH_ALL="amd64 ppc32 ppc64 x86"
-
+VG_ARCH_ALL="amd64 ppc32 x86"
 AC_SUBST(VALT_LOAD_ADDRESS)
 
 case "${host_cpu}" in
@@ -137,14 +131,7 @@ case "${host_cpu}" in
         valt_load_address_inner="0x60000000"
         ;;
 
-     powerpc64)
-        AC_MSG_RESULT([ok (${host_cpu})])
-        VG_ARCH="ppc64"
-        valt_load_address_normal="0x70000000"
-        valt_load_address_inner="0x60000000"
-        ;;
-
-     powerpc)
+     powerpc*)
         AC_MSG_RESULT([ok (${host_cpu})])
         VG_ARCH="ppc32"
         valt_load_address_normal="0x70000000"
@@ -159,11 +146,10 @@ esac
 
 # Check if this should be built as an inner Valgrind, to be run within
 # another Valgrind.  Choose the load address accordingly.
-AC_CACHE_CHECK([for use as an inner Valgrind], vg_cv_inner,
-   [AC_ARG_ENABLE(inner, 
-      [  --enable-inner          enables self-hosting],
-      [vg_cv_inner=$enableval],
-      [vg_cv_inner=no])])
+AC_CACHE_CHECK([enable use as an inner Valgrind], vg_cv_inner,
+	       [AC_ARG_ENABLE(inner, [  --enable-inner          enables self-hosting],
+		[vg_cv_inner=$enableval],
+               	[vg_cv_inner=no])])
 if test "$vg_cv_inner" = yes; then
     AC_DEFINE([ENABLE_INNER], 1, [configured to run as an inner Valgrind])
     VALT_LOAD_ADDRESS=$valt_load_address_inner
@@ -171,35 +157,10 @@ else
     VALT_LOAD_ADDRESS=$valt_load_address_normal
 fi
 
-# Sometimes it's convenient to subvert the bi-arch build system and
-# just have a single build even though the underlying platform is
-# capable of both.  Hence handle --enable-only64bit and
-# --enable-only32bit.  Complain if both are issued :-)
-
-# Check if a 64-bit only build has been requested
-AC_CACHE_CHECK([for a 64-bit only build], vg_cv_only64bit,
-   [AC_ARG_ENABLE(only64bit, 
-      [  --enable-only64bit      do a 64-bit only build],
-      [vg_cv_only64bit=$enableval],
-      [vg_cv_only64bit=no])])
-
-# Check if a 32-bit only build has been requested
-AC_CACHE_CHECK([for a 32-bit only build], vg_cv_only32bit,
-   [AC_ARG_ENABLE(only32bit, 
-      [  --enable-only32bit      do a 32-bit only build],
-      [vg_cv_only32bit=$enableval],
-      [vg_cv_only32bit=no])])
-
-# Stay sane
-if test x$vg_cv_only64bit = xyes -a x$vg_cv_only32bit = xyes; then
-   AC_MSG_ERROR(
-      [Nonsensical: both --enable-only64bit and --enable-only32bit.])
-fi
-
-
-
 AC_MSG_CHECKING([for a supported OS])
 AC_SUBST(VG_OS)
+AC_SUBST(VG_OS_ALL)
+VG_OS_ALL="linux"
 
 case "${host_os}" in
      *linux*)
@@ -241,84 +202,32 @@ case "${host_os}" in
 	;;
 esac
 
-
-# Establish VG_PLATFORM_PRI.  This is the primary build target.  The
-# entire system, including regression and performance tests, will be
-# built for this target.
-#
-# Also establish VG_PLATFORM_SEC, the secondary build target, if
-# possible.  The system will also be built for this target, but not
-# the regression or performance tests.
-#
 AC_MSG_CHECKING([for a supported CPU/OS combination])
+AC_SUBST(VG_PLATFORM)
+AC_SUBST(VG_PLATFORM_ALL)
+VG_PLATFORM_ALL="amd64-linux ppc32-linux x86-linux"
 
-AC_SUBST(VG_PLATFORM_PRI)
-AC_SUBST(VG_PLATFORM_SEC)
+VG_PLATFORM="$VG_ARCH-$VG_OS"
 
-case "$VG_ARCH-$VG_OS" in
-     x86-linux)
-	VG_PLATFORM_PRI="X86_LINUX"
-	VG_PLATFORM_SEC=""
+case $VG_PLATFORM in
+    x86-linux|amd64-linux|ppc32-linux)
         AC_MSG_RESULT([ok (${host_cpu}-${host_os})])
-	;;
-     amd64-linux)
-	if test x$vg_cv_only64bit = xyes; then
-	   VG_PLATFORM_PRI="AMD64_LINUX"
-	   VG_PLATFORM_SEC=""
-	elif test x$vg_cv_only32bit = xyes; then
-	   VG_PLATFORM_PRI="X86_LINUX"
-	   VG_PLATFORM_SEC=""
-	else
-	   VG_PLATFORM_PRI="AMD64_LINUX"
-	   VG_PLATFORM_SEC="X86_LINUX"
-	fi
-        AC_MSG_RESULT([ok (${host_cpu}-${host_os})])
-	;;
-     ppc32-linux)
-	VG_PLATFORM_PRI="PPC32_LINUX"
-	VG_PLATFORM_SEC=""
-        AC_MSG_RESULT([ok (${host_cpu}-${host_os})])
-	;;
-     ppc64-linux)
-	if test x$vg_cv_only64bit = xyes; then
-	   VG_PLATFORM_PRI="PPC64_LINUX"
-	   VG_PLATFORM_SEC=""
-	elif test x$vg_cv_only32bit = xyes; then
-	   VG_PLATFORM_PRI="PPC32_LINUX"
-	   VG_PLATFORM_SEC=""
-	else
-	   VG_PLATFORM_PRI="PPC64_LINUX"
-	   VG_PLATFORM_SEC="PPC32_LINUX"
-	fi
-        AC_MSG_RESULT([ok (${host_cpu}-${host_os})])
-	;;
+        ;;
+
     *)
-	VG_PLATFORM_PRI="unknown"
-	VG_PLATFORM_SEC="unknown"
         AC_MSG_RESULT([no (${host_cpu}-${host_os})])
         AC_MSG_ERROR([Valgrind is platform specific. Sorry. Please consider doing a port.])
         ;;
 esac
 
-# Set up VG_<platform>.  Either one or two of these become defined.
-#
-AM_CONDITIONAL(VG_X86_LINUX,   
-               test x$VG_PLATFORM_PRI = xX86_LINUX \
-                 -o x$VG_PLATFORM_SEC = xX86_LINUX)
-AM_CONDITIONAL(VG_AMD64_LINUX, 
-               test x$VG_PLATFORM_PRI = xAMD64_LINUX)
-AM_CONDITIONAL(VG_PPC32_LINUX, 
-               test x$VG_PLATFORM_PRI = xPPC32_LINUX \ 
-                 -o x$VG_PLATFORM_SEC = xPPC32_LINUX)
-AM_CONDITIONAL(VG_PPC64_LINUX, 
-               test x$VG_PLATFORM_PRI = xPPC64_LINUX)
+AM_CONDITIONAL(VG_X86_LINUX, test x$VG_PLATFORM = xx86-linux -o x$VG_PLATFORM = xamd64-linux)
+AM_CONDITIONAL(VG_AMD64_LINUX, test x$VG_PLATFORM = xamd64-linux)
+AM_CONDITIONAL(VG_PPC32_LINUX, test x$VG_PLATFORM = xppc32-linux)
 
+AC_SUBST(VG_MAKE_PLATFORM)
+VG_MAKE_PLATFORM=`echo $VG_PLATFORM | tr [a-z-] [A-Z_]`
 
-# This variable will collect the individual suppression files
-# depending on the results of autoconf
-DEFAULT_SUPP=""
 AC_SUBST(DEFAULT_SUPP)
-
 
 glibc=""
 
@@ -358,19 +267,19 @@ case "${glibc}" in
      2.2)
 	AC_MSG_RESULT(2.2 family)
 	AC_DEFINE([GLIBC_2_2], 1, [Define to 1 if you're using glibc 2.2.x])
-	DEFAULT_SUPP="glibc-2.2.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="${DEFAULT_SUPP} glibc-2.2.supp"
 	;;
 
      2.3)
 	AC_MSG_RESULT(2.3 family)
 	AC_DEFINE([GLIBC_2_3], 1, [Define to 1 if you're using glibc 2.3.x])
-	DEFAULT_SUPP="glibc-2.3.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="${DEFAULT_SUPP} glibc-2.3.supp"
 	;;
 
      2.4)
 	AC_MSG_RESULT(2.4 family)
 	AC_DEFINE([GLIBC_2_4], 1, [Define to 1 if you're using glibc 2.4.x])
-	DEFAULT_SUPP="glibc-2.4.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="${DEFAULT_SUPP} glibc-2.4.supp"
 	;;
 
      *)
@@ -386,8 +295,8 @@ esac
 # versions 3 and 4.
 AC_PATH_X
 if test "${no_x}" != 'yes' ; then
-   DEFAULT_SUPP="xfree-4.supp ${DEFAULT_SUPP}"
-   DEFAULT_SUPP="xfree-3.supp ${DEFAULT_SUPP}"
+   DEFAULT_SUPP="${DEFAULT_SUPP} xfree-4.supp"
+   DEFAULT_SUPP="${DEFAULT_SUPP} xfree-3.supp"
 fi
 
 
@@ -410,27 +319,6 @@ AC_MSG_RESULT([no])
 CFLAGS=$safe_CFLAGS
 
 AC_SUBST(FLAG_M32)
-
-
-# does this compiler support -m64 ?
-AC_MSG_CHECKING([if gcc accepts -m64])
-
-safe_CFLAGS=$CFLAGS
-CFLAGS="-m64"
-
-AC_TRY_COMPILE(, [
-int main () { return 0 ; }
-],
-[
-FLAG_M64="-m64"
-AC_MSG_RESULT([yes])
-], [
-FLAG_M64=""
-AC_MSG_RESULT([no])
-])
-CFLAGS=$safe_CFLAGS
-
-AC_SUBST(FLAG_M64)
 
 
 # does this compiler support -mmmx ?
@@ -530,56 +418,15 @@ int main () { return 0 ; }
 ],
 [
 declaration_after_statement=yes
-FLAG_WDECL_AFTER_STMT="-Wdeclaration-after-statement"
 AC_MSG_RESULT([yes])
 ], [
 declaration_after_statement=no
-FLAG_WDECL_AFTER_STMT=""
 AC_MSG_RESULT([no])
 ])
 CFLAGS=$safe_CFLAGS
 
-AC_SUBST(FLAG_WDECL_AFTER_STMT)
-
 if test x$declaration_after_statement = xyes; then
   CFLAGS="$CFLAGS -Wdeclaration-after-statement"
-fi
-
-
-# does this compiler support __builtin_expect?
-AC_MSG_CHECKING([if gcc supports __builtin_expect])
- 
-AC_TRY_LINK(, [
-return __builtin_expect(1, 1) ? 1 : 0
-],
-[
-ac_have_builtin_expect=yes
-AC_MSG_RESULT([yes])
-], [
-ac_have_builtin_expect=no
-AC_MSG_RESULT([no])
-])
-if test x$ac_have_builtin_expect = xyes ; then
-  AC_DEFINE(HAVE_BUILTIN_EXPECT, 1, [Define to 1 if gcc supports __builtin_expect.])
-fi
-
-
-# does the ppc assembler support "mtocrf" et al?
-AC_MSG_CHECKING([if ppc32/64 as supports mtocrf/mfocrf])
-
-AC_TRY_COMPILE(, [
-__asm__ __volatile__("mtocrf 4,0");
-__asm__ __volatile__("mfocrf 0,4");
-],
-[
-ac_have_as_ppc_mftocrf=yes
-AC_MSG_RESULT([yes])
-], [
-ac_have_as_ppc_mftocrf=no
-AC_MSG_RESULT([no])
-])
-if test x$ac_have_as_ppc_mftocrf = xyes ; then
-  AC_DEFINE(HAVE_AS_PPC_MFTOCRF, 1, [Define to 1 if as supports mtocrf/mfocrf.])
 fi
 
 
@@ -616,53 +463,6 @@ AC_TYPE_SIGNAL
 
 AC_CHECK_FUNCS([floor memchr memset mkdir strchr strdup strpbrk strrchr strstr semtimedop])
 
-
-# Do we have a useable MPI setup on the primary target
-# (mpicc, and suitable MPI2 headers?)
-# Note: this is a kludge in that it assumes the specified mpicc 
-# understands '-m32' or '-m64', as established above
-MPI_CC="mpicc"
-mflag_primary=
-if test x$VG_PLATFORM_PRI = xX86_LINUX \
-     -o x$VG_PLATFORM_PRI = xPPC32_LINUX ; then
-  mflag_primary=$FLAG_M32
-elif test x$VG_PLATFORM_PRI = xAMD64_LINUX \
-       -o x$VG_PLATFORM_PRI = xPPC64_LINUX ; then
-  mflag_primary=$FLAG_M64
-fi
-
-AC_ARG_WITH(mpicc,
-   [  --with-mpicc=            Specify name of MPI2-ised C compiler],
-   MPI_CC=$withval
-)
-AC_MSG_CHECKING([for usable MPI2-compliant mpicc and mpi.h])
-saved_CC=$CC
-saved_CFLAGS=$CFLAGS
-CC=$MPI_CC
-CFLAGS=$mflag_primary
-AC_TRY_LINK([
-#include <mpi.h>
-#include <stdio.h>
-],[
-  int r = MPI_Init(NULL,NULL);
-  r |= MPI_Type_get_contents( MPI_INT, 0,0,0, NULL,NULL,NULL );
-  return r; 
-], [
-ac_have_mpi2=yes
-AC_MSG_RESULT([yes, $MPI_CC])
-], [
-ac_have_mpi2=no
-AC_MSG_RESULT([no])
-])
-CC=$saved_CC
-CFLAGS=$saved_CFLAGS
-
-AM_CONDITIONAL(BUILD_MPIWRAP, test x$ac_have_mpi2 = xyes)
-AC_SUBST(MPI_CC)
-
-
-# -------------------- ok.  We're done. --------------------
-
 AC_OUTPUT(
    Makefile 
    valgrind.spec
@@ -674,8 +474,6 @@ AC_OUTPUT(
    docs/xml/Makefile
    tests/Makefile 
    tests/vg_regtest 
-   perf/Makefile 
-   perf/vg_perf
    include/Makefile 
    auxprogs/Makefile
    coregrind/Makefile 
@@ -686,14 +484,12 @@ AC_OUTPUT(
    memcheck/tests/Makefile
    memcheck/tests/amd64/Makefile
    memcheck/tests/ppc32/Makefile
-   memcheck/tests/ppc64/Makefile
    memcheck/tests/x86/Makefile
    memcheck/docs/Makefile
    cachegrind/Makefile
    cachegrind/tests/Makefile
    cachegrind/tests/amd64/Makefile
    cachegrind/tests/ppc32/Makefile
-   cachegrind/tests/ppc64/Makefile
    cachegrind/tests/x86/Makefile
    cachegrind/docs/Makefile
    cachegrind/cg_annotate
@@ -711,17 +507,15 @@ AC_OUTPUT(
    none/tests/Makefile
    none/tests/amd64/Makefile
    none/tests/ppc32/Makefile
-   none/tests/ppc64/Makefile
    none/tests/x86/Makefile
    none/docs/Makefile
 ) 
 
 cat<<EOF
 
-   Primary build target: ${VG_PLATFORM_PRI}
- Secondary build target: ${VG_PLATFORM_SEC}
-     Default supp files: ${DEFAULT_SUPP}
+Using the following suppressions by default: 
 
+      ${DEFAULT_SUPP}
 EOF
 
 cat<<EOF > default.supp

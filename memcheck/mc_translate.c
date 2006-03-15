@@ -30,11 +30,11 @@
 */
 
 #include "pub_tool_basics.h"
-#include "pub_tool_hashtable.h"   // For mac_shared.h
+#include "pub_tool_hashtable.h"     // For mac_shared.h
 #include "pub_tool_libcassert.h"
 #include "pub_tool_libcprint.h"
+#include "pub_tool_profile.h"
 #include "pub_tool_tooliface.h"
-#include "pub_tool_machine.h"     // VG_(fnptr_to_fnentry)
 #include "mc_include.h"
 
 
@@ -683,7 +683,7 @@ static IRAtom* expensiveCmpEQorNE ( MCEnv*  mce,
    and similarly the unsigned variant.  The default interpretation is:
 
       CmpORD32{S,U}#(x,y,x#,y#) = PCast(x# `UifU` y#)  
-                                  & (7<<1)
+                                  &  (7<<1)
 
    The "& (7<<1)" reflects the fact that all result bits except 3,2,1
    are zero and therefore defined (viz, zero).
@@ -696,10 +696,9 @@ static IRAtom* expensiveCmpEQorNE ( MCEnv*  mce,
    will be defined even if the rest of x isn't.  In which case we do:
 
       CmpORD32S#(x,x#,0,{impliedly 0}#)
-         = PCast(x#) & (3<<1)      -- standard interp for GT#,EQ#
-           | (x# >>u 31) << 3      -- LT# = x#[31]
+         = PCast(x#) & (3<<1)      -- standard interp for GT,EQ
+           | (x# >> 31) << 3       -- LT = x#[31]
 
-   Analogous handling for CmpORD64{S,U}.
 */
 static Bool isZeroU32 ( IRAtom* e )
 {
@@ -709,81 +708,56 @@ static Bool isZeroU32 ( IRAtom* e )
               && e->Iex.Const.con->Ico.U32 == 0 );
 }
 
-static Bool isZeroU64 ( IRAtom* e )
+static IRAtom* doCmpORD32 ( MCEnv*  mce,
+                            IROp    cmp_op,
+                            IRAtom* xxhash, IRAtom* yyhash, 
+                            IRAtom* xx,     IRAtom* yy )
 {
-   return
-      toBool( e->tag == Iex_Const
-              && e->Iex.Const.con->tag == Ico_U64
-              && e->Iex.Const.con->Ico.U64 == 0 );
-}
-
-static IRAtom* doCmpORD ( MCEnv*  mce,
-                          IROp    cmp_op,
-                          IRAtom* xxhash, IRAtom* yyhash, 
-                          IRAtom* xx,     IRAtom* yy )
-{
-   Bool   m64    = cmp_op == Iop_CmpORD64S || cmp_op == Iop_CmpORD64U;
-   Bool   syned  = cmp_op == Iop_CmpORD64S || cmp_op == Iop_CmpORD32S;
-   IROp   opOR   = m64 ? Iop_Or64  : Iop_Or32;
-   IROp   opAND  = m64 ? Iop_And64 : Iop_And32;
-   IROp   opSHL  = m64 ? Iop_Shl64 : Iop_Shl32;
-   IROp   opSHR  = m64 ? Iop_Shr64 : Iop_Shr32;
-   IRType ty     = m64 ? Ity_I64   : Ity_I32;
-   Int    width  = m64 ? 64        : 32;
-
-   Bool (*isZero)(IRAtom*) = m64 ? isZeroU64 : isZeroU32;
-
-   IRAtom* threeLeft1 = NULL;
-   IRAtom* sevenLeft1 = NULL;
-
    tl_assert(isShadowAtom(mce,xxhash));
    tl_assert(isShadowAtom(mce,yyhash));
    tl_assert(isOriginalAtom(mce,xx));
    tl_assert(isOriginalAtom(mce,yy));
    tl_assert(sameKindedAtoms(xxhash,xx));
    tl_assert(sameKindedAtoms(yyhash,yy));
-   tl_assert(cmp_op == Iop_CmpORD32S || cmp_op == Iop_CmpORD32U
-             || cmp_op == Iop_CmpORD64S || cmp_op == Iop_CmpORD64U);
+   tl_assert(cmp_op == Iop_CmpORD32S || cmp_op == Iop_CmpORD32U);
 
    if (0) {
       ppIROp(cmp_op); VG_(printf)(" "); 
       ppIRExpr(xx); VG_(printf)(" "); ppIRExpr( yy ); VG_(printf)("\n");
    }
 
-   if (syned && isZero(yy)) {
+   if (isZeroU32(yy)) {
       /* fancy interpretation */
       /* if yy is zero, then it must be fully defined (zero#). */
-      tl_assert(isZero(yyhash));
-      threeLeft1 = m64 ? mkU64(3<<1) : mkU32(3<<1);
+      tl_assert(isZeroU32(yyhash));
       return
          binop(
-            opOR,
+            Iop_Or32,
             assignNew(
-               mce,ty,
+               mce,Ity_I32,
                binop(
-                  opAND,
-                  mkPCastTo(mce,ty, xxhash), 
-                  threeLeft1
+                  Iop_And32,
+                  mkPCastTo(mce,Ity_I32, xxhash), 
+                  mkU32(3<<1)
                )),
             assignNew(
-               mce,ty,
+               mce,Ity_I32,
                binop(
-                  opSHL,
+                  Iop_Shl32,
                   assignNew(
-                     mce,ty,
-                     binop(opSHR, xxhash, mkU8(width-1))),
+                     mce,Ity_I32,
+                     binop(Iop_Shr32, xxhash, mkU8(31))),
                   mkU8(3)
                ))
 	 );
    } else {
       /* standard interpretation */
-      sevenLeft1 = m64 ? mkU64(7<<1) : mkU32(7<<1);
       return 
          binop( 
-            opAND, 
-            mkPCastTo( mce,ty,
-                       mkUifU(mce,ty, xxhash,yyhash)),
-            sevenLeft1
+            Iop_And32, 
+            mkPCastTo( mce,Ity_I32,
+                       mkUifU32(mce, xxhash,yyhash)),
+            mkU32(7<<1)
          );
    }
 }
@@ -846,44 +820,39 @@ static void complainIfUndefined ( MCEnv* mce, IRAtom* atom )
 
    switch (sz) {
       case 0:
-         di = unsafeIRDirty_0_N( 
-                 0/*regparms*/, 
-                 "MC_(helperc_value_check0_fail)",
-                 VG_(fnptr_to_fnentry)( &MC_(helperc_value_check0_fail) ),
-                 mkIRExprVec_0() 
-              );
+         di = unsafeIRDirty_0_N( 0/*regparms*/, 
+                                 "MC_(helperc_value_check0_fail)",
+                                 &MC_(helperc_value_check0_fail),
+                                 mkIRExprVec_0() 
+                               );
          break;
       case 1:
-         di = unsafeIRDirty_0_N( 
-                 0/*regparms*/, 
-                 "MC_(helperc_value_check1_fail)",
-                 VG_(fnptr_to_fnentry)( &MC_(helperc_value_check1_fail) ),
-                 mkIRExprVec_0() 
-              );
+         di = unsafeIRDirty_0_N( 0/*regparms*/, 
+                                 "MC_(helperc_value_check1_fail)",
+                                 &MC_(helperc_value_check1_fail),
+                                 mkIRExprVec_0() 
+                               );
          break;
       case 4:
-         di = unsafeIRDirty_0_N( 
-                 0/*regparms*/, 
-                 "MC_(helperc_value_check4_fail)",
-                 VG_(fnptr_to_fnentry)( &MC_(helperc_value_check4_fail) ),
-                 mkIRExprVec_0() 
-              );
+         di = unsafeIRDirty_0_N( 0/*regparms*/, 
+                                 "MC_(helperc_value_check4_fail)",
+                                 &MC_(helperc_value_check4_fail),
+                                 mkIRExprVec_0() 
+                               );
          break;
       case 8:
-         di = unsafeIRDirty_0_N( 
-                 0/*regparms*/, 
-                 "MC_(helperc_value_check8_fail)",
-                 VG_(fnptr_to_fnentry)( &MC_(helperc_value_check8_fail) ),
-                 mkIRExprVec_0() 
-              );
+         di = unsafeIRDirty_0_N( 0/*regparms*/, 
+                                 "MC_(helperc_value_check8_fail)",
+                                 &MC_(helperc_value_check8_fail),
+                                 mkIRExprVec_0() 
+                               );
          break;
       default:
-         di = unsafeIRDirty_0_N( 
-                 1/*regparms*/, 
-                 "MC_(helperc_complain_undef)",
-                 VG_(fnptr_to_fnentry)( &MC_(helperc_complain_undef) ),
-                 mkIRExprVec_1( mkIRExpr_HWord( sz ))
-              );
+         di = unsafeIRDirty_0_N( 1/*regparms*/, 
+                                 "MC_(helperc_complain_undef)",
+                                 &MC_(helperc_complain_undef),
+                                 mkIRExprVec_1( mkIRExpr_HWord( sz ))
+                               );
          break;
    }
    di->guard = cond;
@@ -1103,130 +1072,6 @@ IRAtom* mkLazy2 ( MCEnv* mce, IRType finalVty, IRAtom* va1, IRAtom* va2 )
    at = mkUifU(mce, Ity_I32, at, mkPCastTo(mce, Ity_I32, va2));
    at = mkPCastTo(mce, finalVty, at);
    return at;
-}
-
-
-/* 3-arg version of the above. */
-static
-IRAtom* mkLazy3 ( MCEnv* mce, IRType finalVty, 
-                  IRAtom* va1, IRAtom* va2, IRAtom* va3 )
-{
-   IRAtom* at;
-   IRType t1 = typeOfIRExpr(mce->bb->tyenv, va1);
-   IRType t2 = typeOfIRExpr(mce->bb->tyenv, va2);
-   IRType t3 = typeOfIRExpr(mce->bb->tyenv, va3);
-   tl_assert(isShadowAtom(mce,va1));
-   tl_assert(isShadowAtom(mce,va2));
-   tl_assert(isShadowAtom(mce,va3));
-
-   /* The general case is inefficient because PCast is an expensive
-      operation.  Here are some special cases which use PCast only
-      twice rather than three times. */
-
-   /* I32 x I64 x I64 -> I64 */
-   /* Standard FP idiom: rm x FParg1 x FParg2 -> FPresult */
-   if (t1 == Ity_I32 && t2 == Ity_I64 && t3 == Ity_I64 
-       && finalVty == Ity_I64) {
-      if (0) VG_(printf)("mkLazy3: I32 x I64 x I64 -> I64\n");
-      /* Widen 1st arg to I64.  Since 1st arg is typically a rounding
-         mode indication which is fully defined, this should get
-         folded out later. */
-      at = mkPCastTo(mce, Ity_I64, va1);
-      /* Now fold in 2nd and 3rd args. */
-      at = mkUifU(mce, Ity_I64, at, va2);
-      at = mkUifU(mce, Ity_I64, at, va3);
-      /* and PCast once again. */
-      at = mkPCastTo(mce, Ity_I64, at);
-      return at;
-   }
-
-   /* I32 x I64 x I64 -> I32 */
-   if (t1 == Ity_I32 && t2 == Ity_I64 && t3 == Ity_I64 
-       && finalVty == Ity_I32) {
-      if (0) VG_(printf)("mkLazy3: I32 x I64 x I64 -> I64\n");
-      at = mkPCastTo(mce, Ity_I64, va1);
-      at = mkUifU(mce, Ity_I64, at, va2);
-      at = mkUifU(mce, Ity_I64, at, va3);
-      at = mkPCastTo(mce, Ity_I32, at);
-      return at;
-   }
-
-   if (1) {
-      VG_(printf)("mkLazy3: ");
-      ppIRType(t1);
-      VG_(printf)(" x ");
-      ppIRType(t2);
-      VG_(printf)(" x ");
-      ppIRType(t3);
-      VG_(printf)(" -> ");
-      ppIRType(finalVty);
-      VG_(printf)("\n");
-   }
-
-   tl_assert(0);
-   /* General case: force everything via 32-bit intermediaries. */
-   /*
-   at = mkPCastTo(mce, Ity_I32, va1);
-   at = mkUifU(mce, Ity_I32, at, mkPCastTo(mce, Ity_I32, va2));
-   at = mkUifU(mce, Ity_I32, at, mkPCastTo(mce, Ity_I32, va3));
-   at = mkPCastTo(mce, finalVty, at);
-   return at;
-   */
-}
-
-
-/* 4-arg version of the above. */
-static
-IRAtom* mkLazy4 ( MCEnv* mce, IRType finalVty, 
-                  IRAtom* va1, IRAtom* va2, IRAtom* va3, IRAtom* va4 )
-{
-   IRAtom* at;
-   IRType t1 = typeOfIRExpr(mce->bb->tyenv, va1);
-   IRType t2 = typeOfIRExpr(mce->bb->tyenv, va2);
-   IRType t3 = typeOfIRExpr(mce->bb->tyenv, va3);
-   IRType t4 = typeOfIRExpr(mce->bb->tyenv, va4);
-   tl_assert(isShadowAtom(mce,va1));
-   tl_assert(isShadowAtom(mce,va2));
-   tl_assert(isShadowAtom(mce,va3));
-   tl_assert(isShadowAtom(mce,va4));
-
-   /* The general case is inefficient because PCast is an expensive
-      operation.  Here are some special cases which use PCast only
-      twice rather than three times. */
-
-   /* I32 x I64 x I64 x I64 -> I64 */
-   /* Standard FP idiom: rm x FParg1 x FParg2 x FParg3 -> FPresult */
-   if (t1 == Ity_I32 && t2 == Ity_I64 && t3 == Ity_I64 && t4 == Ity_I64
-       && finalVty == Ity_I64) {
-      if (0) VG_(printf)("mkLazy4: I32 x I64 x I64 x I64 -> I64\n");
-      /* Widen 1st arg to I64.  Since 1st arg is typically a rounding
-         mode indication which is fully defined, this should get
-         folded out later. */
-      at = mkPCastTo(mce, Ity_I64, va1);
-      /* Now fold in 2nd, 3rd, 4th args. */
-      at = mkUifU(mce, Ity_I64, at, va2);
-      at = mkUifU(mce, Ity_I64, at, va3);
-      at = mkUifU(mce, Ity_I64, at, va4);
-      /* and PCast once again. */
-      at = mkPCastTo(mce, Ity_I64, at);
-      return at;
-   }
-
-   if (1) {
-      VG_(printf)("mkLazy4: ");
-      ppIRType(t1);
-      VG_(printf)(" x ");
-      ppIRType(t2);
-      VG_(printf)(" x ");
-      ppIRType(t3);
-      VG_(printf)(" x ");
-      ppIRType(t4);
-      VG_(printf)(" -> ");
-      ppIRType(finalVty);
-      VG_(printf)("\n");
-   }
-
-   tl_assert(0);
 }
 
 
@@ -1715,89 +1560,6 @@ IRAtom* binary32Ix2 ( MCEnv* mce, IRAtom* vatom1, IRAtom* vatom2 )
 /*------------------------------------------------------------*/
 
 static 
-IRAtom* expr2vbits_Qop ( MCEnv* mce,
-                         IROp op,
-                         IRAtom* atom1, IRAtom* atom2, 
-                         IRAtom* atom3, IRAtom* atom4 )
-{
-   IRAtom* vatom1 = expr2vbits( mce, atom1 );
-   IRAtom* vatom2 = expr2vbits( mce, atom2 );
-   IRAtom* vatom3 = expr2vbits( mce, atom3 );
-   IRAtom* vatom4 = expr2vbits( mce, atom4 );
-
-   tl_assert(isOriginalAtom(mce,atom1));
-   tl_assert(isOriginalAtom(mce,atom2));
-   tl_assert(isOriginalAtom(mce,atom3));
-   tl_assert(isOriginalAtom(mce,atom4));
-   tl_assert(isShadowAtom(mce,vatom1));
-   tl_assert(isShadowAtom(mce,vatom2));
-   tl_assert(isShadowAtom(mce,vatom3));
-   tl_assert(isShadowAtom(mce,vatom4));
-   tl_assert(sameKindedAtoms(atom1,vatom1));
-   tl_assert(sameKindedAtoms(atom2,vatom2));
-   tl_assert(sameKindedAtoms(atom3,vatom3));
-   tl_assert(sameKindedAtoms(atom4,vatom4));
-   switch (op) {
-      case Iop_MAddF64:
-      case Iop_MAddF64r32:
-      case Iop_MSubF64:
-      case Iop_MSubF64r32:
-         /* I32(rm) x F64 x F64 x F64 -> F64 */
-         return mkLazy4(mce, Ity_I64, vatom1, vatom2, vatom3, vatom4);
-      default:
-         ppIROp(op);
-         VG_(tool_panic)("memcheck:expr2vbits_Qop");
-   }
-}
-
-
-static 
-IRAtom* expr2vbits_Triop ( MCEnv* mce,
-                           IROp op,
-                           IRAtom* atom1, IRAtom* atom2, IRAtom* atom3 )
-{
-   IRAtom* vatom1 = expr2vbits( mce, atom1 );
-   IRAtom* vatom2 = expr2vbits( mce, atom2 );
-   IRAtom* vatom3 = expr2vbits( mce, atom3 );
-
-   tl_assert(isOriginalAtom(mce,atom1));
-   tl_assert(isOriginalAtom(mce,atom2));
-   tl_assert(isOriginalAtom(mce,atom3));
-   tl_assert(isShadowAtom(mce,vatom1));
-   tl_assert(isShadowAtom(mce,vatom2));
-   tl_assert(isShadowAtom(mce,vatom3));
-   tl_assert(sameKindedAtoms(atom1,vatom1));
-   tl_assert(sameKindedAtoms(atom2,vatom2));
-   tl_assert(sameKindedAtoms(atom3,vatom3));
-   switch (op) {
-      case Iop_AddF64:
-      case Iop_AddF64r32:
-      case Iop_SubF64:
-      case Iop_SubF64r32:
-      case Iop_MulF64:
-      case Iop_MulF64r32:
-      case Iop_DivF64:
-      case Iop_DivF64r32:
-      case Iop_ScaleF64:
-      case Iop_Yl2xF64:
-      case Iop_Yl2xp1F64:
-      case Iop_AtanF64:
-      case Iop_PRemF64:
-      case Iop_PRem1F64:
-         /* I32(rm) x F64 x F64 -> F64 */
-         return mkLazy3(mce, Ity_I64, vatom1, vatom2, vatom3);
-      case Iop_PRemC3210F64:
-      case Iop_PRem1C3210F64:
-         /* I32(rm) x F64 x F64 -> I32 */
-         return mkLazy3(mce, Ity_I32, vatom1, vatom2, vatom3);
-      default:
-         ppIROp(op);
-         VG_(tool_panic)("memcheck:expr2vbits_Triop");
-   }
-}
-
-
-static 
 IRAtom* expr2vbits_Binop ( MCEnv* mce,
                            IROp op,
                            IRAtom* atom1, IRAtom* atom2 )
@@ -2113,18 +1875,15 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
 
       /* Scalar floating point */
 
-      case Iop_RoundF64toInt:
-      case Iop_RoundF64toF32:
+      case Iop_RoundF64:
       case Iop_F64toI64:
       case Iop_I64toF64:
-      case Iop_SinF64:
-      case Iop_CosF64:
-      case Iop_TanF64:
-      case Iop_2xm1F64:
-      case Iop_SqrtF64:
-         /* I32(rm) x I64/F64 -> I64/F64 */
+         /* First arg is I32 (rounding mode), second is F64 or I64
+            (data). */
          return mkLazy2(mce, Ity_I64, vatom1, vatom2);
 
+      case Iop_PRemC3210F64: case Iop_PRem1C3210F64:
+         /* Takes two F64 args. */
       case Iop_F64toI32:
       case Iop_F64toF32:
          /* First arg is I32 (rounding mode), second is F64 (data). */
@@ -2133,6 +1892,18 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_F64toI16:
          /* First arg is I32 (rounding mode), second is F64 (data). */
          return mkLazy2(mce, Ity_I16, vatom1, vatom2);
+
+      case Iop_ScaleF64:
+      case Iop_Yl2xF64:
+      case Iop_Yl2xp1F64:
+      case Iop_PRemF64:
+      case Iop_PRem1F64:
+      case Iop_AtanF64:
+      case Iop_AddF64:
+      case Iop_DivF64:
+      case Iop_SubF64:
+      case Iop_MulF64:
+         return mkLazy2(mce, Ity_I64, vatom1, vatom2);
 
       case Iop_CmpF64:
          return mkLazy2(mce, Ity_I32, vatom1, vatom2);
@@ -2184,10 +1955,6 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
       case Iop_DivU32:
          return mkLazy2(mce, Ity_I32, vatom1, vatom2);
 
-      case Iop_DivS64:
-      case Iop_DivU64:
-         return mkLazy2(mce, Ity_I64, vatom1, vatom2);
-
       case Iop_Add32:
          if (mce->bogusLiterals)
             return expensiveAddSub(mce,True,Ity_I32, 
@@ -2207,9 +1974,7 @@ IRAtom* expr2vbits_Binop ( MCEnv* mce,
 
       case Iop_CmpORD32S:
       case Iop_CmpORD32U:
-      case Iop_CmpORD64S:
-      case Iop_CmpORD64U:
-         return doCmpORD(mce, op, vatom1,vatom2, atom1,atom2);
+         return doCmpORD32(mce, op, vatom1,vatom2, atom1,atom2);
 
       case Iop_Add64:
          if (mce->bogusLiterals)
@@ -2377,15 +2142,18 @@ IRExpr* expr2vbits_Unop ( MCEnv* mce, IROp op, IRAtom* atom )
       case Iop_F32toF64: 
       case Iop_I32toF64:
       case Iop_NegF64:
+      case Iop_SinF64:
+      case Iop_CosF64:
+      case Iop_TanF64:
+      case Iop_SqrtF64:
       case Iop_AbsF64:
-      case Iop_Est5FRSqrt:
+      case Iop_2xm1F64:
       case Iop_Clz64:
       case Iop_Ctz64:
          return mkPCastTo(mce, Ity_I64, vatom);
 
       case Iop_Clz32:
       case Iop_Ctz32:
-      case Iop_TruncF64asF32:
          return mkPCastTo(mce, Ity_I32, vatom);
 
       case Iop_1Uto64:
@@ -2536,8 +2304,7 @@ IRAtom* expr2vbits_Load_WRK ( MCEnv* mce,
       read. */
    datavbits = newIRTemp(mce->bb->tyenv, ty);
    di = unsafeIRDirty_1_N( datavbits, 
-                           1/*regparms*/, 
-                           hname, VG_(fnptr_to_fnentry)( helper ), 
+                           1/*regparms*/, hname, helper, 
                            mkIRExprVec_1( addrAct ));
    setHelperAnns( mce, di );
    stmt( mce->bb, IRStmt_Dirty(di) );
@@ -2620,21 +2387,6 @@ IRExpr* expr2vbits ( MCEnv* mce, IRExpr* e )
 
       case Iex_Const:
          return definedOfType(shadowType(typeOfIRExpr(mce->bb->tyenv, e)));
-
-      case Iex_Qop:
-         return expr2vbits_Qop(
-                   mce,
-                   e->Iex.Qop.op,
-                   e->Iex.Qop.arg1, e->Iex.Qop.arg2,
-		   e->Iex.Qop.arg3, e->Iex.Qop.arg4
-                );
-
-      case Iex_Triop:
-         return expr2vbits_Triop(
-                   mce,
-                   e->Iex.Triop.op,
-                   e->Iex.Triop.arg1, e->Iex.Triop.arg2, e->Iex.Triop.arg3
-                );
 
       case Iex_Binop:
          return expr2vbits_Binop(
@@ -2815,18 +2567,16 @@ void do_shadow_Store ( MCEnv* mce,
       addrLo64  = assignNew(mce, tyAddr, binop(mkAdd, addr, eBiasLo64) );
       vdataLo64 = assignNew(mce, Ity_I64, unop(Iop_V128to64, vdata));
       diLo64    = unsafeIRDirty_0_N( 
-                     1/*regparms*/, 
-                     hname, VG_(fnptr_to_fnentry)( helper ), 
-                     mkIRExprVec_2( addrLo64, vdataLo64 )
-                  );
+                     1/*regparms*/, hname, helper, 
+                     mkIRExprVec_2( addrLo64, vdataLo64 ));
+
       eBiasHi64 = tyAddr==Ity_I32 ? mkU32(bias+offHi64) : mkU64(bias+offHi64);
       addrHi64  = assignNew(mce, tyAddr, binop(mkAdd, addr, eBiasHi64) );
       vdataHi64 = assignNew(mce, Ity_I64, unop(Iop_V128HIto64, vdata));
       diHi64    = unsafeIRDirty_0_N( 
-                     1/*regparms*/, 
-                     hname, VG_(fnptr_to_fnentry)( helper ), 
-                     mkIRExprVec_2( addrHi64, vdataHi64 )
-                  );
+                     1/*regparms*/, hname, helper, 
+                     mkIRExprVec_2( addrHi64, vdataHi64 ));
+
       setHelperAnns( mce, diLo64 );
       setHelperAnns( mce, diHi64 );
       stmt( mce->bb, IRStmt_Dirty(diLo64) );
@@ -2848,17 +2598,13 @@ void do_shadow_Store ( MCEnv* mce,
             the back ends aren't clever enough to handle 64-bit
             regparm args.  Therefore be different. */
          di = unsafeIRDirty_0_N( 
-                 1/*regparms*/, 
-                 hname, VG_(fnptr_to_fnentry)( helper ), 
-                 mkIRExprVec_2( addrAct, vdata )
-              );
+                 1/*regparms*/, hname, helper, 
+                 mkIRExprVec_2( addrAct, vdata ));
       } else {
          di = unsafeIRDirty_0_N( 
-                 2/*regparms*/, 
-                 hname, VG_(fnptr_to_fnentry)( helper ), 
+                 2/*regparms*/, hname, helper, 
                  mkIRExprVec_2( addrAct,
-                                zwidenToHostWord( mce, vdata ))
-              );
+                                zwidenToHostWord( mce, vdata )));
       }
       setHelperAnns( mce, di );
       stmt( mce->bb, IRStmt_Dirty(di) );
@@ -3076,7 +2822,7 @@ void do_AbiHint ( MCEnv* mce, IRExpr* base, Int len )
    di = unsafeIRDirty_0_N(
            0/*regparms*/,
            "MC_(helperc_MAKE_STACK_UNINIT)",
-           VG_(fnptr_to_fnentry)( &MC_(helperc_MAKE_STACK_UNINIT) ),
+           &MC_(helperc_MAKE_STACK_UNINIT),
            mkIRExprVec_2( base, mkIRExpr_HWord( (UInt)len) )
         );
    stmt( mce->bb, IRStmt_Dirty(di) );
@@ -3139,15 +2885,6 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
             case Iex_Binop: 
                return isBogusAtom(e->Iex.Binop.arg1)
                       || isBogusAtom(e->Iex.Binop.arg2);
-            case Iex_Triop: 
-               return isBogusAtom(e->Iex.Triop.arg1)
-                      || isBogusAtom(e->Iex.Triop.arg2)
-                      || isBogusAtom(e->Iex.Triop.arg3);
-            case Iex_Qop: 
-               return isBogusAtom(e->Iex.Qop.arg1)
-                      || isBogusAtom(e->Iex.Qop.arg2)
-                      || isBogusAtom(e->Iex.Qop.arg3)
-                      || isBogusAtom(e->Iex.Qop.arg4);
             case Iex_Mux0X:
                return isBogusAtom(e->Iex.Mux0X.cond)
                       || isBogusAtom(e->Iex.Mux0X.expr0)
@@ -3196,10 +2933,8 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
 }
 
 
-IRBB* MC_(instrument) ( VgCallbackClosure* closure,
-                        IRBB* bb_in, 
-                        VexGuestLayout* layout, 
-                        VexGuestExtents* vge,
+IRBB* MC_(instrument) ( IRBB* bb_in, VexGuestLayout* layout, 
+                        Addr64 orig_addr_noredir, VexGuestExtents* vge,
                         IRType gWordTy, IRType hWordTy )
 {
    Bool    verboze = False; //True; 

@@ -1,8 +1,8 @@
 
-/*--------------------------------------------------------------------*/
-/*--- The core dispatch loop, for jumping to a code address.       ---*/
-/*---                                               dispatch-x86.S ---*/
-/*--------------------------------------------------------------------*/
+##--------------------------------------------------------------------##
+##--- The core dispatch loop, for jumping to a code address.       ---##
+##---                                               dispatch-x86.S ---##
+##--------------------------------------------------------------------##
 
 /*
   This file is part of Valgrind, a dynamic binary instrumentation
@@ -36,24 +36,14 @@
 
 
 /*------------------------------------------------------------*/
-/*---                                                      ---*/
-/*--- The dispatch loop.  VG_(run_innerloop) is used to    ---*/
-/*--- run all translations except no-redir ones.           ---*/
-/*---                                                      ---*/
+/*--- The dispatch loop.                                   ---*/
 /*------------------------------------------------------------*/
 
-/*----------------------------------------------------*/
-/*--- Preamble (set everything up)                 ---*/
-/*----------------------------------------------------*/
+/* signature: UWord VG_(run_innerloop) ( void* guest_state ) */
 
-/* signature:
-UWord VG_(run_innerloop) ( void* guest_state, UWord do_profiling );
-*/
-.text
 .globl VG_(run_innerloop)
 VG_(run_innerloop):
 	/* 4(%esp) holds guest_state */
-	/* 8(%esp) holds do_profiling */
 	
 	/* ----- entry point to VG_(run_innerloop) ----- */
 	pushl	%ebx
@@ -64,7 +54,6 @@ VG_(run_innerloop):
 	pushl	%ebp
 	
 	/* 28(%esp) holds guest_state */
-	/* 32(%esp) holds do_profiling */
 
 	/* Set up the guest state pointer */
 	movl	28(%esp), %ebp
@@ -91,127 +80,51 @@ L1:
 	/* set dir flag to known value */
 	cld
 	
-	/* fall into main loop (the right one) */
-	cmpl	$0, 32(%esp) /* do_profiling */
-	je	VG_(run_innerloop__dispatch_unprofiled)
-	jmp	VG_(run_innerloop__dispatch_profiled)
-	/*NOTREACHED*/
+	/* fall into main loop */
 
-/*----------------------------------------------------*/
-/*--- NO-PROFILING (standard) dispatcher           ---*/
-/*----------------------------------------------------*/
+	/* Here, %eax is the only live (real) register.  The entire
+	   simulated state is saved in the ThreadState. */
 
-.align	16
-.global	VG_(run_innerloop__dispatch_unprofiled)
-VG_(run_innerloop__dispatch_unprofiled):
-	/* AT ENTRY: %eax is next guest addr, %ebp is possibly
-           modified guest state ptr */
-
-	/* Has the guest state pointer been messed with?  If yes, exit. */
-	cmpl	28(%esp), %ebp
-	jnz	gsp_changed
-
+dispatch_boring:
 	/* save the jump address in the guest state */
 	movl	%eax, OFFSET_x86_EIP(%ebp)
 
 	/* Are we out of timeslice?  If yes, defer to scheduler. */
-	subl	$1, VG_(dispatch_ctr)
+	subl $1, VG_(dispatch_ctr)
 	jz	counter_is_zero
 
 	/* try a fast lookup in the translation cache */
-	movl	%eax, %ebx
-	andl	$VG_TT_FAST_MASK, %ebx
-	movl	VG_(tt_fast)(,%ebx,4), %ecx
-	cmpl	%eax, (%ecx)
-	jnz	fast_lookup_failed
-
-	/* Found a match.  Jump to tce[1], which is 8 bytes along,
-	since each tce element is a 64-bit int. */
-	addl 	$8, %ecx
-	jmp 	*%ecx
-	ud2	/* persuade insn decoders not to speculate past here */
-	/* generated code should run, then jump back to
-	   VG_(run_innerloop__dispatch_unprofiled). */
-	/*NOTREACHED*/
-
-/*----------------------------------------------------*/
-/*--- PROFILING dispatcher (can be much slower)    ---*/
-/*----------------------------------------------------*/
-
-.align	16
-.global	VG_(run_innerloop__dispatch_profiled)
-VG_(run_innerloop__dispatch_profiled):
-	/* AT ENTRY: %eax is next guest addr, %ebp is possibly
-           modified guest state ptr */
-
-	/* Has the guest state pointer been messed with?  If yes, exit. */
-	cmpl	28(%esp), %ebp
-	jnz	gsp_changed
-
-	/* save the jump address in the guest state */
-	movl	%eax, OFFSET_x86_EIP(%ebp)
-
-	/* Are we out of timeslice?  If yes, defer to scheduler. */
-	subl	$1, VG_(dispatch_ctr)
-	jz	counter_is_zero
-
-	/* try a fast lookup in the translation cache */
-	movl	%eax, %ebx
-	andl	$VG_TT_FAST_MASK, %ebx
-	movl	VG_(tt_fast)(,%ebx,4), %ecx
-	cmpl	%eax, (%ecx)
-	jnz	fast_lookup_failed
+	movl %eax, %ebx
+	andl $VG_TT_FAST_MASK, %ebx
+	movl VG_(tt_fast)(,%ebx,4), %ecx
+	cmpl %eax, (%ecx)
+	jnz  fast_lookup_failed
 	/* increment bb profile counter */
-	/* note: innocuous as this sounds, it causes a huge amount more
-           stress on D1 and significantly slows everything down. */
-	movl	VG_(tt_fastN)(,%ebx,4), %edx
-	/* Use "addl $1", not "incl", to avoid partial-flags stall on P4 */
-	addl	$1, (%edx)
+	movl VG_(tt_fastN)(,%ebx,4), %edx
+	incl (%edx)
 
-	/* Found a match.  Jump to tce[1], which is 8 bytes along,
-	since each tce element is a 64-bit int. */
+	/* Found a match.  Call tce[1], which is 8 bytes along, since
+           each tce element is a 64-bit int. */
 	addl 	$8, %ecx
-	jmp 	*%ecx
-	ud2	/* persuade insn decoders not to speculate past here */
-	/* generated code should run, then jump back to
-	   VG_(run_innerloop__dispatch_profiled). */
-	/*NOTREACHED*/
+	call 	*%ecx
+	
+	/* 
+	   %eax holds destination (original) address.
+	   %ebp indicates further details of the control transfer
+	   requested to the address in %eax.
+	
+	   If ebp is unchanged (== * 28(%esp)), just jump next to %eax.
 
-/*----------------------------------------------------*/
-/*--- exit points                                  ---*/
-/*----------------------------------------------------*/
+	   Otherwise fall out, back to the scheduler, and let it
+	   figure out what to do next.
+	*/
 
-gsp_changed:
-	/* Someone messed with the gsp.  Have to
-           defer to scheduler to resolve this.  dispatch ctr
-	   is not yet decremented, so no need to increment. */
-	/* %EIP is NOT up to date here.  First, need to write
-	   %eax back to %EIP, but without trashing %ebp since
-	   that holds the value we want to return to the scheduler.
-	   Hence use %esi transiently for the guest state pointer. */
-	movl	28(%esp), %esi
-	movl	%eax, OFFSET_x86_EIP(%esi)
-	movl	%ebp, %eax
-	jmp	run_innerloop_exit
-	/*NOTREACHED*/
+	cmpl	28(%esp), %ebp
+	jz	dispatch_boring
 
-counter_is_zero:
-	/* %EIP is up to date here */
-	/* back out decrement of the dispatch counter */
-	addl	$1, VG_(dispatch_ctr)
-	movl	$VG_TRC_INNER_COUNTERZERO, %eax
-	jmp	run_innerloop_exit
-	/*NOTREACHED*/
+	jmp	dispatch_exceptional
 
-fast_lookup_failed:
-	/* %EIP is up to date here */
-	/* back out decrement of the dispatch counter */
-	addl	$1, VG_(dispatch_ctr)
-	movl	$VG_TRC_INNER_FASTMISS, %eax
-	jmp	run_innerloop_exit
-	/*NOTREACHED*/
-
-
+	
 
 /* All exits from the dispatcher go through here.  %eax holds
    the return value. 
@@ -253,56 +166,35 @@ run_innerloop_exit_REALLY:
 	ret	
 
 
-/*------------------------------------------------------------*/
-/*---                                                      ---*/
-/*--- A special dispatcher, for running no-redir           ---*/
-/*--- translations.  Just runs the given translation once. ---*/
-/*---                                                      ---*/
-/*------------------------------------------------------------*/
 
-/* signature:
-void VG_(run_a_noredir_translation) ( UWord* argblock );
+/* Other ways of getting out of the inner loop.  Placed out-of-line to
+   make it look cleaner. 
 */
+dispatch_exceptional:
+	/* this is jumped to only, not fallen-through from above */
 
-/* Run a no-redir translation.  argblock points to 4 UWords, 2 to carry args
-   and 2 to carry results:
-      0: input:  ptr to translation
-      1: input:  ptr to guest state
-      2: output: next guest PC
-      3: output: guest state pointer afterwards (== thread return code)
-*/
-.align 16
-.global VG_(run_a_noredir_translation)
-VG_(run_a_noredir_translation):
-	/* Save callee-saves regs */
-	pushl %esi
-	pushl %edi
-	pushl %ebp
-	pushl %ebx
+	/* save %eax in %EIP and defer to sched */
+	movl	28(%esp), %edi
+	movl	%eax, OFFSET_x86_EIP(%edi)
+	movl	%ebp, %eax
+	jmp	run_innerloop_exit
 
-	movl 20(%esp), %edi	/* %edi = argblock */
-	movl 4(%edi), %ebp	/* argblock[1] */
-	jmp *0(%edi)		/* argblock[0] */
-	/*NOTREACHED*/
-	ud2
-	/* If the translation has been correctly constructed, we
-	should resume at the the following label. */
-.global VG_(run_a_noredir_translation__return_point)
-VG_(run_a_noredir_translation__return_point):
-	movl 20(%esp), %edi
-	movl %eax, 8(%edi)	/* argblock[2] */
-	movl %ebp, 12(%edi)	/* argblock[3] */
+fast_lookup_failed:
+	/* %EIP is up to date here since dispatch_boring dominates */
+	addl	$1, VG_(dispatch_ctr)
+	movl	$VG_TRC_INNER_FASTMISS, %eax
+	jmp	run_innerloop_exit
 
-	popl %ebx
-	popl %ebp
-	popl %edi
-	popl %esi
-	ret
+counter_is_zero:
+	/* %EIP is up to date here since dispatch_boring dominates */
+	addl	$1, VG_(dispatch_ctr)
+	movl	$VG_TRC_INNER_COUNTERZERO, %eax
+	jmp	run_innerloop_exit
 
-			
+	
 /* Let the linker know we don't need an executable stack */
 .section .note.GNU-stack,"",@progbits
 
-/*--------------------------------------------------------------------*/
-/*--- end                                                          ---*/
-/*--------------------------------------------------------------------*/
+##--------------------------------------------------------------------##
+##--- end                                                          ---##
+##--------------------------------------------------------------------##

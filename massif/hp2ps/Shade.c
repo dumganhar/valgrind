@@ -108,7 +108,9 @@ ThinkOfAShade()
 }
 
 static floatish
-extract_colour(floatish shade, intish factor)
+extract_colour(shade,factor)
+  floatish shade;
+  intish factor;
 {
     intish i,j;
 

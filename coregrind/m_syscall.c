@@ -54,7 +54,7 @@
    syscall returns a value in -1 .. -4095 as a valid result so we can
    safely test with -4095.
 */
-SysRes VG_(mk_SysRes_x86_linux) ( UInt val ) {
+SysRes VG_(mk_SysRes_x86_linux) ( Word val ) {
    SysRes res;
    res.isError = val >= -4095 && val <= -1;
    res.val     = res.isError ? -val : val;
@@ -62,7 +62,7 @@ SysRes VG_(mk_SysRes_x86_linux) ( UInt val ) {
 }
 
 /* Similarly .. */
-SysRes VG_(mk_SysRes_amd64_linux) ( ULong val ) {
+SysRes VG_(mk_SysRes_amd64_linux) ( Word val ) {
    SysRes res;
    res.isError = val >= -4095 && val <= -1;
    res.val     = res.isError ? -val : val;
@@ -72,14 +72,6 @@ SysRes VG_(mk_SysRes_amd64_linux) ( ULong val ) {
 /* PPC uses the CR7.SO bit to flag an error (CR0 in IBM-speke) */
 /* Note this must be in the bottom bit of the second arg */
 SysRes VG_(mk_SysRes_ppc32_linux) ( UInt val, UInt cr0so ) {
-   SysRes res;
-   res.isError = (cr0so & 1) != 0;
-   res.val     = val;
-   return res;
-}
-
-/* As per ppc32 version, cr0.so must be in l.s.b. of 2nd arg */
-SysRes VG_(mk_SysRes_ppc64_linux) ( ULong val, ULong cr0so ) {
    SysRes res;
    res.isError = (cr0so & 1) != 0;
    res.val     = val;
@@ -141,7 +133,6 @@ asm(
 "	ret\n"
 ".previous\n"
 );
-
 #elif defined(VGP_amd64_linux)
 /* Incoming args (syscall number + up to 6 args) come in %rdi, %rsi,
    %rdx, %rcx, %r8, %r9, and the last one on the stack (ie. the C
@@ -176,7 +167,6 @@ asm(
 "	ret\n"
 ".previous\n"
 );
-
 #elif defined(VGP_ppc32_linux)
 /* Incoming args (syscall number + up to 6 args) come in %r3:%r9.
 
@@ -210,42 +200,6 @@ asm(
 "        blr\n"                 /* and return                             */
 ".previous\n"
 );
-
-#elif defined(VGP_ppc64_linux)
-/* Due to the need to return 65 bits of result, this is completely
-   different from the ppc32 case.  The single arg register points to a
-   7-word block containing the syscall # and the 6 args.  The syscall
-   result proper is put in [0] of the block, and %cr0.so is in the
-   bottom but of [1]. */
-extern void do_syscall_WRK ( ULong* argblock );
-asm(
-".align   2\n"
-".globl   do_syscall_WRK\n"
-".section \".opd\",\"aw\"\n"
-".align   3\n"
-"do_syscall_WRK:\n"
-".quad    .do_syscall_WRK,.TOC.@tocbase,0\n"
-".previous\n"
-".type    .do_syscall_WRK,@function\n"
-".globl   .do_syscall_WRK\n"
-".do_syscall_WRK:\n"
-"        std  3,-16(1)\n"  /* stash arg */
-"        ld   8, 48(3)\n"  /* sc arg 6 */
-"        ld   7, 40(3)\n"  /* sc arg 5 */
-"        ld   6, 32(3)\n"  /* sc arg 4 */
-"        ld   5, 24(3)\n"  /* sc arg 3 */
-"        ld   4, 16(3)\n"  /* sc arg 2 */
-"        ld   0,  0(3)\n"  /* sc number */
-"        ld   3,  8(3)\n"  /* sc arg 1 */
-"        sc\n"             /* result in r3 and cr0.so */
-"        ld   5,-16(1)\n"  /* reacquire argblock ptr (r5 is caller-save) */
-"        std  3,0(5)\n"    /* argblock[0] = r3 */
-"        mfcr 3\n"
-"        srwi 3,3,28\n"
-"        andi. 3,3,1\n"
-"        std  3,8(5)\n"    /* argblock[1] = cr0.s0 & 1 */
-"        blr\n"
-);
 #else
 #  error Unknown platform
 #endif
@@ -264,17 +218,6 @@ SysRes VG_(do_syscall) ( UWord sysno, UWord a1, UWord a2, UWord a3,
   UInt  val     = (UInt)(ret>>32);
   UInt  cr0so   = (UInt)(ret);
   return VG_(mk_SysRes_ppc32_linux)( val, cr0so );
-#elif defined(VGP_ppc64_linux)
-  ULong argblock[7];
-  argblock[0] = sysno;
-  argblock[1] = a1;
-  argblock[2] = a2;
-  argblock[3] = a3;
-  argblock[4] = a4;
-  argblock[5] = a5;
-  argblock[6] = a6;
-  do_syscall_WRK( &argblock[0] );
-  return VG_(mk_SysRes_ppc64_linux)( argblock[0], argblock[1] );
 #else
 #  error Unknown platform
 #endif

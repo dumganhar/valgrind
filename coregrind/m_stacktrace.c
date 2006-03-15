@@ -37,6 +37,7 @@
 #include "pub_core_libcprint.h"
 #include "pub_core_machine.h"
 #include "pub_core_options.h"
+#include "pub_core_profile.h"
 #include "pub_core_stacktrace.h"
 #include "pub_core_trampoline.h"
 
@@ -48,17 +49,12 @@
    IPs into 'ips'.  In order to be thread-safe, we pass in the
    thread's IP SP, FP if that's meaningful, and LR if that's
    meaningful.  Returns number of IPs put in 'ips'.
-
-   If you know what the thread ID for this stack is, send that as the
-   first parameter, else send zero.  This helps generate better stack
-   traces on ppc64-linux and has no effect on other platforms.
 */
-UInt VG_(get_StackTrace2) ( ThreadId tid_if_known,
-                            Addr* ips, UInt n_ips, 
+UInt VG_(get_StackTrace2) ( Addr* ips, UInt n_ips, 
                             Addr ip, Addr sp, Addr fp, Addr lr,
                             Addr fp_min, Addr fp_max_orig )
 {
-#if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
+#if defined(VGP_ppc32_linux)
    Bool  lr_is_first_RA = False; /* ppc only */
 #endif
    Bool  debug = False;
@@ -66,12 +62,17 @@ UInt VG_(get_StackTrace2) ( ThreadId tid_if_known,
    Addr  fp_max;
    UInt  n_found = 0;
 
+   VGP_PUSHCC(VgpExeContext);
+
    vg_assert(sizeof(Addr) == sizeof(UWord));
    vg_assert(sizeof(Addr) == sizeof(void*));
 
    /* Snaffle IPs from the client's stack into ips[0 .. n_ips-1],
-      stopping when the trail goes cold, which we guess to be
+      putting zeroes in when the trail goes cold, which we guess to be
       when FP is not a reasonable stack location. */
+
+   for (i = 0; i < n_ips; i++)
+      ips[i] = 0;
 
    // JRS 2002-sep-17: hack, to round up fp_max to the end of the
    // current page, at least.  Dunno if it helps.
@@ -92,13 +93,13 @@ UInt VG_(get_StackTrace2) ( ThreadId tid_if_known,
          don't bomb out either.  Needed to make John Regehr's
          user-space threads package work. JRS 20021001 */
       ips[0] = ip;
+      VGP_POPCC(VgpExeContext);
       return 1;
    } 
 
    /* Otherwise unwind the stack in a platform-specific way.  Trying
-      to merge the x86, amd64, ppc32 and ppc64 logic into a single
-      piece of code is just too confusing and difficult to
-      performance-tune.  */
+      to merge the x86, amd64 and ppc32 logic into a single piece of
+      code is just too confusing and difficult to performance-tune.  */
 
 #  if defined(VGP_x86_linux)
 
@@ -233,25 +234,12 @@ UInt VG_(get_StackTrace2) ( ThreadId tid_if_known,
       break;
    }
 
-#  elif defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux)
+#  elif defined(VGP_ppc32_linux)
 
-   /*--------------------- ppc32/64 ---------------------*/
+   /*--------------------- ppc32 ---------------------*/
 
    /* fp is %r1.  ip is %cia.  Note, ppc uses r1 as both the stack and
       frame pointers. */
-
-#  if defined(VGP_ppc64_linux)
-   /* Deal with bogus LR values caused by function
-      interception/wrapping; see comment on similar code a few lines
-      further down. */
-   if (lr == (Addr)&VG_(ppc64_linux_magic_redirect_return_stub)
-       && VG_(is_valid_tid)(tid_if_known)) {
-      Long hsp = VG_(threads)[tid_if_known].arch.vex.guest_REDIR_SP;
-      if (hsp >= 1 && hsp < VEX_GUEST_PPC64_REDIR_STACK_SIZE)
-         lr = VG_(threads)[tid_if_known]
-                 .arch.vex.guest_REDIR_STACK[hsp-1];
-   }
-#  endif
 
    lr_is_first_RA = False;
    {
@@ -267,21 +255,12 @@ UInt VG_(get_StackTrace2) ( ThreadId tid_if_known,
    ips[0] = ip;
    i = 1;
 
-   if (fp_min <= fp && fp < fp_max-VG_WORDSIZE+1) {
+   if (fp_min <= fp && fp < fp_max-4+1) {
 
       /* initial FP is sane; keep going */
       fp = (((UWord*)fp)[0]);
 
       while (True) {
-
-        /* on ppc64-linux (ppc64-elf, really), the lr save slot is 2
-           words back from sp, whereas on ppc32-elf(?) it's only one
-           word back. */
-#        if defined(VGP_ppc64_linux)
-         const Int lr_offset = 2;
-#        else
-         const Int lr_offset = 1;
-#        endif
 
          if (i >= n_ips)
             break;
@@ -294,25 +273,7 @@ UInt VG_(get_StackTrace2) ( ThreadId tid_if_known,
             if (i == 1 && lr_is_first_RA)
                ip = lr;
             else
-               ip = (((UWord*)fp)[lr_offset]);
-
-#           if defined(VGP_ppc64_linux)
-            /* Nasty hack to do with function replacement/wrapping on
-               ppc64-linux.  If LR points to our magic return stub,
-               then we are in a wrapped or intercepted function, in
-               which LR has been messed with.  The original LR will
-               have been pushed onto the thread's hidden REDIR stack
-               one down from the top (top element is the saved R2) and
-               so we should restore the value from there instead. */
-            if (i == 1 
-                && ip == (Addr)&VG_(ppc64_linux_magic_redirect_return_stub)
-                && VG_(is_valid_tid)(tid_if_known)) {
-               Long hsp = VG_(threads)[tid_if_known].arch.vex.guest_REDIR_SP;
-               if (hsp >= 1 && hsp < VEX_GUEST_PPC64_REDIR_STACK_SIZE)
-                  ip = VG_(threads)[tid_if_known]
-                          .arch.vex.guest_REDIR_STACK[hsp-1];
-            }
-#           endif
+               ip = (((UWord*)fp)[1]);
 
             fp = (((UWord*)fp)[0]);
             ips[i++] = ip;
@@ -331,6 +292,7 @@ UInt VG_(get_StackTrace2) ( ThreadId tid_if_known,
 #  endif
 
    n_found = i;
+   VGP_POPCC(VgpExeContext);
    return n_found;
 }
 
@@ -364,8 +326,7 @@ UInt VG_(get_StackTrace) ( ThreadId tid, StackTrace ips, UInt n_ips )
       VG_(printf)("tid %d: stack_highest=%p ip=%p sp=%p fp=%p\n",
 		  tid, stack_highest_word, ip, sp, fp);
 
-   return VG_(get_StackTrace2)(tid, ips, n_ips, ip, sp, fp, lr, sp, 
-                                    stack_highest_word);
+   return VG_(get_StackTrace2)(ips, n_ips, ip, sp, fp, lr, sp, stack_highest_word);
 }
 
 static void printIpDesc(UInt n, Addr ip)
@@ -430,8 +391,8 @@ void VG_(apply_StackTrace)( void(*action)(UInt n, Addr ip),
          mybuf[MYBUF_LEN-1] = 0; // paranoia
          if ( VG_STREQ("main", mybuf)
 #             if defined(VGO_linux)
-              || VG_STREQ("__libc_start_main", mybuf)   // glibc glibness
-              || VG_STREQ("generic_start_main", mybuf)  // Yellow Dog doggedness
+              || VG_STREQ("__libc_start_main", mybuf)  // glibc glibness
+              || VG_STREQ("generic_start_main", mybuf) // Yellow Dog doggedness
 #             endif
             )
             main_done = True;
