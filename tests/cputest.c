@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 
 // We return:
 // - 0 if the machine matches the asked-for cpu
@@ -57,52 +56,42 @@ static void cpuid ( unsigned int n,
 
 static Bool go(char* cpu)
 { 
-   unsigned int level = 0, cmask = 0, dmask = 0, a, b, c, d;
+   unsigned int level = 0, mask = 0, a, b, c, d;
 
    if ( strcmp( cpu, "x86" ) == 0 ) {
      return True;
    } else if ( strcmp( cpu, "x86-fpu" ) == 0 ) {
      level = 1;
-     dmask = 1 << 0;
+     mask = 1 << 0;
    } else if ( strcmp( cpu, "x86-cmov" ) == 0 ) {
      level = 1;
-     dmask = 1 << 15;
+     mask = 1 << 15;
    } else if ( strcmp( cpu, "x86-mmx" ) == 0 ) {
      level = 1;
-     dmask = 1 << 23;
+     mask = 1 << 23;
    } else if ( strcmp( cpu, "x86-mmxext" ) == 0 ) {
      level = 0x80000001;
-     dmask = 1 << 22;
+     mask = 1 << 22;
    } else if ( strcmp( cpu, "x86-sse" ) == 0 ) {
      level = 1;
-     dmask = 1 << 25;
+     mask = 1 << 25;
    } else if ( strcmp( cpu, "x86-sse2" ) == 0 ) {
      level = 1;
-     dmask = 1 << 26;
-   } else if ( strcmp( cpu, "x86-sse3" ) == 0 ) {
-     level = 1;
-     cmask = 1 << 0;
+     mask = 1 << 26;
 #if defined(__x86_64__)
    } else if ( strcmp( cpu, "amd64" ) == 0 ) {
      return True;
-   } else if ( strcmp( cpu, "amd64-sse3" ) == 0 ) {
-     level = 1;
-     cmask = 1 << 0;
 #endif
    } else {
      return False;
    }
-
-   assert( !(cmask != 0 && dmask != 0) );
-   assert( !(cmask == 0 && dmask == 0) );
 
    cpuid( level & 0x80000000, &a, &b, &c, &d );
 
    if ( a >= level ) {
       cpuid( level, &a, &b, &c, &d );
 
-      if (dmask > 0 && (d & dmask) != 0) return True;
-      if (cmask > 0 && (c & cmask) != 0) return True;
+      if ( ( d & mask ) != 0 ) return True;
    }
    return False;
 }
