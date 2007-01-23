@@ -1,7 +1,6 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <malloc.h>
-#include <stdlib.h>
 #include "valgrind.h"
 
 /* This is the same as wrap5.c, except that the recursion depth is 16.

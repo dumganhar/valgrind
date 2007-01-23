@@ -29,7 +29,6 @@
 */
 
 #include "pub_core_basics.h"
-#include "pub_core_vki.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcfile.h"
@@ -81,16 +80,16 @@ static HChar* read_dot_valgrindrc ( HChar* dir )
                            ( NULL == dir ? "" : dir ) );
    fd = VG_(open)(filename, 0, VKI_S_IRUSR);
    if ( !fd.isError ) {
-      size = VG_(fsize)(fd.res);
+      size = VG_(fsize)(fd.val);
       if (size > 0) {
          f_clo = VG_(malloc)(size+1);
          vg_assert(f_clo);
-         n = VG_(read)(fd.res, f_clo, size);
+         n = VG_(read)(fd.val, f_clo, size);
          if (n == -1) n = 0;
          vg_assert(n >= 0 && n <= size+1);
          f_clo[n] = '\0';
       }
-      VG_(close)(fd.res);
+      VG_(close)(fd.val);
    }
    return f_clo;
 }
@@ -208,8 +207,7 @@ void VG_(split_up_argv)( Int argc, HChar** argv )
       // read_dot_valgrindrc() allocates the return value with
       // VG_(malloc)().  We do not free f1_clo and f2_clo as they get
       // put into VG_(args_for_valgrind) and so must persist.
-      HChar* home    = VG_(getenv)("HOME");
-      HChar* f1_clo  = home ? read_dot_valgrindrc( home ) : NULL;
+      HChar* f1_clo  = read_dot_valgrindrc( VG_(getenv)("HOME") );
       HChar* env_clo = VG_(strdup)( VG_(getenv)(VALGRIND_OPTS) );
       HChar* f2_clo  = read_dot_valgrindrc(".");
 

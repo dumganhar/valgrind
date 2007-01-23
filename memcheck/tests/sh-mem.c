@@ -97,9 +97,7 @@ int main(void)
    // the address space (which would trigger the slow cases in
    // LOADVn/STOREVn) on 64-bit platforms).
    assert( 0 == (long)a % 8);
-   if (sizeof(void*) == 8) {
-      assert( ((U1*)(&a[0])) < ((U1*)(32ULL * 1024*1024*1024)/*32G*/) );
-   }
+   assert((U1*)a < (U1*)0xefffffff);
 
    // Check basic types have the expected sizes.
    assert(1 == sizeof(U1));

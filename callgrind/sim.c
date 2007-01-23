@@ -1642,7 +1642,7 @@ static void parse_opt ( cache_t* cache, char* orig_opt, int opt_len )
    return;
 
   bad:
-   VG_(err_bad_option)(orig_opt);
+   VG_(bad_option)(orig_opt);
 }
 
 /* Check for command line option for cache configuration.

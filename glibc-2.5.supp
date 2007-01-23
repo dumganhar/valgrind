@@ -16,12 +16,13 @@
 #
 # For Memcheck, the supp_kinds are:
 #
-#     Param Value1 Value2 Value4 Value8 Value16 Jump
+#     Param Value1 Value2 Value4 Value8 Value16
 #     Free Addr1 Addr2 Addr4 Addr8 Addr16
 #     Cond (previously known as Value0)
 #
 # and the optional extra info is:
 #     if Param: name of system call param
+#     if Free: name of free-ing fn)
 
 {
    dl-hack1

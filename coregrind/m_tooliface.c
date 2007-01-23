@@ -40,7 +40,7 @@ VgToolInterface VG_(tdict);
 
 void VG_(basic_tool_funcs)(
    void(*post_clo_init)(void),
-   IRSB*(*instrument)(VgCallbackClosure*, IRSB*, 
+   IRBB*(*instrument)(VgCallbackClosure*, IRBB*, 
                       VexGuestLayout*, VexGuestExtents*, IRType, IRType),
    void(*fini)(Int)
 )
@@ -86,7 +86,7 @@ VgNeeds VG_(needs) = {
    .core_errors          = False,
    .tool_errors          = False,
    .libc_freeres         = False,
-   .superblock_discards  = False,
+   .basic_block_discards = False,
    .command_line_options = False,
    .client_requests      = False,
    .syscall_wrapper      = False,
@@ -164,12 +164,12 @@ NEEDS(core_errors)
 NEEDS(data_syms)
 NEEDS(xml_output)
 
-void VG_(needs_superblock_discards)(
+void VG_(needs_basic_block_discards)(
    void (*discard)(Addr64, VexGuestExtents)
 )
 {
-   VG_(needs).superblock_discards = True;
-   VG_(tdict).tool_discard_superblock_info = discard;
+   VG_(needs).basic_block_discards = True;
+   VG_(tdict).tool_discard_basic_block_info = discard;
 }
 
 void VG_(needs_tool_errors)(
@@ -321,11 +321,14 @@ DEF(track_post_reg_write,        CorePart, ThreadId,        OffT, SizeT)
 
 DEF(track_post_reg_write_clientcall_return, ThreadId, OffT, SizeT, Addr)
 
-DEF(track_start_client_code,     ThreadId, ULong)
-DEF(track_stop_client_code,      ThreadId, ULong)
+DEF(track_thread_run,            ThreadId)
 
 DEF(track_post_thread_create,    ThreadId, ThreadId)
 DEF(track_post_thread_join,      ThreadId, ThreadId)
+
+DEF(track_pre_mutex_lock,        ThreadId, void*)
+DEF(track_post_mutex_lock,       ThreadId, void*)
+DEF(track_post_mutex_unlock,     ThreadId, void*)
 
 DEF(track_pre_deliver_signal,    ThreadId, Int sigNo, Bool)
 DEF(track_post_deliver_signal,   ThreadId, Int sigNo)

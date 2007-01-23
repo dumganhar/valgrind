@@ -55,7 +55,7 @@ void VG_NOTIFY_ON_LOAD(freeres)( void );
 void VG_NOTIFY_ON_LOAD(freeres)( void )
 {
    int res;
-#if !defined(__UCLIBC__) && !defined(VGO_aix5)
+#ifndef __UCLIBC__
    extern void __libc_freeres(void);
    __libc_freeres();
 #endif

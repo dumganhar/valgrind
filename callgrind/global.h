@@ -8,7 +8,6 @@
 #define CLG_GLOBAL
 
 #include "pub_tool_basics.h"
-#include "pub_tool_vki.h"
 #include "pub_tool_debuginfo.h"
 #include "pub_tool_libcbase.h"
 #include "pub_tool_libcassert.h"
@@ -668,7 +667,7 @@ void CLG_(init_eventsets)(Int user);
 /* from main.c */
 Bool CLG_(get_debug_info)(Addr, Char filename[FILENAME_LEN],
 			 Char fn_name[FN_NAME_LEN], UInt*, SegInfo**);
-void CLG_(collectBlockInfo)(IRSB* bbIn, UInt*, UInt*, Bool*);
+void CLG_(collectBlockInfo)(IRBB* bbIn, UInt*, UInt*, Bool*);
 void CLG_(set_instrument_state)(Char*,Bool);
 void CLG_(dump_profile)(Char* trigger,Bool only_current_thread);
 void CLG_(zero_all_cost)(Bool only_current_thread);
@@ -676,14 +675,14 @@ Int CLG_(get_dump_counter)(void);
 void CLG_(fini)(Int exitcode);
 
 /* from command.c */
-void CLG_(init_command)(void);
+void CLG_(init_command)(Char* dir, Char* dumps);
 void CLG_(check_command)(void);
 void CLG_(finish_command)(void);
 
 /* from bb.c */
 void CLG_(init_bb_hash)(void);
 bb_hash* CLG_(get_bb_hash)(void);
-BB*  CLG_(get_bb)(Addr addr, IRSB* bb_in, Bool *seen_before);
+BB*  CLG_(get_bb)(Addr addr, IRBB* bb_in, Bool *seen_before);
 void CLG_(delete_bb)(Addr addr);
 
 static __inline__ Addr bb_addr(BB* bb)
@@ -762,9 +761,9 @@ void CLG_(run_post_signal_on_call_stack_bottom)(void);
 
 /* from dump.c */
 extern FullCost CLG_(total_cost);
-void CLG_(init_dumps)(void);
+void CLG_(init_files)(Char** dir, Char** file);
 Char* CLG_(get_dump_file_base)(void);
-Char* CLG_(get_base_directory)(void);
+
 
 /*------------------------------------------------------------*/
 /*--- Exported global variables                            ---*/

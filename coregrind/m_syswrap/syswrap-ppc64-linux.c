@@ -29,8 +29,6 @@
 */
 
 #include "pub_core_basics.h"
-#include "pub_core_vki.h"
-#include "pub_core_vkiscnums.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_debuglog.h"
@@ -51,6 +49,8 @@
 #include "priv_syswrap-generic.h"   /* for decls of generic wrappers */
 #include "priv_syswrap-linux.h"     /* for decls of linux-ish wrappers */
 #include "priv_syswrap-main.h"
+
+#include "vki_unistd.h"              /* for the __NR_* constants */
 
 
 /* ---------------------------------------------------------------------
@@ -267,7 +267,7 @@ static SysRes do_clone ( ThreadId ptid,
    ThreadState* ctst = VG_(get_ThreadState)(ctid);
    ULong        word64;
    UWord*       stack;
-   NSegment const* seg;
+   NSegment*    seg;
    SysRes       res;
    vki_sigset_t blockall, savedmask;
 
@@ -1073,7 +1073,7 @@ PRE(sys_rt_sigreturn)
    VG_(sigframe_destroy)(tid, True);
 
    /* See comments above in PRE(sys_sigreturn) about this. */
-   SET_STATUS_from_SysRes(
+   SET_STATUS_from_SysRes_NO_SANITY_CHECK(
       VG_(mk_SysRes_ppc64_linux)( 
          tst->arch.vex.guest_GPR3,
          /* get CR0.SO */

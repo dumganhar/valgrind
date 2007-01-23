@@ -94,7 +94,7 @@ void VG_(demangle) ( Bool do_cxx_demangle,
 
    /* Possibly undo (1) */
    if (do_cxx_demangle)
-      demangled = ML_(cplus_demangle) ( orig, DMGL_ANSI | DMGL_PARAMS );
+      demangled = VG_(cplus_demangle) ( orig, DMGL_ANSI | DMGL_PARAMS );
    else
       demangled = NULL;
 
@@ -116,8 +116,7 @@ void VG_(demangle) ( Bool do_cxx_demangle,
    // for "the frame below main()" screwing up the testsuite, change all
    // known incarnations of said into a single name, "(below main)".
    if (0==VG_(strcmp)("__libc_start_main", result)
-       || 0==VG_(strcmp)("generic_start_main", result)
-       || 0==VG_(strcmp)("__start", result)) /* on AIX */
+       || 0==VG_(strcmp)("generic_start_main", result))
       VG_(strncpy_safely)(result, "(below main)", 13);
 
 #  undef N_ZBUF
@@ -220,8 +219,6 @@ Bool VG_(maybe_Z_demangle) ( const HChar* sym,
          case 's': EMITSO(' '); break;
          case 'Z': EMITSO('Z'); break;
          case 'A': EMITSO('@'); break;
-         case 'L': EMITSO('('); break;
-         case 'R': EMITSO(')'); break;
          default: error = True; goto out;
       }
       i++;
@@ -268,8 +265,6 @@ Bool VG_(maybe_Z_demangle) ( const HChar* sym,
          case 's': EMITFN(' '); break;
          case 'Z': EMITFN('Z'); break;
          case 'A': EMITFN('@'); break;
-         case 'L': EMITSO('('); break;
-         case 'R': EMITSO(')'); break;
          default: error = True; goto out;
       }
       i++;

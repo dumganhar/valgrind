@@ -86,21 +86,11 @@
    Open MPI      lib/libmpi.so,   soname = libmpi.so.0
    Quadrics MPI  lib/libmpi.so,   soname = libmpi.so.0
    MPICH         libmpich.so.1.0, soname = libmpich.so.1.0
-   AIX: in /usr/lpp/ppe.poe/lib/libmpi_r.a(mpicore*_r.o)
 
-   For the non-AIX targets, a suitable soname to match with
-   is "libmpi*.so*".
+   So a suitable soname to match with is "libmpi*.so*".
 */
-#if defined(_AIX)
-# define I_WRAP_FNNAME_U(_name) \
-         I_WRAP_SONAME_FNNAME_ZU(libmpiZurZdaZLmpicoreZaZurZdoZR,_name)
-  /* Don't change this without also changing all the names in
-     libmpiwrap.exp. */
-#else
-# define I_WRAP_FNNAME_U(_name) \
-         I_WRAP_SONAME_FNNAME_ZU(libmpiZaZdsoZa,_name)
-
-#endif
+/* ifdef OpenMPI ... */
+#define I_WRAP_FNNAME_U(_name) I_WRAP_SONAME_FNNAME_ZU(libmpiZaZdsoZa,_name)
 
 
 /*------------------------------------------------------------*/
@@ -136,12 +126,11 @@ static long sizeof_long_double_image ( void );
 static const char* preamble = "valgrind MPI wrappers";
 
 /* established at startup */
-static pid_t my_pid         = -1;
-static char* options_str    = NULL;
-static int   opt_verbosity  = 1;
-static Bool  opt_missing    = 0; /* 0:silent; 1:warn; 2:abort */
-static Bool  opt_help       = False;
-static Bool  opt_initkludge = False;
+static pid_t my_pid        = -1;
+static char* options_str   = NULL;
+static int   opt_verbosity = 1;
+static Bool  opt_missing   = 0; /* 0:silent; 1:warn; 2:abort */
+static Bool  opt_help      = False;
 
 static void before ( char* fnname )
 {
@@ -163,8 +152,6 @@ static void before ( char* fnname )
             opt_verbosity--;
          if (NULL != strstr(options_str, "help"))
             opt_help = True;
-         if (NULL != strstr(options_str, "initkludge"))
-            opt_initkludge = True;
       }
       if (opt_verbosity > 0)
          fprintf(stderr, "%s %5d: Active for pid %d\n", 
@@ -180,14 +167,13 @@ static void before ( char* fnname )
          fprintf(stderr, "Valid options for the MPIWRAP_DEBUG environment"
                          " variable are:\n");
          fprintf(stderr, "\n");
-         fprintf(stderr, "   quiet       be silent except for errors\n");
-         fprintf(stderr, "   verbose     show wrapper entries/exits\n");
-         fprintf(stderr, "   strict      abort the program if a function"
+         fprintf(stderr, "   quiet      be silent except for errors\n");
+         fprintf(stderr, "   verbose    show wrapper entries/exits\n");
+         fprintf(stderr, "   strict     abort the program if a function"
                          " with no wrapper is used\n");
-         fprintf(stderr, "   warn        give a warning if a function"
+         fprintf(stderr, "   warn       give a warning if a function"
                          " with no wrapper is used\n");
-         fprintf(stderr, "   help        display this message, then exit\n");
-         fprintf(stderr, "   initkludge  debugging hack; do not use\n");
+         fprintf(stderr, "   help       display this message, then exit\n");
          fprintf(stderr, "\n");
          fprintf(stderr, "Multiple options are allowed, eg"
                          " MPIWRAP_DEBUG=strict,verbose\n");
@@ -207,7 +193,7 @@ static void before ( char* fnname )
       fprintf(stderr, "%s %5d: enter PMPI_%s\n", preamble,  my_pid, fnname );
 }
 
-static __inline__ void after ( char* fnname, int err )
+static inline void after ( char* fnname, int err )
 {
    if (opt_verbosity > 1)
       fprintf(stderr, "%s %5d:  exit PMPI_%s (err = %d)\n", 
@@ -312,21 +298,21 @@ static void showCombiner ( FILE* f, int combiner )
 /* Note, PMPI_Comm_rank/size are themselves wrapped.  Should work
    fine. */
 
-static __inline__ int comm_rank ( MPI_Comm comm ) 
+static inline int comm_rank ( MPI_Comm comm ) 
 {
    int err, r;
    err = PMPI_Comm_rank(comm, &r);
    return err ? 0/*arbitrary*/ : r;
 }
 
-static __inline__ int comm_size ( MPI_Comm comm ) 
+static inline int comm_size ( MPI_Comm comm ) 
 {
    int err, r;
    err = PMPI_Comm_size(comm, &r);
    return err ? 0/*arbitrary*/ : r;
 }
 
-static __inline__ Bool count_from_Status( /*OUT*/int* recv_count, 
+static inline Bool count_from_Status( /*OUT*/int* recv_count, 
                                       MPI_Datatype datatype, 
                                       MPI_Status* status)
 {
@@ -347,7 +333,7 @@ static __inline__ Bool count_from_Status( /*OUT*/int* recv_count,
    types that support assignment and equality operations."  Hence the
    following function should compile for any compliant definition of
    MPI_Request. */
-static __inline__ 
+static inline 
 Bool eq_MPI_Request ( MPI_Request r1, MPI_Request r2 )
 {
    return r1 == r2;
@@ -752,7 +738,7 @@ void walk_type_array ( void(*f)(void*,long), char* base,
 void mpiwrap_walk_type_EXTERNALLY_VISIBLE
     ( void(*f)(void*,long), char* base, MPI_Datatype ty )
 {
-   walk_type(f, base, ty);
+   return walk_type(f, base, ty);
 }
 
 
@@ -941,11 +927,7 @@ int WRAPPER_FOR(PMPI_Get_count)(MPI_Status* status,
    int    err;
    VALGRIND_GET_ORIG_FN(fn);
    before("Get_count");
-#  if defined(_AIX)
-   check_mem_is_addressable_untyped(status, sizeof(*status));
-#  else
    check_mem_is_defined_untyped(status, sizeof(*status));
-#  endif
    CALL_FN_W_WWW(err, fn, status,ty,count);
    after("Get_count", err);
    return err;
@@ -1132,7 +1114,7 @@ MPI_Request* clone_Request_array ( int count, MPI_Request* orig )
    if (count < 0) 
       count = 0; /* Hmm.  Call Mulder and Scully. */
    copy = malloc( count * sizeof(MPI_Request) );
-   if (copy == NULL && count > 0) {
+   if (copy == NULL) {
       UNLOCK_SREQS;
       barf("clone_Request_array: malloc failed");
    }
@@ -1847,7 +1829,7 @@ int WRAPPER_FOR(PMPI_Error_string)( int errorcode, char* string,
 
 /* --- Init --- */
 /* rd: *argc, *argv[0 .. *argc-1] */
-long WRAPPER_FOR(PMPI_Init)(int *argc, char ***argv)
+int WRAPPER_FOR(PMPI_Init)(int *argc, char ***argv)
 {
    OrigFn fn;
    int    err;
@@ -1857,10 +1839,7 @@ long WRAPPER_FOR(PMPI_Init)(int *argc, char ***argv)
    check_mem_is_defined_untyped(*argv, *argc * sizeof(char**));
    CALL_FN_W_WW(err, fn, argc,argv);
    after("Init", err);
-   if (opt_initkludge)
-      return (long)(void*)&mpiwrap_walk_type_EXTERNALLY_VISIBLE;
-   else
-      return (long)err;
+   return err;
 }
 
 /* --- Initialized --- */

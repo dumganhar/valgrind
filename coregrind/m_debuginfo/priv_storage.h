@@ -145,7 +145,6 @@ struct _SegInfo {
    Addr   text_start_avma;
    UInt   text_size;
    UChar* filename; /* in mallocville */
-   UChar* memname;  /* malloc'd.  AIX5 only: .a member name */
    OffT   foffset;  /* file offset for mapped text section - UNUSED */
    UChar* soname;
 

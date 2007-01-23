@@ -31,12 +31,7 @@
 #
 # Options:
 #   --all:      run tests in all subdirs
-#   --valgrind: valgrind launcher to use.  Default is ./coregrind/valgrind.
-#               (This option should probably only be used in conjunction with
-#               --valgrind-lib.)
-#   --valgrind-lib: valgrind libraries to use.  Default is $tests_dir/.in_place.
-#               (This option should probably only be used in conjunction with
-#               --valgrind.)
+#   --valgrind: valgrind to use.  Default is one built from this source tree.
 #
 # The easiest way is to run all tests in valgrind/ with (assuming you installed
 # in $PREFIX):
@@ -78,8 +73,8 @@
 # and handed to valgrind prior to any other flags specified by the 
 # .vgtest file.
 #
-# Some more notes on adding regression tests for a new tool are in
-# docs/xml/manual-writing-tools.xml.
+# Notes on adding regression tests for a new tool are in
+# coregrind/docs/coregrind_tools.html.
 #----------------------------------------------------------------------------
 
 use warnings;
@@ -88,7 +83,7 @@ use strict;
 #----------------------------------------------------------------------------
 # Global vars
 #----------------------------------------------------------------------------
-my $usage="vg_regtest [--all, --valgrind, --valgrind-lib]\n";
+my $usage="vg_regtest [--all, --valgrind]\n";
 
 my $tmp="vg_regtest.tmp.$$";
 
@@ -111,8 +106,6 @@ my %num_failures        = (stderr => 0, stdout => 0, posttest => 0);
 my $valgrind = "./coregrind/valgrind";
 
 chomp(my $tests_dir = `pwd`);
-
-my $valgrind_lib = "$tests_dir/.in_place";
 
 # default filter is the one named "filter_stderr" in the test's directory
 my $default_stderr_filter = "filter_stderr";
@@ -159,8 +152,6 @@ sub process_command_line()
                 $alldirs = 1;
             } elsif ($arg =~ /^--valgrind=(.*)$/) {
                 $valgrind = $1;
-            } elsif ($arg =~ /^--valgrind-lib=(.*)$/) {
-                $valgrind_lib = $1;
             } else {
                 die $usage;
             }
@@ -264,8 +255,8 @@ sub do_diffs($$$$)
             ($f_exp eq "/dev/null") or die "Unexpected .exp file: $f_exp\n";
         }
 
-        #print("diff $f_exp $name.$mid.out > $name.$mid.diff$n\n");
-        mysystem("diff $f_exp $name.$mid.out > $name.$mid.diff$n");
+        #print("diff -C0 $f_exp $name.$mid.out > $name.$mid.diff$n\n");
+        mysystem("diff -C0 $f_exp $name.$mid.out > $name.$mid.diff$n");
 
         if (not -s "$name.$mid.diff$n") {
             # A match;  remove .out and any previously created .diff files.
@@ -308,7 +299,7 @@ sub do_one_test($$)
     # VALGRIND_LIB_INNER in case this Valgrind was configured with
     # --enable-inner.
     my $tool=determine_tool();
-    mysystem("VALGRIND_LIB=$valgrind_lib VALGRIND_LIB_INNER=$valgrind_lib "
+    mysystem("VALGRIND_LIB=$tests_dir/.in_place VALGRIND_LIB_INNER=$tests_dir/.in_place "
            . "$valgrind --command-line-only=yes --memcheck:leak-check=no "
            . "--tool=$tool $extraopts $vgopts "
            . "$prog $args > $name.stdout.out 2> $name.stderr.out");

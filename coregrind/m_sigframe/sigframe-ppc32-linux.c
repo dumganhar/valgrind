@@ -32,8 +32,6 @@
 */
 
 #include "pub_core_basics.h"
-#include "pub_core_vki.h"
-#include "pub_core_vkiscnums.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_libcbase.h"
@@ -46,6 +44,7 @@
 #include "pub_core_tooliface.h"
 #include "pub_core_trampoline.h"
 #include "pub_core_transtab.h"      // VG_(discard_translations)
+#include "vki_unistd-ppc32-linux.h" // __NR_rt_sigreturn
 
 
 /* This module creates and removes signal frames for signal deliveries
@@ -494,7 +493,7 @@ void stack_mcontext ( struct vki_mcontext *mc,
 static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
 {
    ThreadId tid = tst->tid;
-   NSegment const *stackseg = NULL;
+   NSegment *stackseg = NULL;
 
    if (VG_(extend_stack)(addr, tst->client_stack_szB)) {
       stackseg = VG_(am_find_nsegment)(addr);

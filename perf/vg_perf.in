@@ -41,6 +41,7 @@
 # Each test is defined in a file <test>.vgperf, containing one or more of the
 # following lines, in any order:
 #   - prog:   <prog to run>                         (compulsory)
+#   - tools:  <Valgrind tools>                      (compulsory)
 #   - args:   <args for prog>                       (default: none)
 #   - vgopts: <Valgrind options>                    (default: none)
 #   - prereq: <prerequisite command>                (default: none)
@@ -62,14 +63,10 @@ usage: vg_perf [options] [files or dirs]
   options for the user, with defaults in [ ], are:
     -h --help             show this message
     --all                 run all tests under this directory
-    --reps=<n>            number of repeats for each program [1]
-    --tools=<t1,t2,t3>    tools to run [Nulgrind and Memcheck]
+    --reps                number of repeats for each program [3]
     --vg                  Valgrind(s) to measure (can be specified multiple
                             times).  The "in-place" build is used.
                             [Valgrind in the current directory]
-
-  Any tools named in --tools must be present in all directories specified
-  with --vg.  (This is not checked.)
 END
 ;
 
@@ -79,11 +76,19 @@ my $prog;               # test prog
 my $args;               # test prog args
 my $prereq;             # prerequisite test to satisfy before running test
 my $cleanup;            # cleanup command to run
+my @tools;              # which tools are we measuring the program with
+
+# Abbreviations used in output
+my %toolnames = ( 
+    none        => "nl",
+    memcheck    => "mc",
+    cachegrind  => "cg",
+    massif      => "ms"
+);
 
 # Command line options
-my $n_reps = 1;         # Run each test $n_reps times and choose the best one.
-my @vgdirs;             # Dirs of the various Valgrinds being measured.
-my @tools = ("none", "memcheck");   # tools being measured
+my $n_reps = 1;     # Run each program $n_reps times and choose the best one.
+my @vgdirs;         # Dirs of the various Valgrinds being measured.
 
 my $num_tests_done   = 0;
 my $num_timings_done = 0;
@@ -121,6 +126,14 @@ sub validate_program ($$$$)
     return $prog;
 }
 
+sub validate_tools($)
+{
+    # XXX: should check they exist!
+    my ($toolnames) = @_;
+    my @t = split(/\s+/, $toolnames);
+    return @t;
+}
+
 sub add_vgdir($)
 {
     my ($vgdir) = @_;
@@ -144,8 +157,6 @@ sub process_command_line()
             } elsif ($arg =~ /^--vg=(.+)$/) {
                 # Make dir absolute if not already
                 add_vgdir($1);
-            } elsif ($arg =~ /^--tools=(.+)$/) {
-                @tools = split(/,/, $1);
             } else {
                 die $usage;
             }
@@ -191,6 +202,8 @@ sub read_vgperf_file($)
             $vgopts = $1;
         } elsif ($line =~ /^\s*prog:\s*(.*)$/) {
             $prog = validate_program(".", $1, 1, 1);
+        } elsif ($line =~ /^\s*tools:\s*(.*)$/) {
+            @tools = validate_tools($1);
         } elsif ($line =~ /^\s*args:\s*(.*)$/) {
             $args = $1;
         } elsif ($line =~ /^\s*prereq:\s*(.*)$/) {
@@ -227,8 +240,7 @@ sub mysystem($)
     }
 }
 
-# Run program N times, return the best user time.  Use the POSIX
-# -p flag on /usr/bin/time so as to get something parseable on AIX.
+# Run program N times, return the best user time.
 sub time_prog($$)
 {
     my ($cmd, $n) = @_;
@@ -240,9 +252,9 @@ sub time_prog($$)
             die "\n*** Command returned non-zero ($retval)"
               . "\n*** See perf.{cmd,stdout,stderr} to determine what went wrong.\n";
         my $out = `cat perf.stderr`;
-        ($out =~ /[Uu]ser([ ]+)([\d\.]+)/) or 
+        ($out =~ /usertime: ([\d\.]+)s/) or 
             die "\n*** missing usertime in perf.stderr\n";
-        $tmin = $2 if ($2 < $tmin);
+        $tmin = $1 if ($1 < $tmin);
     }
     # Avoid divisions by zero!
     return (0 == $tmin ? 0.01 : $tmin);
@@ -265,7 +277,7 @@ sub do_one_test($$)
         }
     }
 
-    my $timecmd = "/usr/bin/time -p";
+    my $timecmd = "/usr/bin/time -f 'usertime: %Us'";
 
     # Do the native run(s).
     printf("-- $name --\n") if (@vgdirs > 1);
@@ -282,25 +294,23 @@ sub do_one_test($$)
         printf("%-10s:", $vgdirname);
         
         # Native execution time
-        printf("%4.2fs", $tNative);
+        printf("%4.1fs", $tNative);
 
         foreach my $tool (@tools) {
-            # First two chars of toolname for abbreviation
-            my $tool_abbrev = $tool;
-            $tool_abbrev =~ s/(..).*/$1/;
+            (defined $toolnames{$tool}) or 
+                die "unknown tool $tool, please add to %toolnames\n";
 
             # Do the tool run(s).  Set both VALGRIND_LIB and VALGRIND_LIB_INNER
             # in case this Valgrind was configured with --enable-inner.  And
             # also VALGRINDLIB, which was the old name for the variable, to
             # allow comparison against old Valgrind versions (eg. 2.4.X).
-            printf("  %s:", $tool_abbrev);
+            printf("  %s:", $toolnames{$tool});
             my $vgsetup = "VALGRINDLIB=$vgdir/.in_place "
                         . "VALGRIND_LIB=$vgdir/.in_place "
                         . "VALGRIND_LIB_INNER=$vgdir/.in_place ";
             my $vgcmd   = "$vgdir/coregrind/valgrind "
                         . "--command-line-only=yes --tool=$tool -q "
-                        . "--memcheck:leak-check=no "
-                        . "--trace-children=yes "
+                        . "--memcheck:leak-check=no --addrcheck:leak-check=no "
                         . "$vgopts ";
             my $cmd     = "$vgsetup $timecmd $vgcmd $prog $args";
             my $tTool   = time_prog($cmd, $n_reps);
@@ -341,8 +351,6 @@ sub test_one_dir($$)
     my ($dir, $prev_dirs) = @_;
     $dir =~ s/\/$//;    # trim a trailing '/'
 
-    chomp(my $initial_dir = `pwd`);     # record where we started
-
     # Ignore dirs into which we should not recurse.
     if ($dir =~ /^(BitKeeper|CVS|SCCS|docs|doc)$/) { return; }
 
@@ -369,7 +377,7 @@ sub test_one_dir($$)
         print "-- Finished tests in $full_dir $dashes\n";
     }
 
-    chdir("$initial_dir");
+    chdir("..");
 }
 
 #----------------------------------------------------------------------------

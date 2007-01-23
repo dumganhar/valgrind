@@ -3749,7 +3749,7 @@ __cxa_demangle (mangled_name, output_buffer, length, status)
    If the demangling failes, returns NULL.  */
 
 char *
-ML_(cplus_demangle_v3) (mangled)
+VG_(cplus_demangle_v3) (mangled)
      const char* mangled;
 {
   dyn_string_t demangled;
@@ -3797,7 +3797,7 @@ ML_(cplus_demangle_v3) (mangled)
    of JArray<TYPE> with TYPE[].  */
 
 char *
-ML_(java_demangle_v3) (mangled)
+VG_(java_demangle_v3) (mangled)
      const char* mangled;
 {
   dyn_string_t demangled;

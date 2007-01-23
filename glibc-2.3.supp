@@ -16,12 +16,13 @@
 #
 # For Memcheck, the supp_kinds are:
 #
-#     Param Value1 Value2 Value4 Value8 Value16 Jump
+#     Param Value1 Value2 Value4 Value8 Value16
 #     Free Addr1 Addr2 Addr4 Addr8 Addr16
 #     Cond (previously known as Value0)
 #
 # and the optional extra info is:
 #     if Param: name of system call param
+#     if Free: name of free-ing fn)
 
 {
    __GI___stpcpy/*
@@ -181,6 +182,31 @@
    obj:/lib/ld-2.3.2.so
    fun:exit
    fun:__libc_start_main
+}
+
+#-------- Threading bugs?
+# glibc 'knows' that destroying a locked mutex will unlock it
+{
+   pthread_error/pthread_mutex_destroy/__closedir
+   core:PThread
+   fun:pthread_error
+   fun:pthread_mutex_destroy
+   fun:__closedir
+}
+
+{
+   pthread_error/pthread_mutex_destroy/_IO_default_finish
+   core:PThread
+   fun:pthread_error
+   fun:pthread_mutex_destroy
+   fun:_IO_default_finish*
+}
+
+{
+   pthread_mutex_unlock/_IO_funlockfile
+   core:PThread
+   fun:pthread_mutex_unlock
+   fun:_IO_funlockfile
 }
 
 ##----------------------------------------------------------------------##

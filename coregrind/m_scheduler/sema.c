@@ -29,8 +29,6 @@
 */
 
 #include "pub_core_basics.h"
-#include "pub_core_debuglog.h"
-#include "pub_core_vki.h"
 #include "pub_core_libcassert.h"
 #include "pub_core_libcfile.h"
 #include "pub_core_libcproc.h"      // For VG_(gettid)()
@@ -41,100 +39,58 @@
    pipe-based token passing scheme.
  */
 
-/* Cycle the char passed through the pipe through 'A' .. 'Z' to make
-   it easier to make sense of strace/truss output - makes it possible
-   to see more clearly the change of ownership of the lock.  Need to
-   be careful to reinitialise it at fork() time. */
-static Char sema_char = '!'; /* will cause assertion failures if used
-                                before sema_init */
-
 void ML_(sema_init)(vg_sema_t *sema)
 {
-   Char buf[2];
-   Int res, r;
-   r = VG_(pipe)(sema->pipe);
-   vg_assert(r == 0);
-
-   vg_assert(sema->pipe[0] != sema->pipe[1]);
-
+   Int res;
+   VG_(pipe)(sema->pipe);
    sema->pipe[0] = VG_(safe_fd)(sema->pipe[0]);
    sema->pipe[1] = VG_(safe_fd)(sema->pipe[1]);
 
-   if (0) 
-      VG_(debugLog)(0,"zz","sema_init: %d %d\n", sema->pipe[0], 
-                                                 sema->pipe[1]);
-   vg_assert(sema->pipe[0] != sema->pipe[1]);
-
-   sema->owner_lwpid = -1;
+   sema->owner_thread = -1;
 
    /* create initial token */
-   sema_char = 'A';
-   buf[0] = sema_char; 
-   buf[1] = 0;
-   sema_char++;
-   res = VG_(write)(sema->pipe[1], buf, 1);
+   res = VG_(write)(sema->pipe[1], "T", 1);
    vg_assert(res == 1);
 }
 
 void ML_(sema_deinit)(vg_sema_t *sema)
 {
-   vg_assert(sema->owner_lwpid != -1); /* must be initialised */
-   vg_assert(sema->pipe[0] != sema->pipe[1]);
    VG_(close)(sema->pipe[0]);
    VG_(close)(sema->pipe[1]);
    sema->pipe[0] = sema->pipe[1] = -1;
-   sema->owner_lwpid = -1;
 }
 
 /* get a token */
 void ML_(sema_down)(vg_sema_t *sema)
 {
-   Char buf[2];
+   Char buf[2] = { 'x' };
    Int ret;
    Int lwpid = VG_(gettid)();
 
-   vg_assert(sema->owner_lwpid != lwpid); /* can't have it already */
-   vg_assert(sema->pipe[0] != sema->pipe[1]);
+   vg_assert(sema->owner_thread != lwpid); /* can't have it already */
 
   again:
-   buf[0] = buf[1] = 0;
-   ret = VG_(read)(sema->pipe[0], buf, 1);
-
-   if (ret != 1) 
-      VG_(debugLog)(0, "scheduler", 
-                       "VG_(sema_down): read returned %d\n", ret);
+   ret = VG_(read)(sema->pipe[0], buf, 2);
 
    if (ret == -VKI_EINTR)
       goto again;
 
    vg_assert(ret == 1);		/* should get exactly 1 token */
-   vg_assert(buf[0] >= 'A' && buf[0] <= 'Z');
-   vg_assert(buf[1] == 0);
+   vg_assert(buf[0] == 'T');
 
-   if (sema_char == 'Z') sema_char = 'A'; else sema_char++;
-
-   sema->owner_lwpid = lwpid;
+   sema->owner_thread = lwpid;
 }
 
 /* put token back */
 void ML_(sema_up)(vg_sema_t *sema)
 {
    Int ret;
-   Char buf[2];
-   buf[0] = sema_char; 
-   buf[1] = 0;
-   vg_assert(sema->owner_lwpid != -1); /* must be initialised */
-   vg_assert(sema->pipe[0] != sema->pipe[1]);
-   vg_assert(sema->owner_lwpid == VG_(gettid)()); /* must have it */
 
-   sema->owner_lwpid = 0;
+   vg_assert(sema->owner_thread == VG_(gettid)()); /* must have it */
 
-   ret = VG_(write)(sema->pipe[1], buf, 1);
+   sema->owner_thread = 0;
 
-   if (ret != 1) 
-      VG_(debugLog)(0, "scheduler", 
-                       "VG_(sema_up):write returned %d\n", ret);
-
+   ret = VG_(write)(sema->pipe[1], "T", 1);
    vg_assert(ret == 1);
 }
 

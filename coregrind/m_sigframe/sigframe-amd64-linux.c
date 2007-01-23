@@ -30,7 +30,6 @@
 */
 
 #include "pub_core_basics.h"
-#include "pub_core_vki.h"
 #include "pub_core_threadstate.h"
 #include "pub_core_aspacemgr.h"
 #include "pub_core_libcbase.h"
@@ -38,10 +37,11 @@
 #include "pub_core_libcprint.h"
 #include "pub_core_machine.h"
 #include "pub_core_options.h"
+#include "pub_core_sigframe.h"
 #include "pub_core_signals.h"
 #include "pub_core_tooliface.h"
 #include "pub_core_trampoline.h"
-#include "pub_core_sigframe.h"   /* self */
+
 
 /* This module creates and removes signal frames for signal deliveries
    on amd64-linux.
@@ -375,7 +375,7 @@ void synth_ucontext(ThreadId tid, const vki_siginfo_t *si,
 static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
 {
    ThreadId tid = tst->tid;
-   NSegment const* stackseg = NULL;
+   NSegment *stackseg = NULL;
 
    if (VG_(extend_stack)(addr, tst->client_stack_szB)) {
       stackseg = VG_(am_find_nsegment)(addr);

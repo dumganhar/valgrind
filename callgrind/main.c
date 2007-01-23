@@ -112,7 +112,7 @@ static Bool loadStoreAddrsMatch(IRExpr* loadAddrExpr, IRExpr* storeAddrExpr)
 }
 
 static
-EventSet* insert_simcall(IRSB* bbOut, InstrInfo* ii, UInt dataSize,
+EventSet* insert_simcall(IRBB* bbOut, InstrInfo* ii, UInt dataSize,
 			 Bool instrIssued,
 			 IRExpr* loadAddrExpr, IRExpr* storeAddrExpr)
 {
@@ -228,7 +228,7 @@ EventSet* insert_simcall(IRSB* bbOut, InstrInfo* ii, UInt dataSize,
     
     di = unsafeIRDirty_0_N( argc, helperName, 
                                   VG_(fnptr_to_fnentry)( helperAddr ), argv);
-    addStmtToIRSB( bbOut, IRStmt_Dirty(di) );
+    addStmtToIRBB( bbOut, IRStmt_Dirty(di) );
 
     return es;
 }
@@ -239,7 +239,7 @@ EventSet* insert_simcall(IRSB* bbOut, InstrInfo* ii, UInt dataSize,
  * Fills the InstrInfo struct if not seen before
  */
 static
-void endOfInstr(IRSB* bbOut, InstrInfo* ii, Bool bb_seen_before,
+void endOfInstr(IRBB* bbOut, InstrInfo* ii, Bool bb_seen_before,
 		UInt instr_offset, UInt instrLen, UInt dataSize, 
 		UInt* cost_offset, Bool instrIssued,
 		IRExpr* loadAddrExpr, IRExpr* storeAddrExpr)
@@ -344,7 +344,7 @@ Addr IRConst2Addr(IRConst* con)
  *
  * Called from CLG_(get_bb)
  */
-void CLG_(collectBlockInfo)(IRSB* bbIn,
+void CLG_(collectBlockInfo)(IRBB* bbIn,
 			    /*INOUT*/ UInt* instrs,
 			    /*INOUT*/ UInt* cjmps,
 			    /*INOUT*/ Bool* cjmp_inverted)
@@ -389,7 +389,7 @@ void CLG_(collectBlockInfo)(IRSB* bbIn,
 }
 
 static
-void collectStatementInfo(IRTypeEnv* tyenv, IRSB* bbOut, IRStmt* st,
+void collectStatementInfo(IRTypeEnv* tyenv, IRBB* bbOut, IRStmt* st,
 			  Addr* instrAddr, UInt* instrLen,
 			  IRExpr** loadAddrExpr, IRExpr** storeAddrExpr,
 			  UInt* dataSize, IRType hWordTy)
@@ -419,8 +419,8 @@ void collectStatementInfo(IRTypeEnv* tyenv, IRSB* bbOut, IRStmt* st,
       *instrLen =        st->Ist.IMark.len;
       break;
 
-   case Ist_WrTmp: {
-      IRExpr* data = st->Ist.WrTmp.data;
+   case Ist_Tmp: {
+      IRExpr* data = st->Ist.Tmp.data;
       if (data->tag == Iex_Load) {
          IRExpr* aexpr = data->Iex.Load.addr;
          CLG_ASSERT( isIRAtom(aexpr) );
@@ -481,9 +481,9 @@ void collectStatementInfo(IRTypeEnv* tyenv, IRSB* bbOut, IRStmt* st,
 }
 
 static
-void addConstMemStoreStmt( IRSB* bbOut, UWord addr, UInt val, IRType hWordTy)
+void addConstMemStoreStmt( IRBB* bbOut, UWord addr, UInt val, IRType hWordTy)
 {
-    addStmtToIRSB( bbOut,
+    addStmtToIRBB( bbOut,
 		   IRStmt_Store(CLGEndness,
 				IRExpr_Const(hWordTy == Ity_I32 ?
 					     IRConst_U32( addr ) :
@@ -492,14 +492,14 @@ void addConstMemStoreStmt( IRSB* bbOut, UWord addr, UInt val, IRType hWordTy)
 }   
 
 static
-IRSB* CLG_(instrument)( VgCallbackClosure* closure,
-			IRSB* bbIn,
+IRBB* CLG_(instrument)( VgCallbackClosure* closure,
+			IRBB* bbIn,
 			VexGuestLayout* layout,
 			VexGuestExtents* vge,
 			IRType gWordTy, IRType hWordTy )
 {
    Int      i;
-   IRSB*    bbOut;
+   IRBB*    bbOut;
    IRStmt*  st, *stnext;
    Addr     instrAddr, origAddr;
    UInt     instrLen = 0, dataSize;
@@ -529,13 +529,16 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
 
    CLG_DEBUG(3, "+ instrument(BB %p)\n", (Addr)closure->readdr);
 
-   /* Set up SB for instrumented IR */
-   bbOut = deepCopyIRSBExceptStmts(bbIn);
+   /* Set up BB for instrumented IR */
+   bbOut           = emptyIRBB();
+   bbOut->tyenv    = dopyIRTypeEnv(bbIn->tyenv);
+   bbOut->next     = dopyIRExpr(bbIn->next);
+   bbOut->jumpkind = bbIn->jumpkind;
 
    // Copy verbatim any IR preamble preceding the first IMark
    i = 0;
    while (i < bbIn->stmts_used && bbIn->stmts[i]->tag != Ist_IMark) {
-      addStmtToIRSB( bbOut, bbIn->stmts[i] );
+      addStmtToIRBB( bbOut, bbIn->stmts[i] );
       i++;
    }
 
@@ -580,7 +583,7 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
    di = unsafeIRDirty_0_N( 1, "setup_bbcc", 
                               VG_(fnptr_to_fnentry)( & CLG_(setup_bbcc) ), 
                               argv);
-   addStmtToIRSB( bbOut, IRStmt_Dirty(di) );
+   addStmtToIRBB( bbOut, IRStmt_Dirty(di) );
 
    instrCount = 0;
    costOffset = 0;
@@ -640,7 +643,7 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
 	      cJumps++;
 	  }
 
-	  addStmtToIRSB( bbOut, st );
+	  addStmtToIRBB( bbOut, st );
 	  st = stnext;
       } 
       while (!beforeIBoundary);
@@ -701,14 +704,14 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
 // any reason at all: to free up space, because the guest code was
 // unmapped or modified, or for any arbitrary reason.
 static
-void clg_discard_superblock_info ( Addr64 orig_addr64, VexGuestExtents vge )
+void clg_discard_basic_block_info ( Addr64 orig_addr64, VexGuestExtents vge )
 {
     Addr orig_addr = (Addr)orig_addr64;
 
     tl_assert(vge.n_used > 0);
 
    if (0)
-      VG_(printf)( "discard_superblock_info: %p, %p, %llu\n",
+      VG_(printf)( "discard_basic_block_info: %p, %p, %llu\n",
                    (void*)(Addr)orig_addr,
                    (void*)(Addr)vge.base[0], (ULong)vge.len[0]);
 
@@ -921,11 +924,11 @@ void finish(void)
   /* pop all remaining items from CallStack for correct sum
    */
   CLG_(forall_threads)(unwind_thread);
-
+  
   CLG_(dump_profile)(0, False);
-
+  
   CLG_(finish_command)();
-
+  
   if (VG_(clo_verbosity) == 0) return;
   
   /* Hash table stats */
@@ -1022,23 +1025,11 @@ void CLG_(fini)(Int exitcode)
 /*--- Setup                                                        ---*/
 /*--------------------------------------------------------------------*/
 
-static void clg_start_client_code_callback ( ThreadId tid, ULong blocks_done )
-{
-   static ULong last_blocks_done = 0;
-
-   if (0)
-      VG_(printf)("%d R %llu\n", (Int)tid, blocks_done);
-
-   /* throttle calls to CLG_(run_thread) by number of BBs executed */
-   if (blocks_done - last_blocks_done < 5000) return;
-   last_blocks_done = blocks_done;
-
-   CLG_(run_thread)( tid );
-}
-
 static
 void CLG_(post_clo_init)(void)
 {
+   Char *dir = 0, *fname = 0;
+
    VG_(clo_vex_control).iropt_unroll_thresh = 0;
    VG_(clo_vex_control).guest_chase_thresh = 0;
 
@@ -1051,8 +1042,8 @@ void CLG_(post_clo_init)(void)
        CLG_(clo).dump_line = True;
    }
 
-   CLG_(init_dumps)();
-   CLG_(init_command)();
+   CLG_(init_files)(&dir,&fname);
+   CLG_(init_command)(dir,fname);
 
    (*CLG_(cachesim).post_clo_init)();
 
@@ -1085,13 +1076,13 @@ void CLG_(pre_clo_init)(void)
     VG_(details_copyright_author)("Copyright (C) 2002-2007, and GNU GPL'd, "
 				  "by Josef Weidendorfer et al.");
     VG_(details_bug_reports_to)  (VG_BUGS_TO);
-    VG_(details_avg_translation_sizeB) ( 500 );
+    VG_(details_avg_translation_sizeB) ( 245 );
 
     VG_(basic_tool_funcs)        (CLG_(post_clo_init),
                                   CLG_(instrument),
                                   CLG_(fini));
 
-    VG_(needs_superblock_discards)(clg_discard_superblock_info);
+    VG_(needs_basic_block_discards)(clg_discard_basic_block_info);
 
 
     VG_(needs_command_line_options)(CLG_(process_cmd_line_option),
@@ -1102,9 +1093,9 @@ void CLG_(pre_clo_init)(void)
     VG_(needs_syscall_wrapper)(CLG_(pre_syscalltime),
 			       CLG_(post_syscalltime));
 
-    VG_(track_start_client_code)  ( & clg_start_client_code_callback );
-    VG_(track_pre_deliver_signal) ( & CLG_(pre_signal) );
-    VG_(track_post_deliver_signal)( & CLG_(post_signal) );
+    VG_(track_thread_run) ( & CLG_(run_thread) );
+    VG_(track_pre_deliver_signal)  ( & CLG_(pre_signal) );
+    VG_(track_post_deliver_signal)  ( & CLG_(post_signal) );
 
     CLG_(set_clo_defaults)();
 }

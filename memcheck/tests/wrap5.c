@@ -1,7 +1,6 @@
 
 #include <stdio.h>
 #include <malloc.h>
-#include <stdlib.h>
 #include "valgrind.h"
 
 /* As wrap4.c, but also throw in various calls to another redirected
