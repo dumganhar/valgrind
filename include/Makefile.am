@@ -1,6 +1,4 @@
 
-SUBDIRS = vki
-
 incincdir = $(includedir)/valgrind
 
 incinc_HEADERS = \
@@ -30,6 +28,13 @@ incinc_HEADERS = \
 	pub_tool_stacktrace.h 		\
 	pub_tool_threadstate.h 		\
 	pub_tool_tooliface.h 		\
-	pub_tool_vki.h			\
-	pub_tool_vkiscnums.h		\
-	valgrind.h
+	valgrind.h 			\
+	vki-linux.h			\
+	vki-amd64-linux.h		\
+	vki-ppc32-linux.h		\
+	vki-ppc64-linux.h		\
+	vki-x86-linux.h			\
+	vki_posixtypes-amd64-linux.h	\
+	vki_posixtypes-ppc32-linux.h	\
+	vki_posixtypes-ppc64-linux.h	\
+	vki_posixtypes-x86-linux.h

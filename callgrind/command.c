@@ -48,35 +48,20 @@ static Char* current_result_file = 0;
 static Char* info_file = 0;
 static Char* dump_base = 0;
 
-static Int thisPID = 0;
+static Bool command_inited = False;
 
-/**
- * Setup for interactive control of a callgrind run
- */
-static void setup_control(void)
+void CLG_(init_command)(Char* dir, Char* dumps)
 {
-  Int fd, size;
+  Int fd = -1, size;
   SysRes res;
-  Char* dir, *dump_filename;
 
-  CLG_ASSERT(thisPID != 0);
+  dump_base = dumps;
 
-  fd = -1;
-  dir = CLG_(get_base_directory)();
-  dump_base = CLG_(get_dump_file_base)();
-
-  /* base name of dump files with PID ending */
-  size = VG_(strlen)(dump_base) + 10;
-  dump_filename = (char*) CLG_MALLOC(size);
-  CLG_ASSERT(dump_filename != 0);
-  VG_(sprintf)(dump_filename, "%s.%d", dump_base, thisPID);
-
-  /* name of command file */
   size = VG_(strlen)(dir) + VG_(strlen)(DEFAULT_COMMANDNAME) +10;
   command_file = (char*) CLG_MALLOC(size);
   CLG_ASSERT(command_file != 0);
   VG_(sprintf)(command_file, "%s/%s.%d",
-	       dir, DEFAULT_COMMANDNAME, thisPID);
+	       dir, DEFAULT_COMMANDNAME, VG_(getpid)());
 
   /* This is for compatibility with the "Force Now" Button of current
    * KCachegrind releases, as it doesn't use ".pid" to distinguish
@@ -91,7 +76,7 @@ static void setup_control(void)
   result_file = (char*) CLG_MALLOC(size);
   CLG_ASSERT(result_file != 0);
   VG_(sprintf)(result_file, "%s/%s.%d",
-	       dir, DEFAULT_RESULTNAME, thisPID);
+	       dir, DEFAULT_RESULTNAME, VG_(getpid)());
 
   /* If we get a command from a command file without .pid, use
    * a result file without .pid suffix
@@ -103,10 +88,9 @@ static void setup_control(void)
 
   info_file = (char*) CLG_MALLOC(VG_(strlen)(DEFAULT_INFONAME) + 10);
   CLG_ASSERT(info_file != 0);
-  VG_(sprintf)(info_file, "%s.%d", DEFAULT_INFONAME, thisPID);
+  VG_(sprintf)(info_file, "%s.%d", DEFAULT_INFONAME, VG_(getpid)());
 
-  CLG_DEBUG(1, "Setup for interactive control (PID: %d):\n", thisPID);
-  CLG_DEBUG(1, "  dump file base: '%s'\n", dump_filename);
+  CLG_DEBUG(1, "  dump file base: '%s'\n", dump_base);
   CLG_DEBUG(1, "  command file:   '%s'\n", command_file);
   CLG_DEBUG(1, "  result file:    '%s'\n", result_file);
   CLG_DEBUG(1, "  info file:      '%s'\n", info_file);
@@ -124,7 +108,7 @@ static void setup_control(void)
     }
   }
   if (!res.isError)
-      fd = (Int) res.res;
+      fd = (Int) res.val;
   if (fd>=0) {
     Char buf[512];
     Int i;
@@ -144,7 +128,7 @@ static void setup_control(void)
     VG_(sprintf)(buf, "base: %s\n", dir);
     VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
     
-    VG_(sprintf)(buf, "dumps: %s\n", dump_filename);
+    VG_(sprintf)(buf, "dumps: %s\n", dump_base);
     VG_(write)(fd, (void*)buf, VG_(strlen)(buf));
     
     VG_(sprintf)(buf, "control: %s\n", command_file);
@@ -165,12 +149,8 @@ static void setup_control(void)
     VG_(write)(fd, "\n", 1);
     VG_(close)(fd);
   }
-}
 
-void CLG_(init_command)()
-{
-  thisPID = VG_(getpid)();
-  setup_control();
+  command_inited = True;
 }
 
 void CLG_(finish_command)()
@@ -196,7 +176,7 @@ static Int createRes(Int fd)
      * to not confuse it with our special value -2
      */
     if (res.isError) fd = -1;
-    else fd = (Int) res.res;
+    else fd = (Int) res.val;
 
     return fd;
 }
@@ -375,35 +355,18 @@ void CLG_(check_command)()
     Char *cmdPos = 0, *cmdNextLine = 0;
     Int fd, bytesRead = 0, do_kill = 0;
     SysRes res;
-    Int currentPID;
-    static Int check_counter = 0;
 
-    /* Check for PID change, i.e. whether we run as child after a fork.
-     * If yes, we setup interactive control for the new process
-     */
-    currentPID = VG_(getpid)();
-    if (thisPID != currentPID) {
-	thisPID = currentPID;
-	setup_control();
-    }
+    if (!command_inited) return;
 
-    /* Toggle between 2 command files, with/without ".pid" postfix
-     * (needed for compatibility with KCachegrind, which wants to trigger
-     *  a dump by writing into a command file without the ".pid" postfix)
-     */
-    check_counter++;
-    if (check_counter % 2) {
-	current_command_file = command_file;
-	current_result_file  = result_file;
-    }
-    else {
-	current_command_file = command_file2;
-	current_result_file  = result_file2;
-    }
+    /* toggle between 2 command files, with/without ".pid" postfix */
+    current_command_file = (current_command_file == command_file2) ? 
+                           command_file : command_file2;
+    current_result_file  = (current_command_file == command_file2) ?
+                           result_file2 : result_file;    
     
     res = VG_(open)(current_command_file, VKI_O_RDONLY,0);
     if (!res.isError) {
-	fd = (Int) res.res;
+	fd = (Int) res.val;
 	bytesRead = VG_(read)(fd,cmdBuffer,500);
 	cmdBuffer[500] = 0; /* no command overrun please */
 	VG_(close)(fd);

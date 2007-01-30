@@ -18,6 +18,8 @@ struct test {
 
 static const struct test *cur_test;
 
+static int zero();
+
 static jmp_buf escape;
 
 #define BADADDR	((int *)0x1234)
@@ -135,3 +137,7 @@ int main()
 	return 0;
 }
 
+static int zero()
+{
+	return 0;
+}

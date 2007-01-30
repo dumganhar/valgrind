@@ -1,34 +1,25 @@
-Release 3.3.0 (XX XXX 2007)
+
+Release 3.2.3 (29 Jan 2007)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
-3.3.0 is a feature release with ...
+Unfortunately 3.2.2 introduced a regression which can cause an
+assertion failure ("vex: the `impossible' happened: eqIRConst") when
+running obscure pieces of SSE code.  3.2.3 fixes this and adds one
+more glibc-2.5 intercept.  In all other respects it is identical to
+3.2.2.  Please do not use (or package) 3.2.2; instead use 3.2.3.
 
-Other user-visible changes:
+n-i-bz   vex: the `impossible' happened: eqIRConst
+n-i-bz   Add an intercept for glibc-2.5 __stpcpy_chk
 
-- A new suppression kind has been introduced: "Jump".  This is for
-  suppressing jump-to-invalid-address errors.  Previously you had to use an
-  "Addr1" suppression, which didn't make much sense.
-
-- The behaviour of Memcheck's client requests VALGRIND_GET_VBITS and
-  VALGRIND_SET_VBITS have changed slightly.  They no longer issue
-  addressability errors -- if either array is partially unaddressable,
-  they just return 3 (as before).  Also, SET_VBITS doesn't report
-  definedness errors if any of the V bits are undefined.
-
-Developer-visible changes:
-
-- The names of some functions and types within the Vex IR have changed.
-  So any existing tools will have to be updated to reflect these
-  changes.  The new names should be clearer.  The file
-  VEX/pub/libvex_ir.h is also much better commented, and serves as the
-  best documentation about Vex.
+(3.2.3: 29 Jan 2007, vex r1732, valgrind r6560).
 
 
 Release 3.2.2 (22 Jan 2007)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 3.2.2 fixes a bunch of bugs in 3.2.1, adds support for glibc-2.5 based
-systems (openSUSE 10.2, Fedora Core 6), improves support for icc-9.X
-compiled code, and brings modest performance improvements in some
-areas, including amd64 floating point, powerpc support, and startup
+systems (openSUSE 10.2, Fedora Core 6), further reduces memcheck's
+false error rate on x86/amd64, improves support for icc-9.X compiled
+code, and brings modest performance improvements in some areas,
+including amd64 floating point, powerpc support, and startup
 responsiveness on all targets.
 
 The fixed bugs are as follows.  Note that "n-i-bz" stands for "not in

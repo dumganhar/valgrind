@@ -155,6 +155,16 @@
 #define max(a,b) ((a)>(b)?(a):(b))
 #define min(a,b) ((a)<=(b)?(a):(b))
 
+#ifndef unix
+#ifndef WIN32
+extern char *farmalloc(long s);
+#define malloc(x)   farmalloc(x)
+#endif
+#define FWMODE   "wb"
+#else
+#define FWMODE   "w"
+#endif
+
 /*
 
 	Multi-dimensional fast Fourier transform

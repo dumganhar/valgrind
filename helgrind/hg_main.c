@@ -43,7 +43,6 @@
 // fundamentals in each case.
 
 #include "pub_tool_basics.h"
-#include "pub_tool_vki.h"
 #include "pub_tool_threadstate.h"
 #include "pub_tool_aspacemgr.h"
 #include "pub_tool_debuginfo.h"
@@ -2297,8 +2296,8 @@ UCodeBlock* TL_(instrument) ( UCodeBlock* cb_in, Addr not_used )
 }
 #endif
 static
-IRSB* hg_instrument ( VgCallbackClosure* closure,
-                      IRSB* bb,
+IRBB* hg_instrument ( VgCallbackClosure* closure,
+                      IRBB* bb,
                       VexGuestLayout* layout, 
                       VexGuestExtents* vge,
                       IRType gWordTy, IRType hWordTy )
@@ -2858,17 +2857,17 @@ static void hg_print_extra_suppression_info ( Error* err )
    /* Do nothing */
 }
 
-static void hg_pre_mutex_lock(ThreadId tid, Addr client_mutex)
+static void hg_pre_mutex_lock(ThreadId tid, void* void_mutex)
 {
-   Mutex *mutex = get_mutex(client_mutex);
+   Mutex *mutex = get_mutex((Addr)void_mutex);
 
    test_mutex_state(mutex, MxLocked, tid);
 }
 
-static void hg_post_mutex_lock(ThreadId tid, Addr client_mutex)
+static void hg_post_mutex_lock(ThreadId tid, void* void_mutex)
 {
    static const Bool debug = False;
-   Mutex *mutex = get_mutex(client_mutex);
+   Mutex *mutex = get_mutex((Addr)void_mutex);
    const LockSet*  ls;
 
    set_mutex_state(mutex, MxLocked, tid);
@@ -2899,11 +2898,11 @@ static void hg_post_mutex_lock(ThreadId tid, Addr client_mutex)
 }
 
 
-static void hg_post_mutex_unlock(ThreadId tid, Addr client_mutex)
+static void hg_post_mutex_unlock(ThreadId tid, void* void_mutex)
 {
    static const Bool debug = False;
    Int i = 0;
-   Mutex *mutex = get_mutex(client_mutex);
+   Mutex *mutex = get_mutex((Addr)void_mutex);
    const LockSet *ls;
 
    test_mutex_state(mutex, MxUnlocked, tid);
@@ -3260,14 +3259,14 @@ static Int __BUS_HARDWARE_LOCK__;
 static void bus_lock(void)
 {
    ThreadId tid = VG_(get_running_tid)();
-   hg_pre_mutex_lock(tid, (Addr)&__BUS_HARDWARE_LOCK__);
-   hg_post_mutex_lock(tid, (Addr)&__BUS_HARDWARE_LOCK__);
+   hg_pre_mutex_lock(tid, &__BUS_HARDWARE_LOCK__);
+   hg_post_mutex_lock(tid, &__BUS_HARDWARE_LOCK__);
 }
 
 static void bus_unlock(void)
 {
    ThreadId tid = VG_(get_running_tid)();
-   hg_post_mutex_unlock(tid, (Addr)&__BUS_HARDWARE_LOCK__);
+   hg_post_mutex_unlock(tid, &__BUS_HARDWARE_LOCK__);
 }
 
 /*--------------------------------------------------------------------*/
@@ -3385,7 +3384,7 @@ static void hg_pre_clo_init(void)
    VG_(details_copyright_author)(
       "Copyright (C) 2002-2007, and GNU GPL'd, by Nicholas Nethercote et al.");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
-   VG_(details_avg_translation_sizeB) ( 300 );
+   VG_(details_avg_translation_sizeB) ( 115 );
 
    VG_(basic_tool_funcs)          (hg_post_clo_init,
                                    hg_instrument,
@@ -3456,12 +3455,9 @@ static void hg_pre_clo_init(void)
    VG_(track_post_thread_create)  (& hg_thread_create);
    VG_(track_post_thread_join)    (& hg_thread_join);
 
-   /* The core doesn't provide these events any more */
-   /*
    VG_(track_pre_mutex_lock)      (& hg_pre_mutex_lock);
    VG_(track_post_mutex_lock)     (& hg_post_mutex_lock);
    VG_(track_post_mutex_unlock)   (& hg_post_mutex_unlock);
-   */
 
    for (i = 0; i < LOCKSET_HASH_SZ; i++)
       lockset_hash[i] = NULL;

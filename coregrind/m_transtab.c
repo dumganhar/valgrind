@@ -613,7 +613,7 @@ static void setFastCacheEntry ( Addr64 key, ULong* tce, UInt* count )
 {
    UInt cno = (UInt)VG_TT_FAST_HASH(key);
    VG_(tt_fast)[cno]  = tce;
-   VG_(tt_fastN)[cno] = VG_(clo_profile_flags) > 0  ? count  : NULL;
+   VG_(tt_fastN)[cno] = count;
    n_fast_updates++;
 }
 
@@ -667,7 +667,7 @@ static void initialiseSector ( Int sno )
                                      8 * tc_sector_szQ );
 	 /*NOTREACHED*/
       }
-      sec->tc = (ULong*)sres.res;
+      sec->tc = (ULong*)sres.val;
 
       sres = VG_(am_mmap_anon_float_valgrind)
                 ( N_TTES_PER_SECTOR * sizeof(TTEntry) );
@@ -676,7 +676,7 @@ static void initialiseSector ( Int sno )
                                      N_TTES_PER_SECTOR * sizeof(TTEntry) );
 	 /*NOTREACHED*/
       }
-      sec->tt = (TTEntry*)sres.res;
+      sec->tt = (TTEntry*)sres.val;
 
       for (i = 0; i < N_TTES_PER_SECTOR; i++) {
          sec->tt[i].status   = Empty;
@@ -701,8 +701,8 @@ static void initialiseSector ( Int sno )
             vg_assert(sec->tt[i].n_tte2ec <= 3);
             n_dump_osize += vge_osize(&sec->tt[i].vge);
             /* Tell the tool too. */
-            if (VG_(needs).superblock_discards) {
-               VG_TDICT_CALL( tool_discard_superblock_info,
+            if (VG_(needs).basic_block_discards) {
+               VG_TDICT_CALL( tool_discard_basic_block_info,
                               sec->tt[i].entry,
                               sec->tt[i].vge );
             }
@@ -791,9 +791,7 @@ void VG_(add_to_transtab)( VexGuestExtents* vge,
 
    vg_assert(init_done);
    vg_assert(vge->n_used >= 1 && vge->n_used <= 3);
-
-   /* 60000: should agree with N_TMPBUF in m_translate.c. */
-   vg_assert(code_len > 0 && code_len < 60000);
+   vg_assert(code_len > 0 && code_len < 20000);
 
    if (0)
       VG_(printf)("add_to_transtab(entry = 0x%llx, len = %d)\n",
@@ -1034,8 +1032,8 @@ static void delete_tte ( /*MOD*/Sector* sec, Int tteno )
    n_disc_osize += vge_osize(&tte->vge);
 
    /* Tell the tool too. */
-   if (VG_(needs).superblock_discards) {
-      VG_TDICT_CALL( tool_discard_superblock_info,
+   if (VG_(needs).basic_block_discards) {
+      VG_TDICT_CALL( tool_discard_basic_block_info,
                      tte->entry,
                      tte->vge );
    }
@@ -1264,7 +1262,7 @@ static void init_unredir_tt_tc ( void )
          VG_(out_of_memory_NORETURN)("init_unredir_tt_tc", N_UNREDIR_TT * UNREDIR_SZB);
          /*NOTREACHED*/
       }
-      unredir_tc = (ULong *)sres.res;
+      unredir_tc = (ULong *)sres.val;
    }
    unredir_tc_used = 0;
    for (i = 0; i < N_UNREDIR_TT; i++)
@@ -1404,7 +1402,7 @@ void VG_(init_tt_tc) ( void )
 
    /* Ensure the calculated value is not way crazy. */
    vg_assert(tc_sector_szQ >= 2 * N_TTES_PER_SECTOR_USABLE);
-   vg_assert(tc_sector_szQ <= 80 * N_TTES_PER_SECTOR_USABLE);
+   vg_assert(tc_sector_szQ <= 50 * N_TTES_PER_SECTOR_USABLE);
 
    /* Initialise the sectors */
    youngest_sector = 0;

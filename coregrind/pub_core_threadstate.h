@@ -67,8 +67,8 @@ typedef
 typedef
    enum { 
       VgSrc_None,	 /* not exiting yet */
-      VgSrc_ExitThread,  /* just this thread is exiting */
-      VgSrc_ExitProcess, /* entire process is exiting */
+      VgSrc_ExitSyscall, /* client called exit().  This is the normal
+                            route out. */
       VgSrc_FatalSig	 /* Killed by the default action of a fatal
 			    signal */
    }
@@ -121,22 +121,8 @@ typedef
       Addr valgrind_stack_init_SP; // starting value for SP
 
       /* exit details */
-      Word exitcode; // in the case of exitgroup, set by someone else
-      Int  fatalsig; // fatal signal
-
-#     if defined(VGO_aix5)
-      /* AIX specific fields to make thread cancellation sort-of work */
-      /* What is this thread's current cancellation state a la
-         POSIX (deferred vs async, enable vs disabled) ? */
-      Bool cancel_async;   // current cancel mode (async vs deferred)
-      Bool cancel_disabled; // cancellation disabled?
-      /* What's happened so far? */
-      enum { Canc_NoRequest=0, // no cancellation requested
-             Canc_Requested=1, // requested but not actioned
-             Canc_Actioned=2 } // requested and actioned
-           cancel_progress;
-      /* Initial state is False, False, Canc_Normal. */
-#     endif
+      Int exitcode; // in the case of exitgroup, set by someone else
+      Int fatalsig; // fatal signal
    }
    ThreadOSstate;
 
@@ -252,12 +238,9 @@ extern Bool VG_(is_exiting)(ThreadId tid);
 /* Return the number of non-dead Threads */
 extern Int VG_(count_living_threads)(void);
 
-/* Return the number of threads in VgTs_Runnable state */
-extern Int VG_(count_runnable_threads)(void);
-
 /* Given an LWP id (ie, real kernel thread id), find the corresponding
    ThreadId */
-extern ThreadId VG_(lwpid_to_vgtid)(Int lwpid);
+extern ThreadId VG_(get_lwp_tid)(Int lwpid);
 
 #endif   // __PUB_CORE_THREADSTATE_H
 

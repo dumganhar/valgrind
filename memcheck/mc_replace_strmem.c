@@ -89,31 +89,35 @@ Bool is_overlap ( void* dst, const void* src, SizeT dstlen, SizeT srclen )
 
 // This is a macro rather than a function because we don't want to have an
 // extra function in the stack trace.
-#define RECORD_OVERLAP_ERROR(s, src, dst, len) \
+#define RECORD_OVERLAP_ERROR(s, p_extra) \
 { \
    Word unused_res; \
    VALGRIND_DO_CLIENT_REQUEST(unused_res, 0, \
 			      _VG_USERREQ__MEMCHECK_RECORD_OVERLAP_ERROR, \
-			      s, src, dst, len, 0); \
+			      s, p_extra, 0, 0, 0); \
 }
 
-/* --------- Some handy Z-encoded names. --------- */
+static __inline__
+void complain2 ( Char* s, char* dst, const char* src )
+{
+   OverlapExtra extra = {
+      .src = (Addr)src, .dst = (Addr)dst, .len = -1,
+   };
+   RECORD_OVERLAP_ERROR( s, &extra );
+}
 
-/* --- Soname of the standard C library. --- */
+static __inline__
+void complain3 ( Char* s, void* dst, const void* src, int n )
+{
+   /* Must wrap it up here, because we cannot pass 4 args to core */
+   OverlapExtra extra = {
+      .src = (Addr)src, .dst = (Addr)dst, .len = n,
+   };
+   RECORD_OVERLAP_ERROR( s, &extra );
+}
 
-#if defined(VGO_linux)
-#  define  m_libc_soname     libcZdsoZa              // libc.so*
-#elif defined(VGP_ppc32_aix5)
-   /* AIX has both /usr/lib/libc.a and /usr/lib/libc_r.a. */
-#  define  m_libc_soname     libcZaZdaZLshrZdoZR     // libc*.a(shr.o)
-#elif defined(VGP_ppc64_aix5)
-#  define  m_libc_soname     libcZaZdaZLshrZu64ZdoZR // libc*.a(shr_64.o)
-#else
-#  error "Unknown platform"
-#endif
-
-/* --- Sonames for Linux ELF linkers. --- */
-
+// Some handy Z-encoded names
+#define  m_libc_so_star          libcZdsoZa                 // libc.so*
 #define  m_ld_linux_so_2         ldZhlinuxZdsoZd2           // ld-linux.so.2
 #define  m_ld_linux_x86_64_so_2  ldZhlinuxZhx86Zh64ZdsoZd2  // ld-linux-x86-64.so.2
 #define  m_ld64_so_1             ld64ZdsoZd1                // ld64.so.1
@@ -135,8 +139,8 @@ Bool is_overlap ( void* dst, const void* src, SizeT dstlen, SizeT srclen )
    }
 
 // Apparently rindex() is the same thing as strrchr()
-STRRCHR(m_libc_soname,   strrchr)
-STRRCHR(m_libc_soname,   rindex)
+STRRCHR(m_libc_so_star,  strrchr)
+STRRCHR(m_libc_so_star,  rindex)
 STRRCHR(m_ld_linux_so_2, rindex)
    
 
@@ -154,10 +158,10 @@ STRRCHR(m_ld_linux_so_2, rindex)
    }
 
 // Apparently index() is the same thing as strchr()
-STRCHR(m_libc_soname,          strchr)
+STRCHR(m_libc_so_star,         strchr)
 STRCHR(m_ld_linux_so_2,        strchr)
 STRCHR(m_ld_linux_x86_64_so_2, strchr)
-STRCHR(m_libc_soname,          index)
+STRCHR(m_libc_so_star,         index)
 STRCHR(m_ld_linux_so_2,        index)
 STRCHR(m_ld_linux_x86_64_so_2, index)
 
@@ -178,12 +182,12 @@ STRCHR(m_ld_linux_x86_64_so_2, index)
                      src_orig,  \
                      (Addr)dst-(Addr)dst_orig+1,  \
                      (Addr)src-(Addr)src_orig+1)) \
-         RECORD_OVERLAP_ERROR("strcat", dst_orig, src_orig, 0); \
+         complain2("strcat", dst_orig, src_orig); \
  \
       return dst_orig; \
    }
 
-STRCAT(m_libc_soname, strcat)
+STRCAT(m_libc_so_star, strcat)
 
 
 #define STRNCAT(soname, fnname) \
@@ -206,13 +210,13 @@ STRCAT(m_libc_soname, strcat)
                      src_orig,  \
                      (Addr)dst-(Addr)dst_orig+1,  \
                      (Addr)src-(Addr)src_orig+1)) \
-         RECORD_OVERLAP_ERROR("strncat", dst_orig, src_orig, n); \
+         complain3("strncat", dst_orig, src_orig, n); \
  \
       return dst_orig; \
    }
 
-STRNCAT(m_libc_soname, strncat)
-
+STRNCAT(m_libc_so_star, strncat)
+   
 
 #define STRNLEN(soname, fnname) \
    SizeT VG_REPLACE_FUNCTION_ZU(soname,fnname) ( const char* str, SizeT n ); \
@@ -223,7 +227,7 @@ STRNCAT(m_libc_soname, strncat)
       return i; \
    }
 
-STRNLEN(m_libc_soname, strnlen)
+STRNLEN(m_libc_so_star, strnlen)
    
 
 // Note that this replacement often doesn't get used because gcc inlines
@@ -239,10 +243,10 @@ STRNLEN(m_libc_soname, strnlen)
       return i; \
    }
 
-STRLEN(m_libc_soname,          strlen)
+STRLEN(m_libc_so_star,         strlen)
 STRLEN(m_ld_linux_so_2,        strlen)
 STRLEN(m_ld_linux_x86_64_so_2, strlen)
-
+   
 
 #define STRCPY(soname, fnname) \
    char* VG_REPLACE_FUNCTION_ZU(soname, fnname) ( char* dst, const char* src ); \
@@ -260,12 +264,12 @@ STRLEN(m_ld_linux_x86_64_so_2, strlen)
                      src_orig,  \
                      (Addr)dst-(Addr)dst_orig+1,  \
                      (Addr)src-(Addr)src_orig+1)) \
-         RECORD_OVERLAP_ERROR("strcpy", dst_orig, src_orig, 0); \
+         complain2("strcpy", dst_orig, src_orig); \
  \
       return dst_orig; \
    }
 
-STRCPY(m_libc_soname, strcpy)
+STRCPY(m_libc_so_star, strcpy)
 
 
 #define STRNCPY(soname, fnname) \
@@ -282,13 +286,13 @@ STRCPY(m_libc_soname, strcpy)
       /* Check for overlap after copying; all n bytes of dst are relevant, */ \
       /* but only m+1 bytes of src if terminator was found */ \
       if (is_overlap(dst_orig, src_orig, n, (m < n) ? m+1 : n)) \
-         RECORD_OVERLAP_ERROR("strncpy", dst, src, n); \
+         complain3("strncpy", dst, src, n); \
       while (m++ < n) *dst++ = 0;         /* must pad remainder with nulls */ \
  \
       return dst_orig; \
    }
 
-STRNCPY(m_libc_soname, strncpy)
+STRNCPY(m_libc_so_star, strncpy)
 
 
 #define STRNCMP(soname, fnname) \
@@ -311,7 +315,7 @@ STRNCPY(m_libc_soname, strncpy)
       } \
    }
 
-STRNCMP(m_libc_soname, strncmp)
+STRNCMP(m_libc_so_star, strncmp)
 
 
 #define STRCMP(soname, fnname) \
@@ -334,7 +338,7 @@ STRNCMP(m_libc_soname, strncmp)
       return 0; \
    }
 
-STRCMP(m_libc_soname,          strcmp)
+STRCMP(m_libc_so_star,         strcmp)
 STRCMP(m_ld_linux_x86_64_so_2, strcmp)
 STRCMP(m_ld64_so_1,            strcmp)
 
@@ -351,7 +355,7 @@ STRCMP(m_ld64_so_1,            strcmp)
       return NULL; \
    }
 
-MEMCHR(m_libc_soname, memchr)
+MEMCHR(m_libc_so_star, memchr)
 
 
 #define MEMCPY(soname, fnname) \
@@ -367,7 +371,7 @@ MEMCHR(m_libc_soname, memchr)
          return dst; \
  \
       if (is_overlap(dst, src, len, len)) \
-         RECORD_OVERLAP_ERROR("memcpy", dst, src, len); \
+         complain3("memcpy", dst, src, len); \
  \
       if ( dst > src ) { \
          d = (char *)dst + len - 1; \
@@ -399,8 +403,9 @@ MEMCHR(m_libc_soname, memchr)
       return dst; \
    }
 
-MEMCPY(m_libc_soname, memcpy)
-MEMCPY(m_ld_so_1,     memcpy) /* ld.so.1 */
+MEMCPY(m_libc_so_star, memcpy)
+MEMCPY(m_ld_so_1,      memcpy) /* ld.so.1 */
+   
 /* icc9 blats these around all over the place.  Not only in the main
    executable but various .so's.  They are highly tuned and read
    memory beyond the source boundary (although work correctly and
@@ -437,8 +442,8 @@ MEMCPY(NONE, _intel_fast_memcpy)
       return 0; \
    }
 
-MEMCMP(m_libc_soname, memcmp)
-MEMCMP(m_libc_soname, bcmp)
+MEMCMP(m_libc_so_star, memcmp)
+MEMCMP(m_libc_so_star, bcmp)
 MEMCMP(m_ld_so_1, bcmp)
 
 
@@ -460,12 +465,12 @@ MEMCMP(m_ld_so_1, bcmp)
                      src_orig,  \
                      (Addr)dst-(Addr)dst_orig+1,  \
                      (Addr)src-(Addr)src_orig+1)) \
-         RECORD_OVERLAP_ERROR("stpcpy", dst_orig, src_orig, 0); \
+         complain2("stpcpy", dst_orig, src_orig); \
  \
       return dst; \
    }
 
-STPCPY(m_libc_soname,         stpcpy)
+STPCPY(m_libc_so_star,         stpcpy)
 STPCPY(m_ld_linux_so_2,        stpcpy)
 STPCPY(m_ld_linux_x86_64_so_2, stpcpy)
    
@@ -482,7 +487,7 @@ STPCPY(m_ld_linux_x86_64_so_2, stpcpy)
       return s; \
    }
 
-MEMSET(m_libc_soname, memset)
+MEMSET(m_libc_so_star, memset)
 
 
 #define MEMMOVE(soname, fnname) \
@@ -506,7 +511,7 @@ MEMSET(m_libc_soname, memset)
       return dst; \
    }
 
-MEMMOVE(m_libc_soname, memmove)
+MEMMOVE(m_libc_so_star, memmove)
 
 
 /* Find the first occurrence of C in S or the final NUL byte.  */
@@ -523,7 +528,7 @@ MEMMOVE(m_libc_soname, memmove)
       } \
    }
 
-GLIBC232_STRCHRNUL(m_libc_soname, strchrnul)
+GLIBC232_STRCHRNUL(m_libc_so_star, strchrnul)
 
 
 /* Find the first occurrence of C in S.  */
@@ -539,11 +544,11 @@ GLIBC232_STRCHRNUL(m_libc_soname, strchrnul)
       } \
    }
 
-GLIBC232_RAWMEMCHR(m_libc_soname, rawmemchr)
+GLIBC232_RAWMEMCHR(m_libc_so_star, rawmemchr)
 
 
 /* glibc variant of strcpy that checks the dest is big enough.
-   Copied from glibc-2.5/debug/test-strcpy_chk.c. */
+   Copied from glibc-2.5/debug/test-stpcpy_chk.c. */
 #define GLIBC25___STRCPY_CHK(soname,fnname) \
    char* VG_REPLACE_FUNCTION_ZU(soname,fnname) \
                                (char* dst, const char* src, SizeT len); \
@@ -566,7 +571,7 @@ GLIBC232_RAWMEMCHR(m_libc_soname, rawmemchr)
      return NULL; \
    }
 
-GLIBC25___STRCPY_CHK(m_libc_soname, __strcpy_chk)
+GLIBC25___STRCPY_CHK(m_libc_so_star, __strcpy_chk)
 
 
 /* glibc variant of stpcpy that checks the dest is big enough.
@@ -592,7 +597,7 @@ GLIBC25___STRCPY_CHK(m_libc_soname, __strcpy_chk)
      return NULL; \
    }
 
-GLIBC25___STPCPY_CHK(m_libc_soname, __stpcpy_chk)
+GLIBC25___STPCPY_CHK(m_libc_so_star, __stpcpy_chk)
 
 
 /* mempcpy */
@@ -610,7 +615,7 @@ GLIBC25___STPCPY_CHK(m_libc_soname, __stpcpy_chk)
          return dst; \
       \
       if (is_overlap(dst, src, len, len)) \
-         RECORD_OVERLAP_ERROR("mempcpy", dst, src, len); \
+         complain3("mempcpy", dst, src, len); \
       \
       if ( dst > src ) { \
          d = (char *)dst + len - 1; \
@@ -628,312 +633,9 @@ GLIBC25___STPCPY_CHK(m_libc_soname, __stpcpy_chk)
       return (void*)( ((char*)dst) + len_saved ); \
    }
 
-GLIBC25_MEMPCPY(m_libc_soname, mempcpy)
-GLIBC25_MEMPCPY(m_ld_so_1,     mempcpy) /* ld.so.1 */
+GLIBC25_MEMPCPY(m_libc_so_star, mempcpy)
+GLIBC25_MEMPCPY(m_ld_so_1,      mempcpy) /* ld.so.1 */
 
-
-/*------------------------------------------------------------*/
-/*--- AIX stuff only after this point                      ---*/
-/*------------------------------------------------------------*/
-
-/* Generate replacements for strcat, strncat, strcpy, strncpy,
-   in the given soname. */
-#define Str4FNs(_soname)       \
-    STRCAT(_soname, strcat)    \
-   STRNCAT(_soname, strncat)   \
-    STRCPY(_soname, strcpy)    \
-   STRNCPY(_soname, strncpy)
-
-#if defined(VGP_ppc32_aix5)
-Str4FNs(NONE)                             /* in main exe */
-Str4FNs(libCZdaZLshrcoreZdoZR)            /* libC.a(shrcore.o) */
-Str4FNs(libX11ZdaZLshr4ZdoZR)             /* libX11.a(shr4.o) */
-Str4FNs(libXmZdaZLshrZaZdoZR)             /* libXm.a(shr*.o) */
-Str4FNs(libXtZdaZLshr4ZdoZR)              /* libXt.a(shr4.o) */
-Str4FNs(libppeZurZdaZLdynamicZdoZR)       /* libppe_r.a(dynamic.o) */
-Str4FNs(libodmZdaZLshrZdoZR)              /* libodm.a(shr.o) */
-Str4FNs(libmpiZurZdaZLmpicoreZurZdoZR)    /* libmpi_r.a(mpicore_r.o) */
-Str4FNs(libmpiZurZdaZLmpipoeZurZdoZR)     /* libmpi_r.a(mpipoe_r.o) */
-Str4FNs(libmpiZurZdaZLmpciZurZdoZR)       /* libmpi_r.a(mpci_r.o) */
-Str4FNs(libslurmZdso)                     /* libslurm.so */
-Str4FNs(libglibZdso)                      /* libglib.so */
-Str4FNs(libIMZdaZLshrZdoZR)               /* libIM.a(shr.o) */
-Str4FNs(libiconvZdaZLshr4ZdoZR)           /* libiconv.a(shr4.o) */
-Str4FNs(libGLZdaZLshrZdoZR)               /* libGL.a(shr.o) */
-Str4FNs(libgdkZdso)                       /* libgdk.so */
-Str4FNs(libcursesZdaZLshr42ZdoZR)         /* libcurses.a(shr42.o) */
-Str4FNs(libqtZda)                         /* libqt.a */
-#endif
-#if defined(VGP_ppc64_aix5)
-Str4FNs(NONE)                             /* in main exe */
-Str4FNs(libX11ZdaZLshrZu64ZdoZR)          /* libX11.a(shr_64.o) */
-Str4FNs(libiconvZdaZLshr4Zu64ZdoZR)       /* libiconv.a(shr4_64.o) */
-Str4FNs(libGLZdaZLshrZu64ZdoZR)           /* libGL.a(shr_64.o) */
-Str4FNs(libppeZurZdaZLdynamic64ZdoZR)     /* libppe_r.a(dynamic64.o) */
-Str4FNs(libodmZdaZLshrZu64ZdoZR)          /* libodm.a(shr_64.o) */
-Str4FNs(libmpiZurZdaZLmpicore64ZurZdoZR)  /* libmpi_r.a(mpicore64_r.o) */
-Str4FNs(libmpiZurZdaZLmpipoe64ZurZdoZR)   /* libmpi_r.a(mpipoe64_r.o) */
-Str4FNs(libCZdaZLshrcoreZu64ZdoZR)        /* libC.a(shrcore_64.o) */
-Str4FNs(libmpiZurZdaZLmpci64ZurZdoZR)     /* libmpi_r.a(mpci64_r.o) */
-Str4FNs(libqtZda)                         /* libqt.a */
-#endif
-
-
-/* AIX's libm contains a sqrt implementation which does a nasty thing:
-   it loads the initial estimate of the root into a FP register, but
-   only the upper half of the number is initialised data.  Hence the
-   least significant 32 mantissa bits are undefined, and it then uses
-   Newton-Raphson iteration to compute the final, defined result.
-   This fools memcheck completely; the only solution I can think of is
-   provide our own substitute.  The _FAST variant is almost right
-   except the result is not correctly rounded.  The _EXACT variant,
-   which is selected by default, is always right; but it's also pretty
-   darn slow. */
-
-#if defined(VGP_ppc32_aix5) || defined(VGP_ppc64_aix5)
-#define SQRT_FAST(soname, fnname) \
-   double VG_REPLACE_FUNCTION_ZU(soname,fnname)( double x ); \
-   double VG_REPLACE_FUNCTION_ZU(soname,fnname)( double x ) \
-   { \
-      static UInt T1[32] =  \
-         { 0,       1024,   3062,   5746,   9193,  13348, \
-           18162,  23592,  29598,  36145,  43202,  50740, \
-           58733,  67158,  75992,  85215,  83599,  71378, \
-           60428,  50647,  41945,  34246,  27478,  21581, \
-           16499,  12183,   8588,   5674,   3403,   1742, \
-           661,    130 }; \
-      UInt x0, x1, sign, expo, mant0, bIGENDIAN = 1; \
-      union { UInt w[2]; double d; } u; \
-      u.d   = x; \
-      x0    = u.w[1 - bIGENDIAN]; /* high half */ \
-      x1    = u.w[bIGENDIAN];  /* low half */ \
-      sign  = x0 >> 31; \
-      expo  = (x0 >> 20) & 0x7FF; \
-      mant0 = x0 & 0xFFFFF; \
-      if ( (sign == 0 && expo >= 1 && expo <= 0x7FE) /* +normal */ \
-           || (sign == 0 && expo == 0  \
-                         && (mant0 | x1) > 0) /* +denorm */) { \
-         /* common case; do Newton-Raphson */ \
-         /* technically k should be signed int32, but since we're \
-            always entering here with x > 0, doesn't matter that it's \
-            unsigned. */ \
-         double y; \
-         UInt k = (x0>>1) + 0x1ff80000; \
-         u.w[1 - bIGENDIAN] = k - T1[31&(k>>15)]; \
-         u.w[bIGENDIAN] = 0; \
-         y = u.d; \
-         y = (y+x/y)/2.0 ; \
-         y = (y+x/y)/2.0 ; \
-         y = y-(y-x/y)/2.0 ; \
-         return y; \
-      } \
-      if ( (sign == 1 && expo >= 1 && expo <= 0x7FE) /* -normal */ \
-           || (sign == 1 && expo == 0  \
-                         && (mant0 | x1) > 0) /* -denorm */) { \
-         u.w[1 - bIGENDIAN] = 0xFFF00000; \
-         u.w[bIGENDIAN] = 0x1; \
-         return u.d; /* -Inf -> NaN */ \
-      } \
-      if ((expo | mant0 | x1) == 0) \
-         return x; /* +/-zero -> self */ \
-      if (expo == 0x7FF && (mant0 | x1) == 0) { \
-         if (sign == 0) \
-            return x; /* +Inf -> self */ \
-         u.w[1 - bIGENDIAN] = 0xFFF00000; \
-         u.w[bIGENDIAN] = 0x1; \
-         return u.d; /* -Inf -> NaN */ \
-      } \
-      /* must be +/- NaN */ \
-      return x; /* +/-NaN -> self */ \
-   }
-
-#define SQRT_EXACT(soname, fnname) \
-   /* \
-    * ==================================================== \
-    * Copyright (C) 1993 by Sun Microsystems, Inc. All rights reserved. \
-    * \
-    * Developed at SunPro, a Sun Microsystems, Inc. business. \
-    * Permission to use, copy, modify, and distribute this \
-    * software is freely granted, provided that this notice \
-    * is preserved. \
-    * ==================================================== \
-    */ \
-   /* \
-    * Return correctly rounded sqrt. \
-    *           ------------------------------------------ \
-    *           |  Use the hardware sqrt if you have one | \
-    *           ------------------------------------------ \
-    * Method: \
-    *   Bit by bit method using integer arithmetic. (Slow, but portable) \
-    *   1. Normalization \
-    *      Scale x to y in [1,4) with even powers of 2: \
-    *      find an integer k such that  1 <= (y=x*2^(2k)) < 4, then \
-    *              sqrt(x) = 2^k * sqrt(y) \
-    *   2. Bit by bit computation \
-    *      Let q  = sqrt(y) truncated to i bit after binary point (q = 1), \
-    *           i                                                   0 \
-    *                                     i+1         2 \
-    *          s  = 2*q , and      y  =  2   * ( y - q  ).         (1) \
-    *           i      i            i                 i \
-    * \
-    *      To compute q    from q , one checks whether \
-    *                  i+1       i \
-    * \
-    *                            -(i+1) 2 \
-    *                      (q + 2      ) <= y.                     (2) \
-    *                        i \
-    *                                                            -(i+1) \
-    *      If (2) is false, then q   = q ; otherwise q   = q  + 2      . \
-    *                             i+1   i             i+1   i \
-    * \
-    *      With some algebric manipulation, it is not difficult to see \
-    *      that (2) is equivalent to \
-    *                             -(i+1) \
-    *                      s  +  2       <= y                      (3) \
-    *                       i                i \
-    * \
-    *      The advantage of (3) is that s  and y  can be computed by \
-    *                                    i      i \
-    *      the following recurrence formula: \
-    *          if (3) is false \
-    * \
-    *          s     =  s  ,       y    = y   ;                    (4) \
-    *           i+1      i          i+1    i \
-    * \
-    *          otherwise, \
-    *                         -i                     -(i+1) \
-    *          s     =  s  + 2  ,  y    = y  -  s  - 2             (5) \
-    *           i+1      i          i+1    i     i \
-    * \
-    * \
-    *      One may easily use induction to prove (4) and (5). \
-    *      Note. Since the left hand side of (3) contain only i+2 bits, \
-    *            it does not necessary to do a full (53-bit) comparison \
-    *            in (3). \
-    *   3. Final rounding \
-    *      After generating the 53 bits result, we compute one more bit. \
-    *      Together with the remainder, we can decide whether the \
-    *      result is exact, bigger than 1/2ulp, or less than 1/2ulp \
-    *      (it will never equal to 1/2ulp). \
-    *      The rounding mode can be detected by checking whether \
-    *      huge + tiny is equal to huge, and whether huge - tiny is \
-    *      equal to huge for some floating point number "huge" and "tiny". \
-    * \
-    * Special cases: \
-    *      sqrt(+-0) = +-0         ... exact \
-    *      sqrt(inf) = inf \
-    *      sqrt(-ve) = NaN         ... with invalid signal \
-    *      sqrt(NaN) = NaN         ... with invalid signal for signaling NaN \
-    * \
-    */ \
-   double VG_REPLACE_FUNCTION_ZU(soname,fnname)( double x ); \
-   double VG_REPLACE_FUNCTION_ZU(soname,fnname)( double x ) \
-   {  \
-      const Int    bIGENDIAN = 1; \
-      const double one = 1.0, tiny=1.0e-300; \
-      double z; \
-      Int sign = (Int)0x80000000; \
-      Int ix0,s0,q,m,t,i; \
-      UInt r,t1,s1,ix1,q1; \
-      union { UInt w[2]; double d; } u; \
-      u.d = x; \
-      ix0 = u.w[1-bIGENDIAN]; \
-      ix1 = u.w[bIGENDIAN];    \
-      \
-      /* take care of Inf and NaN */ \
-      if((ix0&0x7ff00000)==0x7ff00000) { \
-         return x*x+x;               /* sqrt(NaN)=NaN, sqrt(+inf)=+inf \
-                                        sqrt(-inf)=sNaN */ \
-      } \
-      /* take care of zero */ \
-      if(ix0<=0) { \
-         if(((ix0&(~sign))|ix1)==0) return x;/* sqrt(+-0) = +-0 */ \
-         else if(ix0<0) \
-              return (x-x)/(x-x);             /* sqrt(-ve) = sNaN */ \
-      } \
-      /* normalize x */ \
-      m = (ix0>>20); \
-      if(m==0) {                              /* subnormal x */ \
-         while(ix0==0) { \
-            m -= 21; \
-            ix0 |= (ix1>>11); ix1 <<= 21; \
-         } \
-         for(i=0;(ix0&0x00100000)==0;i++) ix0<<=1; \
-         m -= i-1; \
-         ix0 |= (ix1>>(32-i)); \
-         ix1 <<= i; \
-      } \
-      m -= 1023;      /* unbias exponent */ \
-      ix0 = (ix0&0x000fffff)|0x00100000; \
-      if(m&1){        /* odd m, double x to make it even */ \
-         ix0 += ix0 + ((ix1&sign)>>31); \
-         ix1 += ix1; \
-      } \
-      m >>= 1;        /* m = [m/2] */ \
-      /* generate sqrt(x) bit by bit */ \
-      ix0 += ix0 + ((ix1&sign)>>31); \
-      ix1 += ix1; \
-      q = q1 = s0 = s1 = 0;   /* [q,q1] = sqrt(x) */ \
-      r = 0x00200000;         /* r = moving bit from right to left */ \
-      while(r!=0) { \
-         t = s0+r; \
-         if(t<=ix0) { \
-            s0   = t+r; \
-            ix0 -= t; \
-            q   += r; \
-         } \
-         ix0 += ix0 + ((ix1&sign)>>31); \
-         ix1 += ix1; \
-         r>>=1; \
-      } \
-      r = sign; \
-      while(r!=0) { \
-         t1 = s1+r; \
-         t  = s0; \
-         if((t<ix0)||((t==ix0)&&(t1<=ix1))) { \
-            s1  = t1+r; \
-            if(((t1&sign)==sign)&&(s1&sign)==0) s0 += 1; \
-            ix0 -= t; \
-            if (ix1 < t1) ix0 -= 1; \
-            ix1 -= t1; \
-            q1  += r; \
-         } \
-         ix0 += ix0 + ((ix1&sign)>>31); \
-         ix1 += ix1; \
-         r>>=1; \
-      } \
-      /* use floating add to find out rounding direction */ \
-      if((ix0|ix1)!=0) { \
-         z = one-tiny; /* trigger inexact flag */ \
-         if (z>=one) { \
-            z = one+tiny; \
-            if (q1==(UInt)0xffffffff) { q1=0; q += 1;} \
-            else if (z>one) { \
-                    if (q1==(UInt)0xfffffffe) q+=1; \
-                    q1+=2; \
-                 } else \
-                    q1 += (q1&1); \
-         } \
-      } \
-      ix0 = (q>>1)+0x3fe00000; \
-      ix1 = q1>>1; \
-      if ((q&1)==1) ix1 |= sign; \
-      ix0 += (m <<20); \
-      ix0 = u.w[1-bIGENDIAN] = ix0; \
-      ix1 = u.w[bIGENDIAN] = ix1;    \
-      z = u.d; \
-      return z; \
-   }
-
-#if 0
-SQRT_FAST(NONE, sqrt)  /* xlC generates these */
-SQRT_FAST(NONE, _sqrt) /* xlf generates these */
-#else
-SQRT_EXACT(NONE, sqrt)  /* xlC generates these */
-SQRT_EXACT(NONE, _sqrt) /* xlf generates these */
-#endif
-
-#endif /* defined(VGP_ppc32_aix5) */
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

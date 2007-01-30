@@ -35,7 +35,6 @@
 */
 
 #include "pub_core_basics.h"
-#include "pub_core_vki.h"
 #include "pub_core_libcbase.h"
 #include "pub_core_libcprint.h"
 #include "pub_core_libcassert.h"
@@ -739,8 +738,8 @@ Addr open_debug_file( Char* name, UInt crc, UInt* size )
    if (fd.isError)
       return 0;
 
-   if (VG_(fstat)(fd.res, &stat_buf) != 0) {
-      VG_(close)(fd.res);
+   if (VG_(fstat)(fd.val, &stat_buf) != 0) {
+      VG_(close)(fd.val);
       return 0;
    }
 
@@ -750,23 +749,23 @@ Addr open_debug_file( Char* name, UInt crc, UInt* size )
    *size = stat_buf.st_size;
    
    sres = VG_(am_mmap_file_float_valgrind)
-             ( *size, VKI_PROT_READ, fd.res, 0 );
+             ( *size, VKI_PROT_READ, fd.val, 0 );
 
-   VG_(close)(fd.res);
+   VG_(close)(fd.val);
    
    if (sres.isError)
       return 0;
 
-   calccrc = calc_gnu_debuglink_crc32(0, (UChar*)sres.res, *size);
+   calccrc = calc_gnu_debuglink_crc32(0, (UChar*)sres.val, *size);
    if (calccrc != crc) {
-      SysRes res = VG_(am_munmap_valgrind)(sres.res, *size);
+      SysRes res = VG_(am_munmap_valgrind)(sres.val, *size);
       vg_assert(!res.isError);
       if (VG_(clo_verbosity) > 1)
 	 VG_(message)(Vg_DebugMsg, "... CRC mismatch (computed %08x wanted %08x)", calccrc, crc);
       return 0;
    }
    
-   return sres.res;
+   return sres.val;
 }
 
 /*
@@ -839,17 +838,17 @@ Bool ML_(read_elf_debug_info) ( struct _SegInfo* si )
       return False;
    }
 
-   n_oimage = VG_(fsize)(fd.res);
+   n_oimage = VG_(fsize)(fd.val);
    if (n_oimage < 0) {
       ML_(symerr)("Can't stat .so/.exe (to determine its size)?!");
-      VG_(close)(fd.res);
+      VG_(close)(fd.val);
       return False;
    }
 
    sres = VG_(am_mmap_file_float_valgrind)
-             ( n_oimage, VKI_PROT_READ, fd.res, 0 );
+             ( n_oimage, VKI_PROT_READ, fd.val, 0 );
 
-   VG_(close)(fd.res);
+   VG_(close)(fd.val);
 
    if (sres.isError) {
       VG_(message)(Vg_UserMsg, "warning: mmap failed on %s", si->filename );
@@ -857,7 +856,7 @@ Bool ML_(read_elf_debug_info) ( struct _SegInfo* si )
       return False;
    }
 
-   oimage = sres.res;
+   oimage = sres.val;
 
    if (0) {
       VG_(printf)("read_elf_debug_info: OIMAGE = %p - %p\n", 

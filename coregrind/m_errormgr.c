@@ -29,7 +29,6 @@
 */
 
 #include "pub_core_basics.h"
-#include "pub_core_vki.h"
 #include "pub_core_threadstate.h"      // For VG_N_THREADS
 #include "pub_core_debugger.h"
 #include "pub_core_debuginfo.h"
@@ -68,8 +67,7 @@
 static Error* errors = NULL;
 
 /* The list of suppression directives, as read from the specified
-   suppressions file.  Note that the list gets rearranged as a result
-   of the searches done by is_suppressible_error(). */
+   suppressions file. */
 static Supp* suppressions = NULL;
 
 /* Running count of unsuppressed errors detected. */
@@ -83,23 +81,12 @@ static Supp* is_suppressible_error ( Error* err );
 
 static ThreadId last_tid_printed = 1;
 
-/* Stats: number of searches of the error list initiated. */
-static UWord em_errlist_searches = 0;
-
-/* Stats: number of comparisons done during error list
-   searching. */
-static UWord em_errlist_cmps = 0;
-
-/* Stats: number of searches of the suppression list initiated. */
-static UWord em_supplist_searches = 0;
-
-/* Stats: number of comparisons done during suppression list
-   searching. */
-static UWord em_supplist_cmps = 0;
-
 /*------------------------------------------------------------*/
 /*--- Error type                                           ---*/
 /*------------------------------------------------------------*/
+
+/* Note: it is imperative this doesn't overlap with (0..) at all, as tools
+ * effectively extend it by defining their own enums in the (0..) range. */
 
 /* Errors.  Extensible (via the 'extra' field).  Tools can use a normal
    enum (with element values in the normal range (0..)) for 'ekind'. 
@@ -167,10 +154,7 @@ UInt VG_(get_n_errs_found)( void )
  * effectively extend it by defining their own enums in the (0..) range. */
 typedef
    enum {
-      // Nb: thread errors are a relic of the time when Valgrind's core
-      // could detect them.  This example is left commented-out as an
-      // example should new core errors ever be added.
-      ThreadSupp = -1,    /* Matches ThreadErr */
+      PThreadSupp = -1,    /* Matches PThreadErr */
    }
    CoreSuppKind;
 
@@ -269,10 +253,10 @@ static Bool eq_Error ( VgRes res, Error* e1, Error* e2 )
       return False;
 
    switch (e1->ekind) {
-      //(example code, see comment on CoreSuppKind above)
-      //case ThreadErr:
-      //   vg_assert(VG_(needs).core_errors);
-      //   return <something>
+     //      case ThreadErr:
+     //      case MutexErr:
+     //         vg_assert(VG_(needs).core_errors);
+     //         return VG_(tm_error_equal)(res, e1, e2);
       default: 
          if (VG_(needs).tool_errors) {
             return VG_TDICT_CALL(tool_eq_Error, res, e1, e2);
@@ -302,11 +286,11 @@ static void pp_Error ( Error* err )
    }
 
    switch (err->ekind) {
-      //(example code, see comment on CoreSuppKind above)
-      //case ThreadErr:
-      //   vg_assert(VG_(needs).core_errors);
-      //   VG_(tm_error_print)(err);
-      //   break;
+     //      case ThreadErr:
+     //      case MutexErr:
+     //         vg_assert(VG_(needs).core_errors);
+     //         VG_(tm_error_print)(err);
+     //         break;
       default: 
          if (VG_(needs).tool_errors)
             VG_TDICT_CALL( tool_pp_Error, err );
@@ -420,12 +404,10 @@ static void gen_suppression(Error* err)
    if (stop_at > VG_MAX_SUPP_CALLERS) stop_at = VG_MAX_SUPP_CALLERS;
    vg_assert(stop_at > 0);
 
-      //(example code, see comment on CoreSuppKind above)
-   if (0) {    
-   //if (0) ThreadErr == err->ekind) {
-   //   VG_(printf)("{\n");
-   //   VG_(printf)("   <insert a suppression name here>\n");
-   //   VG_(printf)("   core:Thread\n");
+   if (ThreadErr == err->ekind || MutexErr == err->ekind) {
+      VG_(printf)("{\n");
+      VG_(printf)("   <insert a suppression name here>\n");
+      VG_(printf)("   core:PThread\n");
 
    } else {
       Char* name = VG_TDICT_CALL(tool_get_error_name, err);
@@ -550,11 +532,9 @@ void VG_(maybe_record_error) ( ThreadId tid,
    construct_error ( &err, tid, ekind, a, s, extra, NULL );
 
    /* First, see if we've got an error record matching this one. */
-   em_errlist_searches++;
-   p       = errors;
-   p_prev  = NULL;
+   p      = errors;
+   p_prev = NULL;
    while (p != NULL) {
-      em_errlist_cmps++;
       if (eq_Error(exe_res, p, &err)) {
          /* Found it. */
          p->count++;
@@ -604,11 +584,11 @@ void VG_(maybe_record_error) ( ThreadId tid,
 
    /* update 'extra' */
    switch (ekind) {
-      //(example code, see comment on CoreSuppKind above)
-      //case ThreadErr:
-      //   vg_assert(VG_(needs).core_errors);
-      //   extra_size = <something>
-      //   break;
+     //      case ThreadErr:
+     //      case MutexErr:
+     //         vg_assert(VG_(needs).core_errors);
+     //         extra_size = VG_(tm_error_update_extra)(p);
+     //         break;
       default:
          vg_assert(VG_(needs).tool_errors);
          extra_size = VG_TDICT_CALL(tool_update_extra, p);
@@ -715,7 +695,7 @@ static Bool show_used_suppressions ( void )
                       "  </pair>", 
                       su->count, su->sname);
       } else {
-         VG_(message)(Vg_DebugMsg, "supp: %6d %s", su->count, su->sname);
+         VG_(message)(Vg_DebugMsg, "supp: %4d %s", su->count, su->sname);
       }
    }
 
@@ -841,34 +821,6 @@ void VG_(show_error_counts_as_XML) ( void )
 /*--- Standard suppressions                                ---*/
 /*------------------------------------------------------------*/
 
-/* Get the next char from fd into *out_buf.  Returns 1 if success,
-   0 if eof or < 0 if error. */
-
-static Int get_char ( Int fd, Char* out_buf )
-{
-   Int r;
-   static Char buf[64];
-   static Int buf_size = 0;
-   static Int buf_used = 0;
-   vg_assert(buf_size >= 0 && buf_size <= 64);
-   vg_assert(buf_used >= 0 && buf_used <= buf_size);
-   if (buf_used == buf_size) {
-      r = VG_(read)(fd, buf, 64);
-      if (r < 0) return r; /* read failed */
-      vg_assert(r >= 0 && r <= 64);
-      buf_size = r;
-      buf_used = 0;
-   }
-   if (buf_size == 0)
-     return 0; /* eof */
-   vg_assert(buf_size >= 0 && buf_size <= 64);
-   vg_assert(buf_used >= 0 && buf_used < buf_size);
-   *out_buf = buf[buf_used];
-   buf_used++;
-   return 1;
-}
-
-
 /* Get a non-blank, non-comment line of at most nBuf chars from fd.
    Skips leading spaces on the line. Return True if EOF was hit instead. 
 */
@@ -879,17 +831,17 @@ Bool VG_(get_line) ( Int fd, Char* buf, Int nBuf )
    while (True) {
       /* First, read until a non-blank char appears. */
       while (True) {
-         n = get_char(fd, &ch);
+         n = VG_(read)(fd, &ch, 1);
          if (n == 1 && !VG_(isspace)(ch)) break;
-         if (n <= 0) return True;
+         if (n == 0) return True;
       }
 
       /* Now, read the line into buf. */
       i = 0;
       buf[i++] = ch; buf[i] = 0;
       while (True) {
-         n = get_char(fd, &ch);
-         if (n <= 0) return False; /* the next call will return True */
+         n = VG_(read)(fd, &ch, 1);
+         if (n == 0) return False; /* the next call will return True */
          if (ch == '\n') break;
          if (i > 0 && i == nBuf-1) i--;
          buf[i++] = ch; buf[i] = 0;
@@ -971,7 +923,7 @@ static void load_one_suppressions_file ( Char* filename )
                    filename );
       VG_(exit)(1);
    }
-   fd = sres.res;
+   fd = sres.val;
 
 #  define BOMB(S)  { err_str = S;  goto syntax_error; }
 
@@ -1019,10 +971,9 @@ static void load_one_suppressions_file ( Char* filename )
       if (VG_(needs).core_errors && tool_name_present("core", tool_names))
       {
          // A core suppression
-         //(example code, see comment on CoreSuppKind above)
-         //if (VG_STREQ(supp_name, "Thread"))
-         //   supp->skind = ThreadSupp;
-         //else
+         if (VG_STREQ(supp_name, "PThread"))
+            supp->skind = PThreadSupp;
+         else
             BOMB("unknown core suppression type");
       }
       else if (VG_(needs).tool_errors && 
@@ -1127,9 +1078,8 @@ static
 Bool supp_matches_error(Supp* su, Error* err)
 {
    switch (su->skind) {
-      //(example code, see comment on CoreSuppKind above)
-      //case ThreadSupp:
-      //   return (err->ekind == ThreadErr);
+      case PThreadSupp:
+         return (err->ekind == ThreadErr || err->ekind == MutexErr);
       default:
          if (VG_(needs).tool_errors) {
             return VG_TDICT_CALL(tool_error_matches_suppression, err, su);
@@ -1190,43 +1140,16 @@ Bool supp_matches_callers(Error* err, Supp* su)
 static Supp* is_suppressible_error ( Error* err )
 {
    Supp* su;
-   Supp* su_prev;
-
-   /* stats gathering */
-   em_supplist_searches++;
 
    /* See if the error context matches any suppression. */
-   su_prev = NULL;
    for (su = suppressions; su != NULL; su = su->next) {
-      em_supplist_cmps++;
-      if (supp_matches_error(su, err) && supp_matches_callers(err, su)) {
-         /* got a match.  Move this entry to the head of the list
-            in the hope of making future searches cheaper. */
-         if (su_prev) {
-            vg_assert(su_prev->next == su);
-            su_prev->next = su->next;
-            su->next = suppressions;
-            suppressions = su;
-         }
+      if (supp_matches_error(su, err) &&
+          supp_matches_callers(err, su))
+      {
          return su;
       }
-      su_prev = su;
    }
    return NULL;      /* no matches */
-}
-
-/* Show accumulated error-list and suppression-list search stats. 
-*/
-void VG_(print_errormgr_stats) ( void )
-{
-   VG_(message)(Vg_DebugMsg, 
-      " errormgr: %,lu supplist searches, %,lu comparisons during search",
-      em_supplist_searches, em_supplist_cmps
-   );
-   VG_(message)(Vg_DebugMsg, 
-      " errormgr: %,lu errlist searches, %,lu comparisons during search",
-      em_errlist_searches, em_errlist_cmps
-   );
 }
 
 /*--------------------------------------------------------------------*/

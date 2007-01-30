@@ -3,16 +3,16 @@
 include $(top_srcdir)/Makefile.flags.am
 
 SUBDIRS = .
-if VGP_X86_LINUX
+if VG_X86_LINUX
 SUBDIRS += x86
 endif
-if VGP_AMD64_LINUX
+if VG_AMD64_LINUX
 SUBDIRS += amd64
 endif
-if VGP_PPC32_LINUX
+if VG_PPC32_LINUX
 SUBDIRS += ppc32
 endif
-if VGP_PPC64_LINUX
+if VG_PPC64_LINUX
 SUBDIRS += ppc64
 endif
 
@@ -54,18 +54,10 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	inline.stderr.exp inline.stdout.exp inline.vgtest \
 	leak-0.vgtest leak-0.stderr.exp \
 	leak-cycle.vgtest leak-cycle.stderr.exp leak-cycle.stderr.exp64 \
-	leak-pool-0.vgtest leak-pool-0.stderr.exp leak-pool-0.stderr.exp64 \
-	leak-pool-1.vgtest leak-pool-1.stderr.exp leak-pool-1.stderr.exp64 \
-	leak-pool-2.vgtest leak-pool-2.stderr.exp leak-pool-2.stderr.exp64 \
-	leak-pool-3.vgtest leak-pool-3.stderr.exp leak-pool-3.stderr.exp64 \
-	leak-pool-4.vgtest leak-pool-4.stderr.exp leak-pool-4.stderr.exp64 \
-	leak-pool-5.vgtest leak-pool-5.stderr.exp leak-pool-5.stderr.exp64 \
 	leak-tree.vgtest leak-tree.stderr.exp \
 	leak-tree.stderr.exp2 leak-tree.stderr.exp64 \
 	leak-regroot.vgtest leak-regroot.stderr.exp \
 	leakotron.vgtest leakotron.stdout.exp leakotron.stderr.exp \
-	long_namespace_xml.vgtest long_namespace_xml.stdout.exp \
-	long_namespace_xml.stderr.exp \
 	malloc_usable.stderr.exp malloc_usable.vgtest \
 	malloc1.stderr.exp malloc1.vgtest \
 	malloc2.stderr.exp malloc2.vgtest \
@@ -154,8 +146,7 @@ check_PROGRAMS = \
 	describe-block \
 	doublefree error_counts errs1 exitprog execve execve2 erringfds \
 	fprw fwrite hello inits inline \
-	leak-0 leak-cycle leak-pool leak-tree leak-regroot leakotron \
-	long_namespace_xml \
+	leak-0 leak-cycle leak-tree leak-regroot leakotron \
 	malloc_usable malloc1 malloc2 malloc3 manuel1 manuel2 manuel3 \
 	match-overrun \
 	memalign_test memalign2 memcmptest mempool mmaptest \
@@ -208,58 +199,20 @@ mismatches_SOURCES	= mismatches.cpp
 new_nothrow_SOURCES 	= new_nothrow.cpp
 new_override_SOURCES 	= new_override.cpp
 deep_templates_SOURCES	= deep_templates.cpp
-long_namespace_xml_SOURCES = long_namespace_xml.cpp
 deep_templates_CXXFLAGS	= $(AM_FLAG_M3264_PRI) $(AM_CFLAGS) -O -gstabs
-
-if VGP_PPC32_AIX5
-if VGP_PPC64_AIX5
-else
- # persuade the AIX linker not to junk apparently unused
- # function descriptors.  Unfortunately -Wl,-G -Wl,-bnogc
- # produces a link error on 64-bit AIX, hence only 32-bit
- # gets these flags.
- wrap1_LDFLAGS		= $(AM_FLAG_M3264_PRI) -Wl,-G -Wl,-bnogc
- wrap2_LDFLAGS		= $(AM_FLAG_M3264_PRI) -Wl,-G -Wl,-bnogc
- wrap3_LDFLAGS		= $(AM_FLAG_M3264_PRI) -Wl,-G -Wl,-bnogc
- wrap4_LDFLAGS		= $(AM_FLAG_M3264_PRI) -Wl,-G -Wl,-bnogc
- wrap5_LDFLAGS		= $(AM_FLAG_M3264_PRI) -Wl,-G -Wl,-bnogc
- wrap6_LDFLAGS		= $(AM_FLAG_M3264_PRI) -Wl,-G -Wl,-bnogc
- wrap8_LDFLAGS		= $(AM_FLAG_M3264_PRI) -Wl,-G -Wl,-bnogc
-endif
-endif
 
 # Build shared object for wrap7
 wrap7_SOURCES           = wrap7.c
 wrap7_DEPENDENCIES      = wrap7so.so
-if VGP_PPC64_AIX5 
- wrap7_LDADD            = `pwd`/wrap7so.so
- wrap7_LDFLAGS          = $(AM_FLAG_M3264_PRI)
-else
-if VGP_PPC32_AIX5
- wrap7_LDADD            = `pwd`/wrap7so.so
- wrap7_LDFLAGS          = $(AM_FLAG_M3264_PRI) -Wl,-G -Wl,-bnogc
-else
- wrap7_LDADD            = wrap7so.so
- wrap7_LDFLAGS          = $(AM_FLAG_M3264_PRI) \
+wrap7_LDFLAGS           = $(AM_FLAG_M3264_PRI) \
 				-Wl,-rpath,$(top_builddir)/memcheck/tests
-endif
-endif
-
+wrap7_LDADD             = wrap7so.so
 wrap7so_so_SOURCES      = wrap7so.c
 wrap7so_so_LDADD        = 
 wrap7so_so_DEPENDENCIES = 
+wrap7so_so_LDFLAGS      = -fpic $(AM_FLAG_M3264_PRI) \
+				-Wl,-soname -Wl,wrap7so.so -shared
 wrap7so_so_CFLAGS       = -fpic $(AM_FLAG_M3264_PRI)
-if VGP_PPC64_AIX5
- wrap7so_so_LDFLAGS     = -fpic $(AM_FLAG_M3264_PRI) -shared
-else
-if VGP_PPC32_AIX5
- wrap7so_so_LDFLAGS     = -fpic $(AM_FLAG_M3264_PRI) -shared \
-				-Wl,-G -Wl,-bnogc
-else
- wrap7so_so_LDFLAGS     = -fpic $(AM_FLAG_M3264_PRI) -shared \
-				-Wl,-soname -Wl,wrap7so.so
-endif
-endif
 
 # Valgrind unit self-tests
 #hello_LDFLAGS		= -Wl,-defsym,valt_load_address=0x50000000 \

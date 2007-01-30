@@ -69,9 +69,8 @@ static IRExpr* expr2vbits ( struct _MCEnv* mce, IRExpr* e );
 /* Carries around state during memcheck instrumentation. */
 typedef
    struct _MCEnv {
-      /* MODIFIED: the superblock being constructed.  IRStmts are
-         added. */
-      IRSB* bb;
+      /* MODIFIED: the bb being constructed.  IRStmts are added. */
+      IRBB* bb;
 
       /* MODIFIED: a table [0 .. #temps_in_original_bb-1] which maps
          original temps to their current their current shadow temp.
@@ -91,7 +90,6 @@ typedef
       /* READONLY: the guest layout.  This indicates which parts of
          the guest state should be regarded as 'always defined'. */
       VexGuestLayout* layout;
-
       /* READONLY: the host word type.  Needed for constructing
          arguments of type 'HWord' to be passed to helper functions.
          Ity_I32 or Ity_I64 only. */
@@ -118,7 +116,7 @@ typedef
    that, and the tmpMap is updated to reflect the new binding.
 
    A corollary is that if the tmpMap maps a given tmp to
-   IRTemp_INVALID and we are hoping to read that shadow tmp, it means
+   INVALID_IRTEMP and we are hoping to read that shadow tmp, it means
    there's a read-before-write error in the original tmps.  The IR
    sanity checker should catch all such anomalies, however.  
 */
@@ -170,7 +168,7 @@ static Bool isOriginalAtom ( MCEnv* mce, IRAtom* a1 )
 {
    if (a1->tag == Iex_Const)
       return True;
-   if (a1->tag == Iex_RdTmp && a1->Iex.RdTmp.tmp < mce->n_originalTmps)
+   if (a1->tag == Iex_Tmp && a1->Iex.Tmp.tmp < mce->n_originalTmps)
       return True;
    return False;
 }
@@ -181,7 +179,7 @@ static Bool isShadowAtom ( MCEnv* mce, IRAtom* a1 )
 {
    if (a1->tag == Iex_Const)
       return True;
-   if (a1->tag == Iex_RdTmp && a1->Iex.RdTmp.tmp >= mce->n_originalTmps)
+   if (a1->tag == Iex_Tmp && a1->Iex.Tmp.tmp >= mce->n_originalTmps)
       return True;
    return False;
 }
@@ -190,7 +188,7 @@ static Bool isShadowAtom ( MCEnv* mce, IRAtom* a1 )
    are identically-kinded. */
 static Bool sameKindedAtoms ( IRAtom* a1, IRAtom* a2 )
 {
-   if (a1->tag == Iex_RdTmp && a2->tag == Iex_RdTmp)
+   if (a1->tag == Iex_Tmp && a2->tag == Iex_Tmp)
       return True;
    if (a1->tag == Iex_Const && a2->tag == Iex_Const)
       return True;
@@ -234,7 +232,7 @@ static IRExpr* definedOfType ( IRType ty ) {
       case Ity_I32:  return IRExpr_Const(IRConst_U32(0));
       case Ity_I64:  return IRExpr_Const(IRConst_U64(0));
       case Ity_V128: return IRExpr_Const(IRConst_V128(0x0000));
-      default:       VG_(tool_panic)("memcheck:definedOfType");
+      default:      VG_(tool_panic)("memcheck:definedOfType");
    }
 }
 
@@ -245,11 +243,11 @@ static IRExpr* definedOfType ( IRType ty ) {
 
 /* assign value to tmp */
 #define assign(_bb,_tmp,_expr)   \
-   addStmtToIRSB((_bb), IRStmt_WrTmp((_tmp),(_expr)))
+   addStmtToIRBB((_bb), IRStmt_Tmp((_tmp),(_expr)))
 
 /* add stmt to a bb */
 #define stmt(_bb,_stmt)    \
-   addStmtToIRSB((_bb), (_stmt))
+   addStmtToIRBB((_bb), (_stmt))
 
 /* build various kinds of expressions */
 #define binop(_op, _arg1, _arg2) IRExpr_Binop((_op),(_arg1),(_arg2))
@@ -259,7 +257,7 @@ static IRExpr* definedOfType ( IRType ty ) {
 #define mkU32(_n)                IRExpr_Const(IRConst_U32(_n))
 #define mkU64(_n)                IRExpr_Const(IRConst_U64(_n))
 #define mkV128(_n)               IRExpr_Const(IRConst_V128(_n))
-#define mkexpr(_tmp)             IRExpr_RdTmp((_tmp))
+#define mkexpr(_tmp)             IRExpr_Tmp((_tmp))
 
 /* bind the given expression to a new temporary, and return the
    temporary.  This effectively converts an arbitrary expression into
@@ -901,10 +899,10 @@ static void complainIfUndefined ( MCEnv* mce, IRAtom* atom )
       getting a new value. */
    tl_assert(isIRAtom(vatom));
    /* sameKindedAtoms ... */
-   if (vatom->tag == Iex_RdTmp) {
-      tl_assert(atom->tag == Iex_RdTmp);
-      newShadowTmp(mce, atom->Iex.RdTmp.tmp);
-      assign(mce->bb, findShadowTmp(mce, atom->Iex.RdTmp.tmp), 
+   if (vatom->tag == Iex_Tmp) {
+      tl_assert(atom->tag == Iex_Tmp);
+      newShadowTmp(mce, atom->Iex.Tmp.tmp);
+      assign(mce->bb, findShadowTmp(mce, atom->Iex.Tmp.tmp), 
                       definedOfType(ty));
    }
 }
@@ -989,8 +987,7 @@ void do_shadow_PUT ( MCEnv* mce,  Int offset,
 */
 static
 void do_shadow_PUTI ( MCEnv* mce, 
-                      IRRegArray* descr, 
-                      IRAtom* ix, Int bias, IRAtom* atom )
+                      IRArray* descr, IRAtom* ix, Int bias, IRAtom* atom )
 {
    IRAtom* vatom;
    IRType  ty, tyS;
@@ -1018,9 +1015,9 @@ void do_shadow_PUTI ( MCEnv* mce,
    } else {
       /* Do a cloned version of the Put that refers to the shadow
          area. */
-      IRRegArray* new_descr 
-         = mkIRRegArray( descr->base + mce->layout->total_sizeB, 
-                         tyS, descr->nElems);
+      IRArray* new_descr 
+         = mkIRArray( descr->base + mce->layout->total_sizeB, 
+                      tyS, descr->nElems);
       stmt( mce->bb, IRStmt_PutI( new_descr, ix, bias, vatom ));
    }
 }
@@ -1049,8 +1046,7 @@ IRExpr* shadow_GET ( MCEnv* mce, Int offset, IRType ty )
    given GETI (passed in in pieces). 
 */
 static
-IRExpr* shadow_GETI ( MCEnv* mce, 
-                      IRRegArray* descr, IRAtom* ix, Int bias )
+IRExpr* shadow_GETI ( MCEnv* mce, IRArray* descr, IRAtom* ix, Int bias )
 {
    IRType ty   = descr->elemTy;
    IRType tyS  = shadowType(ty);
@@ -1064,9 +1060,9 @@ IRExpr* shadow_GETI ( MCEnv* mce,
    } else {
       /* return a cloned version of the Get that refers to the shadow
          area. */
-      IRRegArray* new_descr 
-         = mkIRRegArray( descr->base + mce->layout->total_sizeB, 
-                         tyS, descr->nElems);
+      IRArray* new_descr 
+         = mkIRArray( descr->base + mce->layout->total_sizeB, 
+                      tyS, descr->nElems);
       return IRExpr_GetI( new_descr, ix, bias );
    }
 }
@@ -2638,8 +2634,8 @@ IRExpr* expr2vbits ( MCEnv* mce, IRExpr* e )
          return shadow_GETI( mce, e->Iex.GetI.descr, 
                                   e->Iex.GetI.ix, e->Iex.GetI.bias );
 
-      case Iex_RdTmp:
-         return IRExpr_RdTmp( findShadowTmp(mce, e->Iex.RdTmp.tmp) );
+      case Iex_Tmp:
+         return IRExpr_Tmp( findShadowTmp(mce, e->Iex.Tmp.tmp) );
 
       case Iex_Const:
          return definedOfType(shadowType(typeOfIRExpr(mce->bb->tyenv, e)));
@@ -3131,7 +3127,7 @@ static Bool isBogusAtom ( IRAtom* at )
    ULong n = 0;
    IRConst* con;
    tl_assert(isIRAtom(at));
-   if (at->tag == Iex_RdTmp)
+   if (at->tag == Iex_Tmp)
       return False;
    tl_assert(at->tag == Iex_Const);
    con = at->Iex.Const.con;
@@ -3163,11 +3159,11 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
    IRExpr*  e;
    IRDirty* d;
    switch (st->tag) {
-      case Ist_WrTmp:
-         e = st->Ist.WrTmp.data;
+      case Ist_Tmp:
+         e = st->Ist.Tmp.data;
          switch (e->tag) {
             case Iex_Get:
-            case Iex_RdTmp:
+            case Iex_Tmp:
                return False;
             case Iex_Const:
                return isBogusAtom(e);
@@ -3235,8 +3231,8 @@ static Bool checkForBogusLiterals ( /*FLAT*/ IRStmt* st )
 }
 
 
-IRSB* MC_(instrument) ( VgCallbackClosure* closure,
-                        IRSB* bb_in, 
+IRBB* MC_(instrument) ( VgCallbackClosure* closure,
+                        IRBB* bb_in, 
                         VexGuestLayout* layout, 
                         VexGuestExtents* vge,
                         IRType gWordTy, IRType hWordTy )
@@ -3246,7 +3242,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    Int     i, j, first_stmt;
    IRStmt* st;
    MCEnv   mce;
-   IRSB*   bb;
+   IRBB*   bb;
 
    if (gWordTy != hWordTy) {
       /* We don't currently support this case. */
@@ -3261,8 +3257,11 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
    tl_assert(sizeof(UInt)  == 4);
    tl_assert(sizeof(Int)   == 4);
 
-   /* Set up SB */
-   bb = deepCopyIRSBExceptStmts(bb_in);
+   /* Set up BB */
+   bb           = emptyIRBB();
+   bb->tyenv    = dopyIRTypeEnv(bb_in->tyenv);
+   bb->next     = dopyIRExpr(bb_in->next);
+   bb->jumpkind = bb_in->jumpkind;
 
    /* Set up the running environment.  Only .bb is modified as we go
       along. */
@@ -3283,7 +3282,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
    bogus = False;
 
-   for (i = 0; i < bb_in->stmts_used; i++) {
+   for (i = 0; i <  bb_in->stmts_used; i++) {
 
       st = bb_in->stmts[i];
       tl_assert(st);
@@ -3302,63 +3301,9 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
    mce.bogusLiterals = bogus;
 
-   /* Copy verbatim any IR preamble preceding the first IMark */
+   /* Iterate over the stmts to generate instrumentation. */
 
-   tl_assert(mce.bb == bb);
-
-   i = 0;
-   while (i < bb_in->stmts_used && bb_in->stmts[i]->tag != Ist_IMark) {
-
-      st = bb_in->stmts[i];
-      tl_assert(st);
-      tl_assert(isFlatIRStmt(st));
-
-      addStmtToIRSB( bb, bb_in->stmts[i] );
-      i++;
-   }
-
-   /* Nasty problem.  IR optimisation of the pre-instrumented IR may
-      cause the IR following the preamble to contain references to IR
-      temporaries defined in the preamble.  Because the preamble isn't
-      instrumented, these temporaries don't have any shadows.
-      Nevertheless uses of them following the preamble will cause
-      memcheck to generate references to their shadows.  End effect is
-      to cause IR sanity check failures, due to references to
-      non-existent shadows.  This is only evident for the complex
-      preambles used for function wrapping on TOC-afflicted platforms
-      (ppc64-linux, ppc32-aix5, ppc64-aix5).
-
-      The following loop therefore scans the preamble looking for
-      assignments to temporaries.  For each one found it creates an
-      assignment to the corresponding shadow temp, marking it as
-      'defined'.  This is the same resulting IR as if the main
-      instrumentation loop before had been applied to the statement
-      'tmp = CONSTANT'.
-   */
-   for (j = 0; j < i; j++) {
-      if (bb_in->stmts[j]->tag == Ist_WrTmp) {
-         /* findShadowTmp checks its arg is an original tmp;
-            no need to assert that here. */
-         IRTemp tmp_o = bb_in->stmts[j]->Ist.WrTmp.tmp;
-         IRTemp tmp_s = findShadowTmp(&mce, tmp_o);
-         IRType ty_s  = typeOfIRTemp(bb->tyenv, tmp_s);
-         assign( bb, tmp_s, definedOfType( ty_s ) );
-         if (0) {
-            VG_(printf)("create shadow tmp for preamble tmp [%d] ty ", j);
-            ppIRType( ty_s );
-            VG_(printf)("\n");
-         }
-      }
-   }
-
-   /* Iterate over the remaining stmts to generate instrumentation. */
-
-   tl_assert(bb_in->stmts_used > 0);
-   tl_assert(i >= 0);
-   tl_assert(i < bb_in->stmts_used);
-   tl_assert(bb_in->stmts[i]->tag == Ist_IMark);
-
-   for (/* use current i*/; i <  bb_in->stmts_used; i++) {
+   for (i = 0; i <  bb_in->stmts_used; i++) {
 
       st = bb_in->stmts[i];
       first_stmt = bb->stmts_used;
@@ -3372,9 +3317,9 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
 
       switch (st->tag) {
 
-         case Ist_WrTmp:
-            assign( bb, findShadowTmp(&mce, st->Ist.WrTmp.tmp), 
-                        expr2vbits( &mce, st->Ist.WrTmp.data) );
+         case Ist_Tmp:
+            assign( bb, findShadowTmp(&mce, st->Ist.Tmp.tmp), 
+                        expr2vbits( &mce, st->Ist.Tmp.data) );
             break;
 
          case Ist_Put:
@@ -3434,7 +3379,7 @@ IRSB* MC_(instrument) ( VgCallbackClosure* closure,
       }
 
       /* ... and finally copy the stmt itself to the output. */
-      addStmtToIRSB(bb, st);
+      addStmtToIRBB(bb, st);
 
    }
 

@@ -41,7 +41,6 @@
 #include "pub_tool_replacemalloc.h"
 #include "pub_tool_threadstate.h"
 #include "pub_tool_tooliface.h"     // Needed for mc_include.h
-#include "pub_tool_stacktrace.h"    // For VG_(get_and_pp_StackTrace)
 
 #include "mc_include.h"
 
@@ -53,10 +52,6 @@
 static SizeT cmalloc_n_mallocs  = 0;
 static SizeT cmalloc_n_frees    = 0;
 static SizeT cmalloc_bs_mallocd = 0;
-
-/* For debug printing to do with mempools: what stack trace
-   depth to show. */
-#define MEMPOOL_DEBUG_STACKTRACE_DEPTH 16
 
 
 /*------------------------------------------------------------*/
@@ -82,12 +77,12 @@ static void add_to_freed_queue ( MC_Chunk* mc )
    if (freed_list_end == NULL) {
       tl_assert(freed_list_start == NULL);
       freed_list_end    = freed_list_start = mc;
-      freed_list_volume = mc->szB;
+      freed_list_volume = mc->size;
    } else {
       tl_assert(freed_list_end->next == NULL);
       freed_list_end->next = mc;
       freed_list_end       = mc;
-      freed_list_volume += mc->szB;
+      freed_list_volume += mc->size;
    }
    mc->next = NULL;
 
@@ -101,7 +96,7 @@ static void add_to_freed_queue ( MC_Chunk* mc )
       tl_assert(freed_list_end != NULL);
 
       mc1 = freed_list_start;
-      freed_list_volume -= mc1->szB;
+      freed_list_volume -= mc1->size;
       /* VG_(printf)("volume now %d\n", freed_list_volume); */
       tl_assert(freed_list_volume >= 0);
 
@@ -125,12 +120,12 @@ MC_Chunk* MC_(get_freed_list_head)(void)
 
 /* Allocate its shadow chunk, put it on the appropriate list. */
 static
-MC_Chunk* create_MC_Chunk ( ThreadId tid, Addr p, SizeT szB,
+MC_Chunk* create_MC_Chunk ( ThreadId tid, Addr p, SizeT size,
                             MC_AllocKind kind)
 {
    MC_Chunk* mc  = VG_(malloc)(sizeof(MC_Chunk));
    mc->data      = p;
-   mc->szB       = szB;
+   mc->size      = size;
    mc->allockind = kind;
    mc->where     = VG_(record_ExeContext)(tid);
 
@@ -174,7 +169,7 @@ static Bool complain_about_silly_args2(SizeT n, SizeT sizeB)
 /* Allocate memory and note change in memory available */
 __inline__
 void* MC_(new_block) ( ThreadId tid,
-                        Addr p, SizeT szB, SizeT alignB, UInt rzB,
+                        Addr p, SizeT size, SizeT align, UInt rzB,
                         Bool is_zeroed, MC_AllocKind kind, VgHashTable table)
 {
    cmalloc_n_mallocs ++;
@@ -184,22 +179,22 @@ void* MC_(new_block) ( ThreadId tid,
       tl_assert(MC_AllocCustom == kind);
    } else {
       tl_assert(MC_AllocCustom != kind);
-      p = (Addr)VG_(cli_malloc)( alignB, szB );
+      p = (Addr)VG_(cli_malloc)( align, size );
       if (!p) {
          return NULL;
       }
-      if (is_zeroed) VG_(memset)((void*)p, 0, szB);
+      if (is_zeroed) VG_(memset)((void*)p, 0, size);
    }
 
    // Only update this stat if allocation succeeded.
-   cmalloc_bs_mallocd += szB;
+   cmalloc_bs_mallocd += size;
 
-   VG_(HT_add_node)( table, create_MC_Chunk(tid, p, szB, kind) );
+   VG_(HT_add_node)( table, create_MC_Chunk(tid, p, size, kind) );
 
    if (is_zeroed)
-      MC_(make_mem_defined)( p, szB );
+      MC_(make_mem_defined)( p, size );
    else
-      MC_(make_mem_undefined)( p, szB );
+      MC_(make_mem_undefined)( p, size );
 
    return (void*)p;
 }
@@ -237,12 +232,12 @@ void* MC_(__builtin_vec_new) ( ThreadId tid, SizeT n )
    }
 }
 
-void* MC_(memalign) ( ThreadId tid, SizeT alignB, SizeT n )
+void* MC_(memalign) ( ThreadId tid, SizeT align, SizeT n )
 {
    if (complain_about_silly_args(n, "memalign")) {
       return NULL;
    } else {
-      return MC_(new_block) ( tid, 0, n, alignB, 
+      return MC_(new_block) ( tid, 0, n, align, 
          MC_MALLOC_REDZONE_SZB, /*is_zeroed*/False, MC_AllocMalloc,
          MC_(malloc_list));
    }
@@ -264,7 +259,7 @@ void die_and_free_mem ( ThreadId tid, MC_Chunk* mc, SizeT rzB )
 {
    /* Note: make redzones noaccess again -- just in case user made them
       accessible with a client request... */
-   MC_(make_mem_noaccess)( mc->data-rzB, mc->szB + 2*rzB );
+   MC_(make_mem_noaccess)( mc->data-rzB, mc->size + 2*rzB );
 
    /* Put it out of harm's way for a while, if not from a client request */
    if (MC_AllocCustom != mc->allockind) {
@@ -289,8 +284,7 @@ void MC_(handle_free) ( ThreadId tid, Addr p, UInt rzB, MC_AllocKind kind )
    } else {
       /* check if it is a matching free() / delete / delete [] */
       if (kind != mc->allockind) {
-         tl_assert(p == mc->data);
-         MC_(record_freemismatch_error) ( tid, mc );
+         MC_(record_freemismatch_error) ( tid, p, mc );
       }
       die_and_free_mem ( tid, mc, rzB );
    }
@@ -314,17 +308,17 @@ void MC_(__builtin_vec_delete) ( ThreadId tid, void* p )
       tid, (Addr)p, MC_MALLOC_REDZONE_SZB, MC_AllocNewVec);
 }
 
-void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
+void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_size )
 {
    MC_Chunk* mc;
    void*     p_new;
-   SizeT     old_szB;
+   SizeT     old_size;
 
    cmalloc_n_frees ++;
    cmalloc_n_mallocs ++;
-   cmalloc_bs_mallocd += new_szB;
+   cmalloc_bs_mallocd += new_size;
 
-   if (complain_about_silly_args(new_szB, "realloc")) 
+   if (complain_about_silly_args(new_size, "realloc")) 
       return NULL;
 
    /* Remove the old block */
@@ -338,39 +332,38 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
    /* check if its a matching free() / delete / delete [] */
    if (MC_AllocMalloc != mc->allockind) {
       /* can not realloc a range that was allocated with new or new [] */
-      tl_assert((Addr)p_old == mc->data);
-      MC_(record_freemismatch_error) ( tid, mc );
+      MC_(record_freemismatch_error) ( tid, (Addr)p_old, mc );
       /* but keep going anyway */
    }
 
-   old_szB = mc->szB;
+   old_size = mc->size;
 
-   if (old_szB == new_szB) {
+   if (old_size == new_size) {
       /* size unchanged */
       mc->where = VG_(record_ExeContext)(tid);
       p_new = p_old;
       
-   } else if (old_szB > new_szB) {
+   } else if (old_size > new_size) {
       /* new size is smaller */
-      MC_(make_mem_noaccess)( mc->data+new_szB, mc->szB-new_szB );
-      mc->szB = new_szB;
+      MC_(make_mem_noaccess)( mc->data+new_size, mc->size-new_size );
+      mc->size = new_size;
       mc->where = VG_(record_ExeContext)(tid);
       p_new = p_old;
 
    } else {
       /* new size is bigger */
       /* Get new memory */
-      Addr a_new = (Addr)VG_(cli_malloc)(VG_(clo_alignment), new_szB);
+      Addr a_new = (Addr)VG_(cli_malloc)(VG_(clo_alignment), new_size);
 
       if (a_new) {
          /* First half kept and copied, second half new, red zones as normal */
          MC_(make_mem_noaccess)( a_new-MC_MALLOC_REDZONE_SZB, MC_MALLOC_REDZONE_SZB );
-         MC_(copy_address_range_state)( (Addr)p_old, a_new, mc->szB );
-         MC_(make_mem_undefined)( a_new+mc->szB, new_szB-mc->szB );
-         MC_(make_mem_noaccess) ( a_new+new_szB, MC_MALLOC_REDZONE_SZB );
+         MC_(copy_address_range_state)( (Addr)p_old, a_new, mc->size );
+         MC_(make_mem_undefined)( a_new+mc->size, new_size-mc->size );
+         MC_(make_mem_noaccess) ( a_new+new_size, MC_MALLOC_REDZONE_SZB );
 
          /* Copy from old to new */
-         VG_(memcpy)((void*)a_new, p_old, mc->szB);
+         VG_(memcpy)((void*)a_new, p_old, mc->size);
 
          /* Free old memory */
          /* Nb: we have to allocate a new MC_Chunk for the new memory rather
@@ -379,7 +372,7 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
          die_and_free_mem ( tid, mc, MC_MALLOC_REDZONE_SZB );
 
          // Allocate a new chunk.
-         mc = create_MC_Chunk( tid, a_new, new_szB, MC_AllocMalloc );
+         mc = create_MC_Chunk( tid, a_new, new_size, MC_AllocMalloc );
       }
 
       p_new = (void*)a_new;
@@ -399,21 +392,7 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
 
 void MC_(create_mempool)(Addr pool, UInt rzB, Bool is_zeroed)
 {
-   MC_Mempool* mp;
-
-   if (VG_(clo_verbosity) > 2) {
-      VG_(message)(Vg_UserMsg, "create_mempool(%p, %d, %d)", 
-                               pool, rzB, is_zeroed);
-      VG_(get_and_pp_StackTrace)
-         (VG_(get_running_tid)(), MEMPOOL_DEBUG_STACKTRACE_DEPTH);
-   }
-
-   mp = VG_(HT_lookup)(MC_(mempool_list), (UWord)pool);
-   if (mp != NULL) {
-     VG_(tool_panic)("MC_(create_mempool): duplicate pool creation");
-   }
-   
-   mp = VG_(malloc)(sizeof(MC_Mempool));
+   MC_Mempool* mp = VG_(malloc)(sizeof(MC_Mempool));
    mp->pool       = pool;
    mp->rzB        = rzB;
    mp->is_zeroed  = is_zeroed;
@@ -436,12 +415,6 @@ void MC_(destroy_mempool)(Addr pool)
    MC_Chunk*   mc;
    MC_Mempool* mp;
 
-   if (VG_(clo_verbosity) > 2) {
-      VG_(message)(Vg_UserMsg, "destroy_mempool(%p)", pool);
-      VG_(get_and_pp_StackTrace)
-         (VG_(get_running_tid)(), MEMPOOL_DEBUG_STACKTRACE_DEPTH);
-   }
-
    mp = VG_(HT_remove) ( MC_(mempool_list), (UWord)pool );
 
    if (mp == NULL) {
@@ -455,7 +428,7 @@ void MC_(destroy_mempool)(Addr pool)
    while ( (mc = VG_(HT_Next)(mp->chunks)) ) {
       /* Note: make redzones noaccess again -- just in case user made them
          accessible with a client request... */
-      MC_(make_mem_noaccess)(mc->data-mp->rzB, mc->szB + 2*mp->rzB );
+      MC_(make_mem_noaccess)(mc->data-mp->rzB, mc->size + 2*mp->rzB );
    }
    // Destroy the chunk table
    VG_(HT_destruct)(mp->chunks);
@@ -463,106 +436,15 @@ void MC_(destroy_mempool)(Addr pool)
    VG_(free)(mp);
 }
 
-static Int 
-mp_compar(void* n1, void* n2)
+void MC_(mempool_alloc)(ThreadId tid, Addr pool, Addr addr, SizeT size)
 {
-   MC_Chunk* mc1 = *(MC_Chunk**)n1;
-   MC_Chunk* mc2 = *(MC_Chunk**)n2;
-   return (mc1->data < mc2->data ? -1 : 1);
-}
+   MC_Mempool* mp = VG_(HT_lookup) ( MC_(mempool_list), (UWord)pool );
 
-static void 
-check_mempool_sane(MC_Mempool* mp)
-{
-   UInt n_chunks, i, bad = 0;   
-   static UInt tick = 0;
-
-   MC_Chunk **chunks = (MC_Chunk**) VG_(HT_to_array)( mp->chunks, &n_chunks );
-   if (!chunks)
-      return;
-
-   if (VG_(clo_verbosity) > 1) {
-     if (tick++ >= 10000)
-       {
-	 UInt total_pools = 0, total_chunks = 0;
-	 MC_Mempool* mp2;
-	 
-	 VG_(HT_ResetIter)(MC_(mempool_list));
-	 while ( (mp2 = VG_(HT_Next)(MC_(mempool_list))) ) {
-	   total_pools++;
-	   VG_(HT_ResetIter)(mp2->chunks);
-	   while (VG_(HT_Next)(mp2->chunks)) {
-	     total_chunks++;
-	   }
-	 }
-	 
-	 VG_(message)(Vg_UserMsg, 
-                      "Total mempools active: %d pools, %d chunks\n", 
-		      total_pools, total_chunks);
-	 tick = 0;
-       }
-   }
-
-
-   VG_(ssort)((void*)chunks, n_chunks, sizeof(VgHashNode*), mp_compar);
-         
-   /* Sanity check; assert that the blocks are now in order */
-   for (i = 0; i < n_chunks-1; i++) {
-      if (chunks[i]->data > chunks[i+1]->data) {
-         VG_(message)(Vg_UserMsg, 
-                      "Mempool chunk %d / %d is out of order "
-                      "wrt. its successor", 
-                      i+1, n_chunks);
-         bad = 1;
-      }
-   }
-   
-   /* Sanity check -- make sure they don't overlap */
-   for (i = 0; i < n_chunks-1; i++) {
-      if (chunks[i]->data + chunks[i]->szB > chunks[i+1]->data ) {
-         VG_(message)(Vg_UserMsg, 
-                      "Mempool chunk %d / %d overlaps with its successor", 
-                      i+1, n_chunks);
-         bad = 1;
-      }
-   }
-
-   if (bad) {
-         VG_(message)(Vg_UserMsg, 
-                "Bad mempool (%d chunks), dumping chunks for inspection:",
-                      n_chunks);
-         for (i = 0; i < n_chunks; ++i) {
-            VG_(message)(Vg_UserMsg, 
-                         "Mempool chunk %d / %d: %d bytes [%x,%x), allocated:",
-                         i+1, 
-                         n_chunks, 
-                         chunks[i]->szB, 
-                         chunks[i]->data, 
-                         chunks[i]->data + chunks[i]->szB);
-
-            VG_(pp_ExeContext)(chunks[i]->where);
-         }
-   }
-   VG_(free)(chunks);
-}
-
-void MC_(mempool_alloc)(ThreadId tid, Addr pool, Addr addr, SizeT szB)
-{
-   MC_Mempool* mp;
-
-   if (VG_(clo_verbosity) > 2) {     
-      VG_(message)(Vg_UserMsg, "mempool_alloc(%p, %p, %d)", pool, addr, szB);
-      VG_(get_and_pp_StackTrace) (tid, MEMPOOL_DEBUG_STACKTRACE_DEPTH);
-   }
-
-   mp = VG_(HT_lookup) ( MC_(mempool_list), (UWord)pool );
    if (mp == NULL) {
       MC_(record_illegal_mempool_error) ( tid, pool );
    } else {
-      check_mempool_sane(mp);
-      MC_(new_block)(tid, addr, szB, /*ignored*/0, mp->rzB, mp->is_zeroed,
+      MC_(new_block)(tid, addr, size, /*ignored*/0, mp->rzB, mp->is_zeroed,
                      MC_AllocCustom, mp->chunks);
-      check_mempool_sane(mp);
    }
 }
 
@@ -578,208 +460,14 @@ void MC_(mempool_free)(Addr pool, Addr addr)
       return;
    }
 
-   if (VG_(clo_verbosity) > 2) {
-      VG_(message)(Vg_UserMsg, "mempool_free(%p, %p)", pool, addr);
-      VG_(get_and_pp_StackTrace) (tid, MEMPOOL_DEBUG_STACKTRACE_DEPTH);
-   }
-
-   check_mempool_sane(mp);
    mc = VG_(HT_remove)(mp->chunks, (UWord)addr);
    if (mc == NULL) {
       MC_(record_free_error)(tid, (Addr)addr);
       return;
    }
 
-   if (VG_(clo_verbosity) > 2) {
-      VG_(message)(Vg_UserMsg, 
-		   "mempool_free(%p, %p) freed chunk of %d bytes", 
-		   pool, addr, mc->szB);
-   }
-
    die_and_free_mem ( tid, mc, mp->rzB );
-   check_mempool_sane(mp);
 }
-
-
-void MC_(mempool_trim)(Addr pool, Addr addr, SizeT szB)
-{
-   MC_Mempool*  mp;
-   MC_Chunk*    mc;
-   ThreadId     tid = VG_(get_running_tid)();
-   UInt         n_shadows, i;
-   VgHashNode** chunks;
-
-   if (VG_(clo_verbosity) > 2) {
-      VG_(message)(Vg_UserMsg, "mempool_trim(%p, %p, %d)", pool, addr, szB);
-      VG_(get_and_pp_StackTrace) (tid, MEMPOOL_DEBUG_STACKTRACE_DEPTH);
-   }
-
-   mp = VG_(HT_lookup)(MC_(mempool_list), (UWord)pool);
-   if (mp == NULL) {
-      MC_(record_illegal_mempool_error)(tid, pool);
-      return;
-   }
-
-   check_mempool_sane(mp);
-   chunks = VG_(HT_to_array) ( mp->chunks, &n_shadows );
-   if (n_shadows == 0) {
-     tl_assert(chunks == NULL);
-     return;
-   }
-
-   tl_assert(chunks != NULL);
-   for (i = 0; i < n_shadows; ++i) {
-
-      Addr lo, hi, min, max;
-
-      mc = (MC_Chunk*) chunks[i];
-
-      lo = mc->data;
-      hi = mc->szB == 0 ? mc->data : mc->data + mc->szB - 1;
-
-#define EXTENT_CONTAINS(x) ((addr <= (x)) && ((x) < addr + szB))
-
-      if (EXTENT_CONTAINS(lo) && EXTENT_CONTAINS(hi)) {
-
-         /* The current chunk is entirely within the trim extent: keep
-            it. */
-
-         continue;
-
-      } else if ( (! EXTENT_CONTAINS(lo)) &&
-                  (! EXTENT_CONTAINS(hi)) ) {
-
-         /* The current chunk is entirely outside the trim extent:
-            delete it. */
-
-         if (VG_(HT_remove)(mp->chunks, (UWord)mc->data) == NULL) {
-            MC_(record_free_error)(tid, (Addr)mc->data);
-            VG_(free)(chunks);
-            check_mempool_sane(mp);
-            return;
-         }
-         die_and_free_mem ( tid, mc, mp->rzB );  
-
-      } else {
-
-         /* The current chunk intersects the trim extent: remove,
-            trim, and reinsert it. */
-
-         tl_assert(EXTENT_CONTAINS(lo) ||
-                   EXTENT_CONTAINS(hi));
-         if (VG_(HT_remove)(mp->chunks, (UWord)mc->data) == NULL) {
-            MC_(record_free_error)(tid, (Addr)mc->data);
-            VG_(free)(chunks);
-            check_mempool_sane(mp);
-            return;
-         }
-
-         if (mc->data < addr) {
-           min = mc->data;
-           lo = addr;
-         } else {
-           min = addr;
-           lo = mc->data;
-         }
-
-         if (mc->data + szB > addr + szB) {
-           max = mc->data + szB;
-           hi = addr + szB;
-         } else {
-           max = addr + szB;
-           hi = mc->data + szB;
-         }
-
-         tl_assert(min <= lo);
-         tl_assert(lo < hi);
-         tl_assert(hi <= max);
-
-         if (min < lo && !EXTENT_CONTAINS(min)) {
-           MC_(make_mem_noaccess)( min, lo - min);
-         }
-
-         if (hi < max && !EXTENT_CONTAINS(max)) {
-           MC_(make_mem_noaccess)( hi, max - hi );
-         }
-
-         mc->data = lo;
-         mc->szB = (UInt) (hi - lo);
-         VG_(HT_add_node)( mp->chunks, mc );        
-      }
-
-#undef EXTENT_CONTAINS
-      
-   }
-   check_mempool_sane(mp);
-   VG_(free)(chunks);
-}
-
-void MC_(move_mempool)(Addr poolA, Addr poolB)
-{
-   MC_Mempool* mp;
-
-   if (VG_(clo_verbosity) > 2) {
-      VG_(message)(Vg_UserMsg, "move_mempool(%p, %p)", poolA, poolB);
-      VG_(get_and_pp_StackTrace)
-         (VG_(get_running_tid)(), MEMPOOL_DEBUG_STACKTRACE_DEPTH);
-   }
-
-   mp = VG_(HT_remove) ( MC_(mempool_list), (UWord)poolA );
-
-   if (mp == NULL) {
-      ThreadId tid = VG_(get_running_tid)();
-      MC_(record_illegal_mempool_error) ( tid, poolA );
-      return;
-   }
-
-   mp->pool = poolB;
-   VG_(HT_add_node)( MC_(mempool_list), mp );
-}
-
-void MC_(mempool_change)(Addr pool, Addr addrA, Addr addrB, SizeT szB)
-{
-   MC_Mempool*  mp;
-   MC_Chunk*    mc;
-   ThreadId     tid = VG_(get_running_tid)();
-
-   if (VG_(clo_verbosity) > 2) {
-      VG_(message)(Vg_UserMsg, "mempool_change(%p, %p, %p, %d)", 
-                   pool, addrA, addrB, szB);
-      VG_(get_and_pp_StackTrace) (tid, MEMPOOL_DEBUG_STACKTRACE_DEPTH);
-   }
-
-   mp = VG_(HT_lookup)(MC_(mempool_list), (UWord)pool);
-   if (mp == NULL) {
-      MC_(record_illegal_mempool_error)(tid, pool);
-      return;
-   }
-
-   check_mempool_sane(mp);
-
-   mc = VG_(HT_remove)(mp->chunks, (UWord)addrA);
-   if (mc == NULL) {
-      MC_(record_free_error)(tid, (Addr)addrA);
-      return;
-   }
-
-   mc->data = addrB;
-   mc->szB  = szB;
-   VG_(HT_add_node)( mp->chunks, mc );
-
-   check_mempool_sane(mp);
-}
-
-Bool MC_(mempool_exists)(Addr pool)
-{
-   MC_Mempool*  mp;
-
-   mp = VG_(HT_lookup)(MC_(mempool_list), (UWord)pool);
-   if (mp == NULL) {
-       return False;
-   }
-   return True;
-}
-
 
 /*------------------------------------------------------------*/
 /*--- Statistics printing                                  ---*/
@@ -800,7 +488,7 @@ void MC_(print_malloc_stats) ( void )
    VG_(HT_ResetIter)(MC_(malloc_list));
    while ( (mc = VG_(HT_Next)(MC_(malloc_list))) ) {
       nblocks++;
-      nbytes += mc->szB;
+      nbytes += mc->size;
    }
 
    VG_(message)(Vg_UserMsg, 

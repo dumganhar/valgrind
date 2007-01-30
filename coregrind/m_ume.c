@@ -30,11 +30,14 @@
 */
 
 
+#define _GNU_SOURCE
+#define _FILE_OFFSET_BITS 64
+
+// It seems that on SuSE 9.1 (x86) something in <fcntl.h> messes up stuff
+// acquired indirectly from vki-x86-linux.h.  Therefore our headers must be
+// included ahead of the glibc ones.  This fix is a kludge;  the right
+// solution is to entirely remove the glibc dependency.
 #include "pub_core_basics.h"
-#include "pub_core_vki.h"
-
-#if defined(VGO_linux)
-
 #include "pub_core_aspacemgr.h"   // various mapping fns
 #include "pub_core_debuglog.h"
 #include "pub_core_libcbase.h"
@@ -45,14 +48,9 @@
 #include "pub_core_libcassert.h"  // VG_(exit), vg_assert
 #include "pub_core_mallocfree.h"  // VG_(malloc), VG_(free)
 #include "pub_core_syscall.h"     // VG_(strerror)
-#include "pub_core_ume.h"         // self
+#include "vki_unistd.h"           // mmap-related constants
 
-/* --- !!! --- EXTERNAL HEADERS start --- !!! --- */
-#define _GNU_SOURCE
-#define _FILE_OFFSET_BITS 64
-/* This is for ELF types etc, and also the AT_ constants. */
-#include <elf.h>
-/* --- !!! --- EXTERNAL HEADERS end --- !!! --- */
+#include "pub_core_ume.h"
 
 
 #if	VG_WORDSIZE == 8
@@ -76,8 +74,8 @@ static void check_mmap(SysRes res, Addr base, SizeT len)
       VG_(printf)("valgrind: mmap(0x%llx, %lld) failed in UME "
                   "with error %d (%s).\n", 
                   (ULong)base, (Long)len, 
-                  res.err, VG_(strerror)(res.err) );
-      if (res.err == VKI_EINVAL) {
+                  res.val, VG_(strerror)(res.val) );
+      if (res.val == VKI_EINVAL) {
          VG_(printf)("valgrind: this can be caused by executables with "
                      "very large text, data or bss segments.\n");
       }
@@ -126,9 +124,9 @@ struct elfinfo *readelf(Int fd, const char *filename)
    e->fd = fd;
 
    sres = VG_(pread)(fd, &e->e, sizeof(e->e), 0);
-   if (sres.isError || sres.res != sizeof(e->e)) {
+   if (sres.isError || sres.val != sizeof(e->e)) {
       VG_(printf)("valgrind: %s: can't read ELF header: %s\n", 
-                  filename, VG_(strerror)(sres.err));
+                  filename, VG_(strerror)(sres.val));
       goto bad;
    }
 
@@ -166,9 +164,9 @@ struct elfinfo *readelf(Int fd, const char *filename)
    vg_assert(e->p);
 
    sres = VG_(pread)(fd, e->p, phsz, e->e.e_phoff);
-   if (sres.isError || sres.res != phsz) {
+   if (sres.isError || sres.val != phsz) {
       VG_(printf)("valgrind: can't read phdr: %s\n", 
-                  VG_(strerror)(sres.err));
+                  VG_(strerror)(sres.val));
       VG_(free)(e->p);
       goto bad;
    }
@@ -391,7 +389,7 @@ static Int load_ELF(Int fd, const HChar* name, /*MOD*/ExeInfo* info)
 	    VG_(printf)("valgrind: m_ume.c: can't open interpreter\n");
 	    VG_(exit)(1);
 	 }
-         intfd = sres.res;
+         intfd = sres.val;
 
 	 interp = readelf(intfd, buf);
 	 if (interp == NULL) {
@@ -537,20 +535,10 @@ static Bool match_script(char *hdr, Int len)
    if (0 != VG_(memcmp)(hdr, "#!", 2)) return False;
 
    // Find interpreter name, make sure it's an absolute path (starts with
-   // '/') and has at least one more char.  First, skip over any space
-   // between the #! and the start of the interpreter name
+   // '/') and has at least one more char.
    while (interp < end && VG_(isspace)(*interp)) interp++;
-
-   // overrun?
-   if (interp >= end)   return False;  // can't find start of interp name
-
-   // interp should now point at the /
    if (*interp != '/')  return False;  // absolute path only for interpreter
-
-   // check for something plausible after the /
-   interp++;
-   if (interp >= end)   return False;
-   if (VG_(isspace)(*interp)) return False;
+   if (interp == end)   return False;  // nothing after the '/'
 
    // Here we should get the full interpreter name and check it with
    // check_executable().  See the "EXEC FAILED" failure when running shell
@@ -580,7 +568,7 @@ static Int load_script(Int fd, const HChar* name, ExeInfo* info)
       VG_(close)(fd);
       return VKI_EACCES;
    } else {
-      len = res.res;
+      len = res.val;
    }
 
    vg_assert('#' == hdr[0] && '!' == hdr[1]);
@@ -602,7 +590,7 @@ static Int load_script(Int fd, const HChar* name, ExeInfo* info)
 
    if (!eol && cp < end) {
       /* skip space before arg */
-      while (cp < end && VG_(isspace)(*cp) && *cp != '\n')
+      while (cp < end && VG_(isspace)(*cp))
 	 cp++;
 
       /* arg is from here to eol */
@@ -648,7 +636,7 @@ SysRes VG_(pre_exec_check)(const HChar* exe_name, Int* out_fd)
    if (res.isError) {
       return res;
    }
-   fd = res.res;
+   fd = res.val;
 
    // Check we have execute permissions
    ret = VG_(check_executable)((HChar*)exe_name);
@@ -662,11 +650,11 @@ SysRes VG_(pre_exec_check)(const HChar* exe_name, Int* out_fd)
       bufsz = fsz;
 
    res = VG_(pread)(fd, buf, bufsz, 0);
-   if (res.isError || res.res != bufsz) {
+   if (res.isError || res.val != bufsz) {
       VG_(close)(fd);
       return VG_(mk_SysRes_Error)(VKI_EACCES);
    }
-   bufsz = res.res;
+   bufsz = res.val;
 
    if (match_ELF(buf, bufsz)) {
       res = VG_(mk_SysRes_Success)(VG_EXE_FORMAT_ELF);
@@ -699,9 +687,9 @@ static Int do_exec_inner(const HChar *exe, ExeInfo* info)
 
    res = VG_(pre_exec_check)(exe, &fd);
    if (res.isError)
-      return res.err;
+      return res.val;
 
-   switch (res.res) {
+   switch (res.val) {
     case VG_EXE_FORMAT_ELF:    ret = load_ELF   (fd, exe, info); break;
     case VG_EXE_FORMAT_SCRIPT: ret = load_script(fd, exe, info); break;
     default:
@@ -719,7 +707,7 @@ static Bool is_hash_bang_file(Char* f)
    SysRes res = VG_(open)(f, VKI_O_RDONLY, 0);
    if (!res.isError) {
       Char buf[3] = {0,0,0};
-      Int fd = res.res;
+      Int fd = res.val;
       Int n  = VG_(read)(fd, buf, 2); 
       if (n == 2 && VG_STREQ("#!", buf))
          return True;
@@ -735,7 +723,7 @@ static Bool is_binary_file(Char* f)
    SysRes res = VG_(open)(f, VKI_O_RDONLY, 0);
    if (!res.isError) {
       UChar buf[80];
-      Int fd = res.res;
+      Int fd = res.val;
       Int n  = VG_(read)(fd, buf, 80); 
       Int i;
       for (i = 0; i < n; i++) {
@@ -839,8 +827,6 @@ Int VG_(do_exec)(const HChar* exe_name, ExeInfo* info)
    }
    return ret;
 }
-
-#endif /* defined(VGO_linux) */
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

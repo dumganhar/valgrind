@@ -7,7 +7,7 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2005-2007 Paul Mackerras <paulus@samba.org>
+  Copyright (C) 2005 Paul Mackerras <paulus@samba.org>
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -28,7 +28,7 @@
 */
 
 #include "pub_core_basics_asm.h"
-#include "pub_core_vkiscnums.h"
+#include "vki_unistd.h"
 #include "libvex_guest_offsets.h"
 		
 

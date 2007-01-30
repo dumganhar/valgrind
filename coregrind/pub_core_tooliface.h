@@ -83,7 +83,7 @@ typedef
       Bool libc_freeres;
       Bool core_errors;
       Bool tool_errors;
-      Bool superblock_discards;
+      Bool basic_block_discards;
       Bool command_line_options;
       Bool client_requests;
       Bool syscall_wrapper;
@@ -105,8 +105,8 @@ typedef struct {
    // Basic functions
    void  (*tool_pre_clo_init) (void);
    void  (*tool_post_clo_init)(void);
-   IRSB* (*tool_instrument)   (VgCallbackClosure*,
-                               IRSB*, 
+   IRBB* (*tool_instrument)   (VgCallbackClosure*,
+                               IRBB*, 
                                VexGuestLayout*, VexGuestExtents*, 
                                IRType, IRType);
    void  (*tool_fini)         (Int);
@@ -124,8 +124,8 @@ typedef struct {
    Char* (*tool_get_error_name)              (Error*);
    void  (*tool_print_extra_suppression_info)(Error*);
 
-   // VG_(needs).superblock_discards
-   void (*tool_discard_superblock_info)(Addr64, VexGuestExtents);
+   // VG_(needs).basic_block_discards
+   void (*tool_discard_basic_block_info)(Addr64, VexGuestExtents);
 
    // VG_(needs).command_line_options
    Bool (*tool_process_cmd_line_option)(Char*);
@@ -200,11 +200,14 @@ typedef struct {
    void (*track_post_reg_write)(CorePart, ThreadId,        OffT, SizeT);
    void (*track_post_reg_write_clientcall_return)(ThreadId, OffT, SizeT, Addr);
 
-   void (*track_start_client_code)(ThreadId, ULong);
-   void (*track_stop_client_code) (ThreadId, ULong);
+   void (*track_thread_run)(ThreadId);
 
    void (*track_post_thread_create)(ThreadId, ThreadId);
    void (*track_post_thread_join)  (ThreadId, ThreadId);
+
+   void (*track_pre_mutex_lock)   (ThreadId, void*);
+   void (*track_post_mutex_lock)  (ThreadId, void*);
+   void (*track_post_mutex_unlock)(ThreadId, void*);
 
    void (*track_pre_deliver_signal) (ThreadId, Int sigNo, Bool);
    void (*track_post_deliver_signal)(ThreadId, Int sigNo);

@@ -127,8 +127,6 @@ extern Int   VG_(clo_dump_error);
 extern Int   VG_(clo_backtrace_size);
 /* Engage miscellaneous weird hacks needed for some progs. */
 extern Char* VG_(clo_sim_hints);
-/* Show symbols in the form 'name+offset' ?  Default: NO */
-extern Bool VG_(clo_sym_offsets);
 
 /* Track open file descriptors? */
 extern Bool  VG_(clo_track_fds);
@@ -173,17 +171,6 @@ extern VgSmc VG_(clo_smc_check);
 /* String containing comma-separated names of minor kernel variants,
    so they can be properly handled by m_syswrap. */
 extern HChar* VG_(clo_kernel_variant);
-
-/* --------- Functions --------- */
-
-/* Call this if the executable is missing.  This function prints an
-   error message, then shuts down the entire system. */
-extern void VG_(err_missing_prog) ( void );
-
-/* Similarly - complain and stop if there is some kind of config
-   error. */
-extern void VG_(err_config_error) ( Char* msg );
-
 
 #endif   // __PUB_CORE_OPTIONS_H
 
