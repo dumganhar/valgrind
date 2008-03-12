@@ -1,0 +1,78 @@
+Last updated February 17, 2008
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+Data-race detection algorithm
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+- Implement segment merging, such that the number of segments per thread
+  remains limited even when there is no synchronization between threads.
+- Add locking order checking.
+- Discuss on the Valgrind mailing list how to make it possible to call
+  POSIX thread synchronization primitives from client code (drd_intercepts.c)
+  without triggering Valgrind's redirection mechanism.
+- Make sure -v works again with exp-drd.
+- Continue the discussion on the Valgrind mailing list about docbook and
+  'make dist'.
+- Continue the discussion on the Valgrind mailing list about -Wformat.
+- Enable format string checking for DRD during compilation.
+- Propose to modify tl_assert() / vg_assert() such that it uses
+  __builtin_expect.
+- Explain on the Valgrind mailing list the difference between a bus lock
+  and acquire / release labels.
+- Add configure tests for the name of the 'kind' member in pthread_mutex_t.
+- Find out why a race is reported on std::string::string(std::string const&)
+  (stc test case 16).
+- Find out why no races are reported on matinv_openmp.c when "private(k)" is
+  removed.
+- Add support for objects that are shared over threads and that use reference
+  counting, e.g. std::string -- no races should be reported on the reference
+  count.
+- Add test programs for destroying a condition variable / semaphore / barrier
+  being waited upon.
+- Add OpenMP examples to the regression tests.
+- Make sure an error message is printed if no debug information is found in
+  libopenmp.so.1.
+- Make sure tc14_laog_dinphils is run during exp-drd regression tests.
+- Find a way for suppressing races reported on _IO_2_1_stdout. This race is
+  triggered by calling printf() from more than one thread. Examples (AMD64):
+  ./vg-in-place --tool=exp-drd exp-drd/tests/tc21_pthonce
+  ./vg-in-place --tool=exp-drd exp-drd/tests/pth_detached 10 10 1
+- testing on PPC and AIX (current implementation is only tested on X86 and
+  AMD64).
+- Convert the array in drd_thread.c with thread information into an OSet.
+- Performance testing and tuning.
+- Optimize run time of the following test case:
+  ./vg-in-place --tool=exp-drd exp-drd/tests/matinv 100 
+
+Testing
+~~~~~~~
+- testing with more complex multithreaded test programs.
+- test exp-drd's performance with the SPLASH-2 software, e.g. fft
+  (http://www-flash.stanford.edu/apps/SPLASH/) or the PARSEC benchmark
+  (http://parsec.cs.princeton.edu/license.htm).
+- test with Synfig Studio (see also http://bugs.kde.org/show_bug.cgi?id=158555)
+- test with some OpenMP examples. See also http://en.wikipedia.org/wiki/OpenMP.
+
+
+Documentation
+~~~~~~~~~~~~~
+- Document the command-line options of the exp-drd tool.
+- Explain that happens-before race detectors are also suited for certain
+  classes of programs that do not follow a locking discipline
+  (e.g. exp-drd/test/matinv.c).
+
+
+Limitations
+~~~~~~~~~~~
+- Does not work with a glibc library compiled with linuxthreads -- NPTL is
+  required for proper operation.
+
+
+Known bugs
+~~~~~~~~~~
+- Gets killed by the OOM handler for realistically sized applications,
+  e.g. knode and OpenOffice.
+- [x86_64] Reports "Allocation context: unknown" for BSS symbols on AMD64
+  (works fine on i386). This is a bug in Valgrind's debug info reader
+  -- VG_(find_seginfo)() returns NULL for BSS symbols on x86_64. Not yet in
+  the KDE bug tracking system.
