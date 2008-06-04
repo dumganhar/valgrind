@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward
+   Copyright (C) 2000-2007 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -42,7 +42,7 @@
 
       CORE      for the core's general use.
       TOOL      for the tool to use (and the only one it uses).
-      DINFO     for debug info (symbols, line #s, CFI, etc) storage.
+      SYMTAB    for Valgrind's symbol table storage.
       CLIENT    for the client's mallocs/frees, if the tool replaces glibc's
                     malloc() et al -- redzone size is chosen by the tool.
       DEMANGLE  for the C++ demangler.
@@ -59,7 +59,7 @@ typedef Int ArenaId;
 
 #define VG_AR_CORE         0
 #define VG_AR_TOOL         1
-#define VG_AR_DINFO        2
+#define VG_AR_SYMTAB       2
 #define VG_AR_CLIENT       3
 #define VG_AR_DEMANGLE     4
 #define VG_AR_EXECTXT      5

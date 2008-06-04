@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
+  Copyright (C) 2006-2007 Bart Van Assche
   bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
@@ -35,330 +35,378 @@
 #include "pub_tool_libcfile.h"    // VG_(get_startup_wd)()
 #include "pub_tool_libcprint.h"   // VG_(printf)()
 #include "pub_tool_machine.h"
-#include "pub_tool_mallocfree.h"  // VG_(malloc), VG_(free)
 #include "pub_tool_threadstate.h" // VG_(get_pthread_id)()
 #include "pub_tool_tooliface.h"   // VG_(needs_tool_errors)()
 
 
-/* Local variables. */
+typedef enum {
+   ConflictingAccessSupp
+} DRD_SuppKind;
 
-static Bool s_drd_show_conflicting_segments = True;
 
-
-void set_show_conflicting_segments(const Bool scs)
+static void make_path_relative(Char* const path)
 {
-  s_drd_show_conflicting_segments = scs;
+   int offset = 0;
+   Char cwd[512];
+
+   if (! VG_(get_startup_wd)(cwd, sizeof(cwd)))
+      tl_assert(False);
+   if (VG_(strncmp)(path + offset, cwd, VG_(strlen)(cwd)) == 0)
+   {
+      offset += VG_(strlen)(cwd);
+      if (path[offset] == '/')
+      {
+         offset++;
+      }
+   }
+   VG_(memmove)(path, path + offset, VG_(strlen)(path + offset) + 1);
 }
 
-/* Describe a data address range [a,a+len[ as good as possible, for error */
+
+/* Describe a data address range [a,a+len[ as good as you can, for error */
 /* messages, putting the result in ai. */
-static
-void describe_malloced_addr(Addr const a, SizeT const len, AddrInfo* const ai)
+void describe_addr(Addr const a, SizeT const len, AddrInfo* const ai)
 {
-  Addr data;
+   Addr       stack_min, stack_max;
+   SegInfo*   sg;
 
-  if (drd_heap_addrinfo(a, &data, &ai->size, &ai->lastchange))
-  {
-    ai->akind = eMallocd;
-    ai->rwoffset = a - data;
-  }
-  else
-  {
-    ai->akind = eUnknown;
-  }
+   /* Perhaps it's on a thread's stack? */
+   ai->stack_tid = thread_lookup_stackaddr(a, &stack_min, &stack_max);
+   if (ai->stack_tid != DRD_INVALID_THREADID)
+   {
+      ai->akind     = eStack;
+      ai->size      = len;
+      ai->rwoffset  = a - stack_max;
+      tl_assert(a + ai->size <= stack_max);
+      tl_assert(ai->rwoffset < 0);
+      return;
+   }
+
+   /* Perhaps it's in a mapped segment ? */
+   sg = VG_(find_seginfo)(a);
+   if (sg)
+   {
+      int i, n;
+
+      ai->akind   = eSegment;
+      ai->seginfo = sg;
+      ai->name[0] = 0;
+      ai->size = 1;
+      ai->rwoffset = 0;
+
+      n = VG_(seginfo_syms_howmany)(sg);
+      for (i = 0; i < n; i++)
+      {
+         Addr addr;
+         Addr tocptr;
+         UInt size;
+         HChar* name;
+         Char filename[256];
+         Int linenum;
+
+         VG_(seginfo_syms_getidx)(sg, i, &addr, &tocptr, &size, &name);
+         if (addr <= a && a < addr + size)
+         {
+            ai->size     = size;
+            ai->rwoffset = a - addr;
+            tl_assert(name && name[0]);
+            VG_(snprintf)(ai->name, sizeof(ai->name), "%s", name);
+            if (VG_(get_filename_linenum)(addr,
+                                          filename, sizeof(filename),
+                                          0, 0, 0,
+                                          &linenum))
+            {
+               make_path_relative(filename);
+               VG_(snprintf)(ai->descr, sizeof(ai->descr),
+                             " in %s:%d", filename, linenum);
+            }
+            else
+            {
+               i = n;
+            }
+            break;
+         }
+      }
+      if (i == n)
+      {
+         Char filename[512];
+         Char soname[512];
+         Char sect_kind_name[16];
+
+         VG_(seginfo_sect_kind_name)(a, sect_kind_name,
+                                     sizeof(sect_kind_name));
+         VG_(strncpy)(filename, VG_(seginfo_filename)(sg), sizeof(filename));
+         filename[sizeof(filename) - 1] = 0;
+         make_path_relative(filename);
+         VG_(strncpy)(soname, VG_(seginfo_soname)(sg), sizeof(soname));
+         soname[sizeof(soname) - 1] = 0;
+         make_path_relative(soname);
+         VG_(snprintf)(ai->descr, sizeof(ai->descr),
+                       "%s, %s:%s",
+                       filename,
+                       soname,
+                       sect_kind_name);
+      }
+      return;
+   }
+
+   /* Search for a currently malloc'd block which might bracket it. */
+   {
+      Addr data;
+      if (drd_heap_addrinfo(a, &data, &ai->size, &ai->lastchange))
+      {
+         ai->akind = eMallocd;
+         ai->rwoffset = a - data;
+         return;
+      }
+   }
+
+   /* Clueless ... */
+   ai->akind = eUnknown;
+   return;
 }
+
+/**
+ * Generate a description string for the data residing at address a.
+ */
+Char* describe_addr_text(Addr const a, SizeT const len, AddrInfo* const ai,
+                         Char* const buf, UInt const n_buf)
+{
+   tl_assert(a);
+   tl_assert(ai);
+   tl_assert(buf);
+
+   describe_addr(a, len, ai);
+
+   switch (ai->akind)
+   {
+   case eStack: {
+      VG_(snprintf)(buf, n_buf,
+                    "stack of %s, offset %d",
+                    thread_get_name(ai->stack_tid), ai->rwoffset);
+      break;
+   }
+   case eSegment: {
+      if (ai->name[0])
+      {
+         VG_(snprintf)(buf, n_buf,
+                       "%s (offset %ld, size %ld) in %s",
+                       ai->name, ai->rwoffset, ai->size, ai->descr);
+      }
+      else
+      {
+         VG_(snprintf)(buf, n_buf,
+                       "%s",
+                       ai->descr);
+      }
+      break;
+   }
+   case eMallocd: {
+      VG_(snprintf)(buf, n_buf, "heap");
+      VG_(snprintf)(buf + VG_(strlen)(buf), n_buf - VG_(strlen)(buf),
+                    ", offset %ld in block at 0x%lx of size %ld",
+                    ai->rwoffset, a - ai->rwoffset, ai->size);
+      break;
+   }
+   case eUnknown:
+      VG_(snprintf)(buf, n_buf, "unknown");
+      break;
+   default:
+      tl_assert(0);
+   }
+   return buf;
+}
+
+#ifdef OLD_RACE_DETECTION_ALGORITHM
+void drd_report_data_race(const DataRaceInfo* const dri)
+{
+   AddrInfo ai;
+   Char descr[256];
+
+   tl_assert(dri);
+   tl_assert(dri->range_begin < dri->range_end);
+   describe_addr_text(dri->range_begin, dri->range_end - dri->range_begin,
+                      &ai, descr, sizeof(descr));
+   VG_(message)(Vg_UserMsg,
+                "0x%08lx sz %ld %c %c (%s)",
+                dri->range_begin,
+                dri->range_end - dri->range_begin,
+                dri->range_access & LHS_W ? 'W' : 'R',
+                dri->range_access & RHS_W ? 'W' : 'R',
+                descr);
+   if (ai.akind == eMallocd && ai.lastchange)
+   {
+      VG_(message)(Vg_UserMsg, "Allocation context:");
+      VG_(pp_ExeContext)(ai.lastchange);
+   }
+   // Note: for stack and heap variables suppression should be
+   // stopped automatically as soon as the specified memory
+   // range has been freed.
+   tl_assert(dri->range_begin < dri->range_end);
+   drd_start_suppression(dri->range_begin, dri->range_end, "detected race");
+}
+#endif
 
 static
 void drd_report_data_race2(Error* const err, const DataRaceErrInfo* const dri)
 {
-  AddrInfo ai;
-  const unsigned descr_size = 256;
-  Char* descr1 = VG_(malloc)(descr_size);
-  Char* descr2 = VG_(malloc)(descr_size);
+   AddrInfo ai;
+   Char descr[256];
 
-  tl_assert(dri);
-  tl_assert(dri->addr);
-  tl_assert(dri->size > 0);
-  tl_assert(descr1);
-  tl_assert(descr2);
-
-  descr1[0] = 0;
-  descr2[0] = 0;
-  VG_(get_data_description)(descr1, descr2, descr_size, dri->addr);
-  if (descr1[0] == 0)
-  {
-    describe_malloced_addr(dri->addr, dri->size, &ai);
-  }
-  VG_(message)(Vg_UserMsg,
-               "Conflicting %s by thread %d/%d at 0x%08lx size %ld",
-               dri->access_type == eStore ? "store" : "load",
-               DrdThreadIdToVgThreadId(dri->tid),
-               dri->tid,
-               dri->addr,
-               dri->size);
-  VG_(pp_ExeContext)(VG_(get_error_where)(err));
-  if (descr1[0])
-  {
-    VG_(message)(Vg_UserMsg, "%s", descr1);
-    VG_(message)(Vg_UserMsg, "%s", descr2);
-  }
-  else if (ai.akind == eMallocd && ai.lastchange)
-  {
-    VG_(message)(Vg_UserMsg,
-                 "Address 0x%lx is at offset %ld from 0x%lx."
-                 " Allocation context:",
-                 dri->addr, ai.rwoffset, dri->addr - ai.rwoffset);
-    VG_(pp_ExeContext)(ai.lastchange);
-  }
-  else
-  {
-    VG_(message)(Vg_UserMsg, "Allocation context: unknown.");
-  }
-  if (s_drd_show_conflicting_segments)
-  {
-    thread_report_conflicting_segments(dri->tid,
-                                       dri->addr, dri->size, dri->access_type);
-  }
-
-  VG_(free)(descr2);
-  VG_(free)(descr1);
+   tl_assert(dri);
+   tl_assert(dri->addr);
+   tl_assert(dri->size > 0);
+   describe_addr_text(dri->addr, dri->size,
+                      &ai, descr, sizeof(descr));
+   VG_(message)(Vg_UserMsg,
+                "Conflicting %s by %s at 0x%08lx size %ld",
+                dri->access_type == eStore ? "store" : "load",
+                thread_get_name(VgThreadIdToDrdThreadId(dri->tid)),
+                dri->addr,
+                dri->size);
+   VG_(pp_ExeContext)(VG_(get_error_where)(err));
+   VG_(message)(Vg_UserMsg, "Allocation context: %s", descr);
+   if (ai.akind == eMallocd && ai.lastchange)
+   {
+      VG_(pp_ExeContext)(ai.lastchange);
+   }
+   thread_report_conflicting_segments(VgThreadIdToDrdThreadId(dri->tid),
+                                      dri->addr, dri->size, dri->access_type);
 }
 
 static Bool drd_tool_error_eq(VgRes res, Error* e1, Error* e2)
 {
-  return False;
+   return False;
 }
 
 static void drd_tool_error_pp(Error* const e)
 {
-  switch (VG_(get_error_kind)(e))
-  {
-  case DataRaceErr: {
-    drd_report_data_race2(e, VG_(get_error_extra)(e));
-    break;
-  }
-  case MutexErr: {
-    MutexErrInfo* p = (MutexErrInfo*)(VG_(get_error_extra)(e));
-    tl_assert(p);
-    if (p->recursion_count >= 0)
-    {
+   switch (VG_(get_error_kind)(e))
+   {
+   case DataRaceErr: {
+      drd_report_data_race2(e, VG_(get_error_extra)(e));
+      break;
+   }
+   case MutexErr: {
+      MutexErrInfo* p = (MutexErrInfo*)(VG_(get_error_extra)(e));
       VG_(message)(Vg_UserMsg,
-                   "%s: mutex 0x%lx, recursion count %d, owner %d.",
+                   "%s / mutex 0x%lx (recursion count %d, owner %d)",
                    VG_(get_error_string)(e),
                    p->mutex,
                    p->recursion_count,
                    p->owner);
-    }
-    else
-    {
+      VG_(pp_ExeContext)(VG_(get_error_where)(e));
+      break;
+   }
+   case CondRaceErr: {
+      CondRaceErrInfo* cei = (CondRaceErrInfo*)(VG_(get_error_extra)(e));
       VG_(message)(Vg_UserMsg,
-                   "The object at address 0x%lx is not a mutex.",
-                   p->mutex);
-    }
-    VG_(pp_ExeContext)(VG_(get_error_where)(e));
-    break;
-  }
-  case CondErr: {
-    CondErrInfo* cdei =(CondErrInfo*)(VG_(get_error_extra)(e));
-    VG_(message)(Vg_UserMsg,
-                 "%s: cond 0x%lx",
-                 VG_(get_error_string)(e),
-                 cdei->cond);
-    VG_(pp_ExeContext)(VG_(get_error_where)(e));
-    break;
-  }
-  case CondRaceErr: {
-    CondRaceErrInfo* cei = (CondRaceErrInfo*)(VG_(get_error_extra)(e));
-    VG_(message)(Vg_UserMsg,
-                 "Race condition: condition variable 0x%lx has been"
-                 " signalled but the associated mutex 0x%lx is not locked"
-                 " by the signalling thread",
-                 cei->cond, cei->mutex);
-    VG_(pp_ExeContext)(VG_(get_error_where)(e));
-    break;
-  }
-  case CondDestrErr: {
-    CondDestrErrInfo* cdi = (CondDestrErrInfo*)(VG_(get_error_extra)(e));
-    VG_(message)(Vg_UserMsg,
-                 "%s: cond 0x%lx, mutex 0x%lx locked by thread %d/%d",
-                 VG_(get_error_string)(e),
-                 cdi->cond, cdi->mutex,
-                 DrdThreadIdToVgThreadId(cdi->tid), cdi->tid);
-    VG_(pp_ExeContext)(VG_(get_error_where)(e));
-    break;
-  }
-  case SemaphoreErr: {
-    SemaphoreErrInfo* sei =(SemaphoreErrInfo*)(VG_(get_error_extra)(e));
-    tl_assert(sei);
-    VG_(message)(Vg_UserMsg,
-                 "%s: semaphore 0x%lx",
-                 VG_(get_error_string)(e),
-                 sei->semaphore);
-    VG_(pp_ExeContext)(VG_(get_error_where)(e));
-    break;
-  }
-  case BarrierErr: {
-    BarrierErrInfo* sei =(BarrierErrInfo*)(VG_(get_error_extra)(e));
-    tl_assert(sei);
-    VG_(message)(Vg_UserMsg,
-                 "%s: barrier 0x%lx",
-                 VG_(get_error_string)(e),
-                 sei->barrier);
-    VG_(pp_ExeContext)(VG_(get_error_where)(e));
-    break;
-  }
-  case RwlockErr: {
-    RwlockErrInfo* p = (RwlockErrInfo*)(VG_(get_error_extra)(e));
-    tl_assert(p);
-    VG_(message)(Vg_UserMsg,
-                 "%s: rwlock 0x%lx.",
-                 VG_(get_error_string)(e),
-                 p->rwlock);
-    VG_(pp_ExeContext)(VG_(get_error_where)(e));
-    break;
-  }
-  case HoldtimeErr: {
-    HoldtimeErrInfo* p =(HoldtimeErrInfo*)(VG_(get_error_extra)(e));
-    tl_assert(p);
-    tl_assert(p->acquired_at);
-    VG_(message)(Vg_UserMsg, "Acquired at:");
-    VG_(pp_ExeContext)(p->acquired_at);
-    VG_(message)(Vg_UserMsg,
-                 "Lock on %s 0x%lx was held during %d ms (threshold: %d ms).",
-                 VG_(get_error_string)(e),
-                 p->synchronization_object,
-                 p->hold_time_ms,
-                 p->threshold_ms);
-    VG_(pp_ExeContext)(VG_(get_error_where)(e));
-    break;
-  }
-  case GenericErr: {
-    //GenericErrInfo* gei =(GenericErrInfo*)(VG_(get_error_extra)(e));
-    VG_(message)(Vg_UserMsg, "%s", VG_(get_error_string)(e));
-    VG_(pp_ExeContext)(VG_(get_error_where)(e));
-    break;
-  }
-  default:
-    VG_(message)(Vg_UserMsg,
-                 "%s",
-                 VG_(get_error_string)(e));
-    VG_(pp_ExeContext)(VG_(get_error_where)(e));
-    break;
-  }
+                   "Race condition: condition variable 0x%lx has been signalled"
+                   " but the associated mutex 0x%lx is not locked by the"
+                   " signalling thread",
+                   cei->cond, cei->mutex);
+      VG_(pp_ExeContext)(VG_(get_error_where)(e));
+      break;
+   }
+   case CondErr: {
+      CondErrInfo* cdei =(CondErrInfo*)(VG_(get_error_extra)(e));
+      VG_(message)(Vg_UserMsg,
+                   "cond 0x%lx: %s",
+                   cdei->cond,
+                   VG_(get_error_string)(e));
+      VG_(pp_ExeContext)(VG_(get_error_where)(e));
+      break;
+   }
+   default:
+      VG_(message)(Vg_UserMsg,
+                   "%s",
+                   VG_(get_error_string)(e));
+      VG_(pp_ExeContext)(VG_(get_error_where)(e));
+      break;
+   }
 }
 
 static UInt drd_tool_error_update_extra(Error* e)
 {
-  switch (VG_(get_error_kind)(e))
-  {
-  case DataRaceErr:
-    return sizeof(DataRaceErrInfo);
-  case MutexErr:
-    return sizeof(MutexErrInfo);
-  case CondErr:
-    return sizeof(CondErrInfo);
-  case CondRaceErr:
-    return sizeof(CondRaceErrInfo);
-  case CondDestrErr:
-    return sizeof(CondDestrErrInfo);
-  case SemaphoreErr:
-    return sizeof(SemaphoreErrInfo);
-  case BarrierErr:
-    return sizeof(BarrierErrInfo);
-  case RwlockErr:
-    return sizeof(RwlockErrInfo);
-  case HoldtimeErr:
-    return sizeof(HoldtimeErrInfo);
-  case GenericErr:
-    return sizeof(GenericErrInfo);
-  default:
-    tl_assert(False);
-    break;
-  }
+   switch (VG_(get_error_kind)(e))
+   {
+   case DataRaceErr:
+      return sizeof(DataRaceErrInfo);
+   case MutexErr:
+      return sizeof(MutexErrInfo);
+   case CondRaceErr:
+      return sizeof(CondRaceErrInfo);
+   case CondErr:
+      return sizeof(CondErrInfo);
+   default:
+      tl_assert(False);
+      break;
+   }
 }
 
 static Bool drd_tool_error_recog(Char* const name, Supp* const supp)
 {
-  SuppKind skind = 0;
+   SuppKind skind;
 
-  if (VG_(strcmp)(name, STR_DataRaceErr) == 0)
-    ;
-  else if (VG_(strcmp)(name, STR_MutexErr) == 0)
-    ;
-  else if (VG_(strcmp)(name, STR_CondErr) == 0)
-    ;
-  else if (VG_(strcmp)(name, STR_CondRaceErr) == 0)
-    ;
-  else if (VG_(strcmp)(name, STR_CondDestrErr) == 0)
-    ;
-  else if (VG_(strcmp)(name, STR_SemaphoreErr) == 0)
-    ;
-  else if (VG_(strcmp)(name, STR_BarrierErr) == 0)
-    ;
-  else if (VG_(strcmp)(name, STR_RwlockErr) == 0)
-    ;
-  else if (VG_(strcmp)(name, STR_HoldtimeErr) == 0)
-    ;
-  else if (VG_(strcmp)(name, STR_GenericErr) == 0)
-    ;
-  else
-    return False;
+   if (VG_(strcmp)(name, "ConflictingAccess") == 0)
+      skind = ConflictingAccessSupp;
+   else
+      return False;
 
-  VG_(set_supp_kind)(supp, skind);
-  return True;
+   VG_(set_supp_kind)(supp, skind);
+   return True;
 }
 
 static Bool drd_tool_error_read_extra(Int fd, Char* buf, Int nBuf, Supp* supp)
 {
-  return True;
+   return True;
 }
 
 static Bool drd_tool_error_matches(Error* const e, Supp* const supp)
 {
-  switch (VG_(get_supp_kind)(supp))
-  {
-  }
-  return True;
+   switch (VG_(get_supp_kind)(supp))
+   {
+   }
+   return True;
 }
 
 static Char* drd_tool_error_name(Error* e)
 {
-  switch (VG_(get_error_kind)(e))
-  {
-  case DataRaceErr:  return VGAPPEND(STR_, DataRaceErr);
-  case MutexErr:     return VGAPPEND(STR_, MutexErr);
-  case CondErr:      return VGAPPEND(STR_, CondErr);
-  case CondRaceErr:  return VGAPPEND(STR_, CondRaceErr);
-  case CondDestrErr: return VGAPPEND(STR_, CondDestrErr);
-  case SemaphoreErr: return VGAPPEND(STR_, SemaphoreErr);
-  case BarrierErr:   return VGAPPEND(STR_, BarrierErr);
-  case RwlockErr:    return VGAPPEND(STR_, RwlockErr);
-  case HoldtimeErr:  return VGAPPEND(STR_, HoldtimeErr);
-  case GenericErr:   return VGAPPEND(STR_, GenericErr);
-  default:
-    tl_assert(0);
-  }
-  return 0;
+   switch (VG_(get_error_kind)(e))
+   {
+   case DataRaceErr: return "ConflictingAccess";
+   case MutexErr:    return "MutexErr";
+   case CondRaceErr: return "CondRaceErr";
+   default:
+      tl_assert(0);
+   }
+   return 0;
 }
 
 static void drd_tool_error_print_extra(Error* e)
 {
-  switch (VG_(get_error_kind)(e))
-  {
-    // VG_(printf)("   %s\n", VG_(get_error_string)(err));
-  }
+   switch (VG_(get_error_kind)(e))
+   {
+      // VG_(printf)("   %s\n", VG_(get_error_string)(err));
+   }
 }
 
 void drd_register_error_handlers(void)
 {
-  // Tool error reporting.
-  VG_(needs_tool_errors)(drd_tool_error_eq,
-                         drd_tool_error_pp,
-                         True,
-                         drd_tool_error_update_extra,
-                         drd_tool_error_recog,
-                         drd_tool_error_read_extra,
-                         drd_tool_error_matches,
-                         drd_tool_error_name,
-                         drd_tool_error_print_extra);
+   // Tool error reporting.
+   VG_(needs_tool_errors)(drd_tool_error_eq,
+                          drd_tool_error_pp,
+                          True,
+                          drd_tool_error_update_extra,
+                          drd_tool_error_recog,
+                          drd_tool_error_read_extra,
+                          drd_tool_error_matches,
+                          drd_tool_error_name,
+                          drd_tool_error_print_extra);
 }
+
+/*
+ * Local variables:
+ * c-basic-offset: 3
+ * End:
+ */

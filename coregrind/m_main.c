@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2007 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -149,8 +149,6 @@ static void usage_NORETURN ( Bool debug_help )
 "    --input-fd=<number>       file descriptor for input [0=stdin]\n"
 "    --max-stackframe=<number> assume stack switch for SP changes larger\n"
 "                              than <number> bytes [2000000]\n"
-"    --main-stacksize=<number> set size of main thread's stack (in bytes)\n"
-"                              [use current 'ulimit' value]\n"
 "\n";
 
    Char* usage2 = 
@@ -172,7 +170,6 @@ static void usage_NORETURN ( Bool debug_help )
 "    --trace-sched=no|yes      show thread scheduler details? [no]\n"
 "    --wait-for-gdb=yes|no     pause on startup to wait for gdb attach\n"
 "    --sym-offsets=yes|no      show syms in form 'name+offset' ? [no]\n"
-"    --read-var-info=yes|no    read variable type & location info? [no]\n"
 "    --command-line-only=no|yes  only use command line options [no]\n"
 "\n"
 "    --vex-iropt-verbosity             0 .. 9 [0]\n"
@@ -202,7 +199,7 @@ static void usage_NORETURN ( Bool debug_help )
 "\n"
 "  Extra options read from ~/.valgrindrc, $VALGRIND_OPTS, ./.valgrindrc\n"
 "\n"
-"  Valgrind is Copyright (C) 2000-2008 Julian Seward et al.\n"
+"  Valgrind is Copyright (C) 2000-2007 Julian Seward et al.\n"
 "  and licensed under the GNU General Public License, version 2.\n"
 "  Bug reports, feedback, admiration, abuse, etc, to: %s.\n"
 "\n"
@@ -246,22 +243,10 @@ static void usage_NORETURN ( Bool debug_help )
 }
 
 
-/* Peer at previously set up VG_(args_for_valgrind) and do some
-   minimal command line processing that must happen early on:
+/* Peer at previously set up VG_(args_for_valgrind) and extract any
+   request for help and also the tool name. */
 
-   - show the version string, if requested (-v)
-   - extract any request for help (--help, -h, --help-debug)
-   - get the toolname (--tool=)
-   - set VG_(clo_max_stackframe) (--max-stackframe=)
-   - set VG_(clo_main_stacksize) (--main-stacksize=)
-
-   That's all it does.  The main command line processing is done below
-   by main_process_cmd_line_options.  Note that
-   main_process_cmd_line_options has to handle but ignore the ones we
-   have handled here.
-*/
-static void early_process_cmd_line_options ( /*OUT*/Int* need_help,
-                                             /*OUT*/HChar** tool )
+static void get_helprequest_and_toolname ( Int* need_help, HChar** tool )
 {
    UInt   i;
    HChar* str;
@@ -291,22 +276,11 @@ static void early_process_cmd_line_options ( /*OUT*/Int* need_help,
       // here.
       } else if (VG_CLO_STREQN(7, str, "--tool=")) {
          *tool = &str[7];
-
-      // Set up VG_(clo_max_stackframe) and VG_(clo_main_stacksize).
-      // These are needed by VG_(ii_create_image), which happens
-      // before main_process_cmd_line_options().
-      } 
-      else VG_NUM_CLO(str, "--max-stackframe", VG_(clo_max_stackframe))
-      else VG_NUM_CLO(str, "--main-stacksize", VG_(clo_main_stacksize));
-
+      }
    }
 }
 
-/* The main processing for command line options.  See comments above
-   on early_process_cmd_line_options. 
-*/
-static Bool main_process_cmd_line_options( UInt* client_auxv,
-                                           const HChar* toolname )
+static Bool process_cmd_line_options( UInt* client_auxv, const char* toolname )
 {
    // VG_(clo_log_fd) is used by all the messaging.  It starts as 2 (stderr)
    // and we cannot change it until we know what we are changing it to is
@@ -394,13 +368,7 @@ static Bool main_process_cmd_line_options( UInt* client_auxv,
       else VG_BOOL_CLO(arg, "--error-limit",      VG_(clo_error_limit))
       else VG_NUM_CLO (arg, "--error-exitcode",   VG_(clo_error_exitcode))
       else VG_BOOL_CLO(arg, "--show-emwarns",     VG_(clo_show_emwarns))
-
-      /* The next two are already done in
-         early_process_cmd_line_options, but we need to redundantly
-         handle them again, so they do not get rejected as invalid. */
       else VG_NUM_CLO (arg, "--max-stackframe",   VG_(clo_max_stackframe))
-      else VG_NUM_CLO (arg, "--main-stacksize",   VG_(clo_main_stacksize))
-
       else VG_BOOL_CLO(arg, "--run-libc-freeres", VG_(clo_run_libc_freeres))
       else VG_BOOL_CLO(arg, "--show-below-main",  VG_(clo_show_below_main))
       else VG_BOOL_CLO(arg, "--time-stamp",       VG_(clo_time_stamp))
@@ -424,7 +392,6 @@ static Bool main_process_cmd_line_options( UInt* client_auxv,
       else VG_STR_CLO (arg, "--db-command",       VG_(clo_db_command))
       else VG_STR_CLO (arg, "--sim-hints",        VG_(clo_sim_hints))
       else VG_BOOL_CLO(arg, "--sym-offsets",      VG_(clo_sym_offsets))
-      else VG_BOOL_CLO(arg, "--read-var-info",    VG_(clo_read_var_info))
 
       else VG_NUM_CLO (arg, "--dump-error",       VG_(clo_dump_error))
       else VG_NUM_CLO (arg, "--input-fd",         VG_(clo_input_fd))
@@ -719,47 +686,6 @@ static Bool main_process_cmd_line_options( UInt* client_auxv,
    return (log_to == VgLogTo_Fd);
 }
 
-// Write the name and value of log file qualifiers to the xml file.
-static void print_file_vars(Char* format)
-{
-   Int i = 0;
-   
-   while (format[i]) {
-      if (format[i] == '%') {
-         // We saw a '%'.  What's next...
-         i++;
-	 if ('q' == format[i]) {
-            i++;
-            if ('{' == format[i]) {
-	       // Get the env var name, print its contents.
-	       Char* qualname;
-               Char* qual;
-               i++;
-               qualname = &format[i];
-               while (True) {
-		  if ('}' == format[i]) {
-                     // Temporarily replace the '}' with NUL to extract var
-                     // name.
-		     format[i] = 0;
-                     qual = VG_(getenv)(qualname);
-		     break;
-                  }
-                  i++;
-               }
-
-	       VG_(message)(Vg_UserMsg, "<logfilequalifier> <var>%t</var> "
-			    "<value>%t</value> </logfilequalifier>",
-			    qualname,qual);
-	       format[i] = '}';
-	       i++;
-	    }
-         }
-      } else {
-	 i++;
-      }
-   }
-}
-
 
 /*====================================================================*/
 /*=== Printing the preamble                                        ===*/
@@ -784,7 +710,7 @@ static void print_preamble(Bool logging_to_fd, const char* toolname)
       VG_(message)(Vg_UserMsg, "");
       VG_(message)(Vg_UserMsg, "<valgrindoutput>");
       VG_(message)(Vg_UserMsg, "");
-      VG_(message)(Vg_UserMsg, "<protocolversion>3</protocolversion>");
+      VG_(message)(Vg_UserMsg, "<protocolversion>2</protocolversion>");
       VG_(message)(Vg_UserMsg, "");
    }
 
@@ -820,13 +746,13 @@ static void print_preamble(Bool logging_to_fd, const char* toolname)
          "%sUsing LibVEX rev %s, a library for dynamic binary translation.%s",
          xpre, LibVEX_Version(), xpost );
       VG_(message)(Vg_UserMsg, 
-         "%sCopyright (C) 2004-2008, and GNU GPL'd, by OpenWorks LLP.%s",
+         "%sCopyright (C) 2004-2007, and GNU GPL'd, by OpenWorks LLP.%s",
          xpre, xpost );
       VG_(message)(Vg_UserMsg,
          "%sUsing valgrind-%s, a dynamic binary instrumentation framework.%s",
          xpre, VERSION, xpost);
       VG_(message)(Vg_UserMsg, 
-         "%sCopyright (C) 2000-2008, and GNU GPL'd, by Julian Seward et al.%s",
+         "%sCopyright (C) 2000-2007, and GNU GPL'd, by Julian Seward et al.%s",
          xpre, xpost );
 
       if (VG_(clo_verbosity) == 1 && !VG_(clo_xml))
@@ -854,8 +780,16 @@ static void print_preamble(Bool logging_to_fd, const char* toolname)
       VG_(message)(Vg_UserMsg, "<pid>%d</pid>", VG_(getpid)());
       VG_(message)(Vg_UserMsg, "<ppid>%d</ppid>", VG_(getppid)());
       VG_(message)(Vg_UserMsg, "<tool>%t</tool>", toolname);
-      if (VG_(clo_log_name))
-         print_file_vars(VG_(clo_log_name));
+// [This was made obsolete by the --log-file change in 3.3.0.  But
+// I'm leaving it here (commented out) in case it needs to be reinstated in
+// some way --njn]
+//      if (VG_(clo_log_file_qualifier)) {
+//         HChar* val = VG_(getenv)(VG_(clo_log_file_qualifier));
+//         VG_(message)(Vg_UserMsg, "<logfilequalifier> <var>%t</var> "
+//                                  "<value>%t</value> </logfilequalifier>",
+//                                  VG_(clo_log_file_qualifier),
+//                                  val ? val : "");
+//      }
       if (VG_(clo_xml_user_comment)) {
          /* Note: the user comment itself is XML and is therefore to
             be passed through verbatim (%s) rather than escaped
@@ -1460,21 +1394,20 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    // because the tool has not been initialised.
    //   p: split_up_argv [for VG_(args_for_valgrind)]
    //--------------------------------------------------------------
-   VG_(debugLog)(1, "main",
-                    "(early_) Process Valgrind's command line options\n");
-   early_process_cmd_line_options(&need_help, &toolname);
+   VG_(debugLog)(1, "main", "Preprocess command line opts\n");
+   get_helprequest_and_toolname(&need_help, &toolname);
 
    // Set default vex control params
    LibVEX_default_VexControl(& VG_(clo_vex_control));
 
    //--------------------------------------------------------------
    // Load client executable, finding in $PATH if necessary
-   //   p: early_process_cmd_line_options()  [for 'exec', 'need_help']
-   //   p: layout_remaining_space            [so there's space]
+   //   p: get_helprequest_and_toolname()  [for 'exec', 'need_help']
+   //   p: layout_remaining_space          [so there's space]
    //
    // Set up client's environment
-   //   p: set-libdir                     [for VG_(libdir)]
-   //   p: early_process_cmd_line_options [for toolname]
+   //   p: set-libdir                   [for VG_(libdir)]
+   //   p: get_helprequest_and_toolname [for toolname]
    //
    // Setup client stack, eip, and VG_(client_arg[cv])
    //   p: load_client()     [for 'info']
@@ -1505,14 +1438,12 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
 #       error "Uknown platform"
 #     endif
 
-      /* NOTE: this call reads VG_(clo_main_stacksize). */
       the_iifii = VG_(ii_create_image)( the_iicii );
 
 #     if defined(VGO_aix5)
       /* Tell aspacem where the initial client stack is, so that it
          can later produce a faked-up NSegment in response to
          VG_(am_find_nsegment) for that address range, if asked. */
-      /* NOTE: this call reads VG_(clo_main_stacksize). */
       VG_(am_aix5_set_initial_client_sp)( the_iifii.initial_client_SP );
       /* Now have a look at said fake segment, so we can find out
          the size of it. */
@@ -1521,7 +1452,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
            = VG_(am_find_nsegment)( the_iifii.initial_client_SP );
         vg_assert(seg);
         sz = seg->end - seg->start + 1;
-        vg_assert(sz >= 0 && sz <= (256+1)*1024*1024); /* stay sane */
+        vg_assert(sz >= 0 && sz <= 64*1024*1024); /* stay sane */
         the_iifii.clstack_max_size = sz;
       }
 #     endif
@@ -1589,14 +1520,22 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    //   p: setup_client_stack()      [for 'VG_(client_arg[cv]']
    //   p: setup_file_descriptors()  [for 'VG_(fd_xxx_limit)']
    //--------------------------------------------------------------
-   VG_(debugLog)(1, "main", "Initialise the tool part 1 (pre_clo_init)\n");
-   (VG_(tool_info).tl_pre_clo_init)();
+   {
+      Char* s;
+      Bool  ok;
+      VG_(debugLog)(1, "main", "Initialise the tool part 1 (pre_clo_init)\n");
+      (VG_(tool_info).tl_pre_clo_init)();
+      ok = VG_(sanity_check_needs)( &s );
+      if (!ok) {
+         VG_(tool_panic)(s);
+      }
+   }
 
    //--------------------------------------------------------------
    // If --tool and --help/--help-debug was given, now give the core+tool
    // help message
-   //   p: early_process_cmd_line_options() [for 'need_help']
-   //   p: tl_pre_clo_init                  [for 'VG_(tdict).usage']
+   //   p: get_helprequest_and_toolname() [for 'need_help']
+   //   p: tl_pre_clo_init                [for 'VG_(tdict).usage']
    //--------------------------------------------------------------
    VG_(debugLog)(1, "main", "Print help and quit, if requested\n");
    if (need_help) {
@@ -1608,10 +1547,9 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    //   p: setup_client_stack()      [for 'VG_(client_arg[cv]']
    //   p: setup_file_descriptors()  [for 'VG_(fd_xxx_limit)']
    //--------------------------------------------------------------
-   VG_(debugLog)(1, "main",
-                    "(main_) Process Valgrind's command line options, "
-                    "setup logging\n");
-   logging_to_fd = main_process_cmd_line_options(client_auxv, toolname);
+   VG_(debugLog)(1, "main", "Process Valgrind's command line options, "
+                            "setup logging\n");
+   logging_to_fd = process_cmd_line_options(client_auxv, toolname);
 
    //--------------------------------------------------------------
    // Zeroise the millisecond counter by doing a first read of it.
@@ -1622,9 +1560,8 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    //--------------------------------------------------------------
    // Print the preamble
    //   p: tl_pre_clo_init            [for 'VG_(details).name' and friends]
-   //   p: main_process_cmd_line_options() [for VG_(clo_verbosity),
-   //                                       VG_(clo_xml),
-   //                                       logging_to_fd]
+   //   p: process_cmd_line_options() [for VG_(clo_verbosity), VG_(clo_xml),
+   //                                      logging_to_fd]
    //--------------------------------------------------------------
    VG_(debugLog)(1, "main", "Print the preamble...\n");
    print_preamble(logging_to_fd, toolname);
@@ -1639,17 +1576,6 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    //--------------------------------------------------------------
    VG_(debugLog)(1, "main", "Initialise the tool part 2 (post_clo_init)\n");
    VG_TDICT_CALL(tool_post_clo_init);
-   {
-      /* The tool's "needs" will by now be finalised, since it has no
-         further opportunity to specify them.  So now sanity check
-         them. */
-      Char* s;
-      Bool  ok;
-      ok = VG_(sanity_check_needs)( &s );
-      if (!ok) {
-         VG_(tool_panic)(s);
-      }
-   }
 
    //--------------------------------------------------------------
    // Initialise translation table and translation cache
@@ -1669,7 +1595,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
 
    //--------------------------------------------------------------
    // Allow GDB attach
-   //   p: main_process_cmd_line_options()  [for VG_(clo_wait_for_gdb)]
+   //   p: process_cmd_line_options()  [for VG_(clo_wait_for_gdb)]
    //--------------------------------------------------------------
    /* Hook to delay things long enough so we can get the pid and
       attach GDB in another shell. */
@@ -1698,7 +1624,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
 
    //--------------------------------------------------------------
    // Search for file descriptors that are inherited from our parent
-   //   p: main_process_cmd_line_options  [for VG_(clo_track_fds)]
+   //   p: process_cmd_line_options  [for VG_(clo_track_fds)]
    //--------------------------------------------------------------
    if (VG_(clo_track_fds)) {
       VG_(debugLog)(1, "main", "Init preopened fds\n");
@@ -1801,12 +1727,6 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    { Addr*     seg_starts;
      Int       n_seg_starts;
 
-     /* Mark the main thread as running while we tell the tool about
-        the client memory so that the tool can associate that memory
-        with the main thread. */
-     tl_assert(VG_(running_tid) == VG_INVALID_THREADID);
-     VG_(running_tid) = tid_main;
-
      seg_starts = get_seg_starts( &n_seg_starts );
      vg_assert(seg_starts && n_seg_starts >= 0);
 
@@ -1865,10 +1785,6 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
                False, /* readable? */
                False, /* writable? */
                True   /* executable? */ );
-
-     /* Clear the running thread indicator */
-     VG_(running_tid) = VG_INVALID_THREADID;
-     tl_assert(VG_(running_tid) == VG_INVALID_THREADID);
    }
 
    //--------------------------------------------------------------
@@ -1907,7 +1823,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
 
    //--------------------------------------------------------------
    // Read suppression file
-   //   p: main_process_cmd_line_options()  [for VG_(clo_suppressions)]
+   //   p: process_cmd_line_options()  [for VG_(clo_suppressions)]
    //--------------------------------------------------------------
    if (VG_(needs).core_errors || VG_(needs).tool_errors) {
       VG_(debugLog)(1, "main", "Load suppressions\n");

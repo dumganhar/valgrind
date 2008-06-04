@@ -5,14 +5,13 @@
 #include "valgrind.h" // VG_USERREQ_TOOL_BASE()
 
 
-#define DRD_IGNORE_VAR(x) { int res; VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_START_SUPPRESSION, &(x), sizeof(x), 0, 0, 0); }
-#define DRD_TRACE_VAR(x)  { int res; VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__DRD_START_TRACE_ADDR, &(x), sizeof(x), 0, 0, 0); }
-
-
 enum {
   /* Ask the core the thread ID assigned by Valgrind. */
   VG_USERREQ__GET_THREAD_SELF = VG_USERREQ_TOOL_BASE('D', 'R'),
   /* args: none. */
+  /* Set the name of the thread that performs this client request. */
+  VG_USERREQ__SET_THREAD_NAME,
+  /* args: null-terminated character string. */
 
   /* To tell the drd tool to suppress data race detection on the specified */
   /* address range. */
@@ -29,18 +28,15 @@ enum {
   /* To ask the drd tool to start a new segment in the specified thread. */
   VG_USERREQ__DRD_START_NEW_SEGMENT,
   /* args: POSIX thread ID. */
-  /* To ask the drd tool to trace all accesses to the specified range. */
-  VG_USERREQ__DRD_START_TRACE_ADDR,
-  /* args: Addr, SizeT. */
-  /* To ask the drd tool to stop tracing accesses to the specified range. */
-  VG_USERREQ__DRD_STOP_TRACE_ADDR,
-  /* args: Addr, SizeT. */
-  /* Let the drd tool stop recording memory accesses in the calling thread. */
-  VG_USERREQ__DRD_STOP_RECORDING,
-  /* args: none. */
-  /* Let the drd tool start recording memory accesses in the calling thread. */
+
+  /* To tell the drd tool to start again recording memory accesses for the */
+  /* specified thread. */
   VG_USERREQ__DRD_START_RECORDING,
-  /* args: none. */
+  /* args: POSIX thread ID. */
+  /* To tell the drd tool to stop recording memory accesses for the */
+  /* specified thread. */
+  VG_USERREQ__DRD_STOP_RECORDING,
+  /* args: POSIX thread ID. */
 
   /* Tell the core the pthread_t of the running thread */
   VG_USERREQ__SET_PTHREADID,
@@ -56,133 +52,47 @@ enum {
   VG_USERREQ__POST_THREAD_JOIN,
   /* args: pthread_t (joinee) */
 
-  /* to notify the drd tool of a pthread_mutex_init call. */
+  /* To notify the core of a pthread_mutex_init call */
   VG_USERREQ__PRE_MUTEX_INIT,
   /* args: Addr, MutexT */
-  /* to notify the drd tool of a pthread_mutex_init call. */
-  VG_USERREQ__POST_MUTEX_INIT,
-  /* args: Addr */
-  /* to notify the drd tool of a pthread_mutex_destroy call. */
-  VG_USERREQ__PRE_MUTEX_DESTROY,
-  /* args: Addr */
-  /* to notify the drd tool of a pthread_mutex_destroy call. */
+  /* To notify the core of a pthread_mutex_destroy call */
   VG_USERREQ__POST_MUTEX_DESTROY,
-  /* args: Addr, MutexT */
-  /* to notify the drd tool of pthread_mutex_lock calls */
-  VG_USERREQ__PRE_MUTEX_LOCK,
-  /* args: Addr, MutexT, Bool */
-  /* to notify the drd tool of pthread_mutex_lock calls */
-  VG_USERREQ__POST_MUTEX_LOCK,
-  /* args: Addr, Bool */
-  /* to notify the drd tool of pthread_mutex_unlock calls */
-  VG_USERREQ__PRE_MUTEX_UNLOCK,
-  /* args: Addr */
-  /* to notify the drd tool of pthread_mutex_unlock calls */
-  VG_USERREQ__POST_MUTEX_UNLOCK,
+  /* args: Addr, SizeT, MutexT */
+  /* To notify the core of pthread_mutex_lock calls */
+  VG_USERREQ__PRE_PTHREAD_MUTEX_LOCK,
+  /* args: Addr, SizeT, MutexT */
+  /* To notify the core of pthread_mutex_lock calls */
+  VG_USERREQ__POST_PTHREAD_MUTEX_LOCK,
+  /* args: Addr, SizeT, MutexT */
+  /* To notify the core of pthread_mutex_unlock calls */
+  VG_USERREQ__PRE_PTHREAD_MUTEX_UNLOCK,
   /* args: Addr */
   VG_USERREQ__SPIN_INIT_OR_UNLOCK,
-  /* args: Addr spinlock */
+  /* args: Addr spinlock, SizeT size */
 
 
-  /* to notify the drd tool of a pthread_cond_init call. */
-  VG_USERREQ__PRE_COND_INIT,
+  /* To notify the core of a pthread_cond_init call */
+  VG_USERREQ__POST_PTHREAD_COND_INIT,
   /* args: Addr */
-  /* to notify the drd tool of a pthread_cond_destroy call. */
-  VG_USERREQ__POST_COND_DESTROY,
+  /* To notify the core of a pthread_cond_destroy call */
+  VG_USERREQ__PRE_PTHREAD_COND_DESTROY,
+  /* args: Addr cond, SizeT cond_size, Addr mutex, SizeT mutex_size */
+  VG_USERREQ__PRE_PTHREAD_COND_WAIT,
+  /* args: Addr cond, SizeT cond_size, Addr mutex, SizeT mutex_size */
+  VG_USERREQ__POST_PTHREAD_COND_WAIT,
+  /* args: Addr cond, SizeT cond_size, Addr mutex, SizeT mutex_size */
+  VG_USERREQ__PRE_PTHREAD_COND_SIGNAL,
   /* args: Addr cond */
-  VG_USERREQ__PRE_COND_WAIT,
-  /* args: Addr cond, Addr mutex, MutexT mt */
-  VG_USERREQ__POST_COND_WAIT,
-  /* args: Addr cond, Addr mutex, Bool took_lock*/
-  VG_USERREQ__PRE_COND_SIGNAL,
+  VG_USERREQ__PRE_PTHREAD_COND_BROADCAST,
   /* args: Addr cond */
-  VG_USERREQ__PRE_COND_BROADCAST,
-  /* args: Addr cond */
-
-  /* To notify the drd tool of a sem_init call. */
-  VG_USERREQ__PRE_SEM_INIT,
-  /* args: Addr sem, Word pshared, Word value */
-  /* To notify the drd tool of a sem_init call. */
-  VG_USERREQ__POST_SEM_INIT,
-  /* args: Addr sem */
-  /* To notify the drd tool of a sem_destroy call. */
-  VG_USERREQ__PRE_SEM_DESTROY,
-  /* args: Addr sem */
-  /* To notify the drd tool of a sem_destroy call. */
-  VG_USERREQ__POST_SEM_DESTROY,
-  /* args: Addr sem */
-  /* To notify the drd tool of a sem_wait call. */
-  VG_USERREQ__PRE_SEM_WAIT,
-  /* args: Addr sem */
-  /* To notify the drd tool of a sem_wait call. */
-  VG_USERREQ__POST_SEM_WAIT,
-  /* args: Addr sem, Bool waited */
-  /* To notify the drd tool before a sem_post call. */
-  VG_USERREQ__PRE_SEM_POST,
-  /* args: Addr sem */
-  /* To notify the drd tool after a sem_post call. */
-  VG_USERREQ__POST_SEM_POST,
-  /* args: Addr sem, Bool waited */
-
-  /* To notify the drd tool of a pthread_barrier_init call. */
-  VG_USERREQ__PRE_BARRIER_INIT,
-  /* args: Addr barrier, BarrierT type, Word count, Bool reinit */
-  /* To notify the drd tool of a pthread_barrier_init call. */
-  VG_USERREQ__POST_BARRIER_INIT,
-  /* args: Addr barrier, BarrierT type */
-  /* To notify the drd tool of a pthread_barrier_destroy call. */
-  VG_USERREQ__PRE_BARRIER_DESTROY,
-  /* args: Addr barrier, BarrierT type. */
-  /* To notify the drd tool of a pthread_barrier_destroy call. */
-  VG_USERREQ__POST_BARRIER_DESTROY,
-  /* args: Addr barrier, BarrierT type. */
-  /* To notify the drd tool of a pthread_barrier_wait call. */
-  VG_USERREQ__PRE_BARRIER_WAIT,
-  /* args: Addr barrier, BarrierT type. */
-  /* To notify the drd tool of a pthread_barrier_wait call. */
-  VG_USERREQ__POST_BARRIER_WAIT,
-  /* args: Addr barrier, BarrierT type, Word has_waited */
-
-  /* To notify the drd tool of a pthread_rwlock_init call. */
-  VG_USERREQ__PRE_RWLOCK_INIT,
-  /* args: Addr rwlock */
-  /* To notify the drd tool of a pthread_rwlock_destroy call. */
-  VG_USERREQ__POST_RWLOCK_DESTROY,
-  /* args: Addr rwlock */
-  /* To notify the drd tool of a pthread_rwlock_rdlock call. */
-  VG_USERREQ__PRE_RWLOCK_RDLOCK,
-  /* args: Addr rwlock */
-  /* To notify the drd tool of a pthread_rwlock_rdlock call. */
-  VG_USERREQ__POST_RWLOCK_RDLOCK,
-  /* args: Addr rwlock, Bool took_lock */
-  /* To notify the drd tool of a pthread_rwlock_wrlock call. */
-  VG_USERREQ__PRE_RWLOCK_WRLOCK,
-  /* args: Addr rwlock */
-  /* To notify the drd tool of a pthread_rwlock_wrlock call. */
-  VG_USERREQ__POST_RWLOCK_WRLOCK,
-  /* args: Addr rwlock, Bool took_lock */
-  /* To notify the drd tool of a pthread_rwlock_unlock call. */
-  VG_USERREQ__PRE_RWLOCK_UNLOCK,
-  /* args: Addr rwlock */
-  /* To notify the drd tool of a pthread_rwlock_unlock call. */
-  VG_USERREQ__POST_RWLOCK_UNLOCK
-  /* args: Addr rwlock, Bool unlocked */
 
 };
 
 typedef enum
 {
-   mutex_type_invalid_mutex    = 0,
-   mutex_type_recursive_mutex  = 1,
-   mutex_type_errorcheck_mutex = 2,
-   mutex_type_default_mutex    = 3,
-   mutex_type_spinlock         = 4
+   mutex_type_mutex = 1,
+   mutex_type_spinlock = 2,
 } MutexT;
 
-typedef enum
-  {
-    pthread_barrier = 1,
-    gomp_barrier = 2
-  } BarrierT;
 
 #endif //  __DRD_CLIENTREQ_H

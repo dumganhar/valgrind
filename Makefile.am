@@ -21,7 +21,7 @@ DIST_SUBDIRS  = $(SUBDIRS)
 
 SUPP_FILES = \
 	glibc-2.2.supp glibc-2.3.supp glibc-2.4.supp glibc-2.5.supp \
-	glibc-2.6.supp glibc-2.7.supp glibc-2.X.supp.in \
+	glibc-2.6.supp glibc-2.7.supp glibc-2.8.supp \
 	aix5libc.supp xfree-3.supp xfree-4.supp \
 	glibc-2.34567-NPTL-helgrind.supp \
 	glibc-2.2-LinuxThreads-helgrind.supp \
@@ -68,8 +68,6 @@ default.supp: $(SUPP_FILES)
 
 ## Preprend @PERL@ because tests/vg_regtest isn't executable
 regtest: check
-	@PERL@ tests/vg_regtest $(TOOLS) $(EXP_TOOLS)
-nonexp-regtest: check
 	@PERL@ tests/vg_regtest $(TOOLS)
 exp-regtest: check
 	@PERL@ tests/vg_regtest $(EXP_TOOLS)

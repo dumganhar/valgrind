@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
+  Copyright (C) 2006-2007 Bart Van Assche
   bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
@@ -31,25 +31,23 @@
 #include "pub_tool_libcassert.h"  // tl_assert()
 #include "pub_tool_libcbase.h"    // VG_(strlen)()
 #include "pub_tool_libcprint.h"   // VG_(printf)()
-#include "pub_tool_machine.h"     // VG_(get_SP)()
 #include "pub_tool_mallocfree.h"  // VG_(malloc)(), VG_(free)()
 #include "pub_tool_threadstate.h" // VG_INVALID_THREADID
 
 
 // Local variables.
 
-static ULong s_created_segments_count;
-static ULong s_alive_segments_count;
-static ULong s_max_alive_segments_count;
+static ULong s_segments_created_count;
+static ULong s_segments_alive_count;
+static ULong s_max_segments_alive_count;
 static Bool drd_trace_segment = False;
 
 
 // Function definitions.
 
-/** Initialize the memory pointed at by sg.
- *  @note The creator and created thread ID's may be equal.
+/**
+ * Note: creator and created may be equal.
  */
-static
 void sg_init(Segment* const sg,
              DrdThreadId const creator,
              DrdThreadId const created)
@@ -62,12 +60,11 @@ void sg_init(Segment* const sg,
 
   creator_sg = (creator != DRD_INVALID_THREADID
                 ? thread_get_segment(creator) : 0);
-
+  
   sg->next = 0;
   sg->prev = 0;
-  sg->refcnt = 1;
 
-  if (vg_created != VG_INVALID_THREADID && VG_(get_SP)(vg_created) != 0)
+  if (vg_created != VG_INVALID_THREADID)
     sg->stacktrace = VG_(record_ExeContext)(vg_created, 0);
   else
     sg->stacktrace = 0;
@@ -83,38 +80,30 @@ void sg_init(Segment* const sg,
   {
     char msg[256];
     VG_(snprintf)(msg, sizeof(msg),
-                  "New segment for thread %d/%d with vc ",
-                  created != VG_INVALID_THREADID
-                  ? DrdThreadIdToVgThreadId(created)
-                  : DRD_INVALID_THREADID,
-                  created);
+                  "New segment for thread %d with vc ",
+                  creator);
     vc_snprint(msg + VG_(strlen)(msg), sizeof(msg) - VG_(strlen)(msg),
                &sg->vc);
-    VG_(message)(Vg_UserMsg, "%s", msg);
+    VG_(message)(Vg_DebugMsg, "%s", msg);
   }
 }
 
-/** Deallocate the memory that was allocated by sg_init(). */
-static
 void sg_cleanup(Segment* const sg)
 {
   tl_assert(sg);
-  tl_assert(sg->refcnt == 0);
-
   vc_cleanup(&sg->vc);
   bm_delete(sg->bm);
   sg->bm = 0;
 }
 
-/** Allocate and initialize a new segment. */
 Segment* sg_new(ThreadId const creator, ThreadId const created)
 {
   Segment* sg;
 
-  s_created_segments_count++;
-  s_alive_segments_count++;
-  if (s_max_alive_segments_count < s_alive_segments_count)
-    s_max_alive_segments_count = s_alive_segments_count;
+  s_segments_created_count++;
+  s_segments_alive_count++;
+  if (s_max_segments_alive_count < s_segments_alive_count)
+    s_max_segments_alive_count = s_segments_alive_count;
 
   sg = VG_(malloc)(sizeof(*sg));
   tl_assert(sg);
@@ -122,98 +111,13 @@ Segment* sg_new(ThreadId const creator, ThreadId const created)
   return sg;
 }
 
-static
 void sg_delete(Segment* const sg)
 {
-#if 1
-  if (sg_get_trace())
-  {
-    char msg[256];
-    VG_(snprintf)(msg, sizeof(msg),
-                  "Discarding the segment with vector clock ");
-    vc_snprint(msg + VG_(strlen)(msg), sizeof(msg) - VG_(strlen)(msg),
-               &sg->vc);
-    VG_(message)(Vg_UserMsg, "%s", msg);
-  }
-#endif
-
-  s_alive_segments_count--;
+  s_segments_alive_count--;
 
   tl_assert(sg);
   sg_cleanup(sg);
   VG_(free)(sg);
-}
-
-/** Query the reference count of the specified segment. */
-int sg_get_refcnt(const Segment* const sg)
-{
-  tl_assert(sg);
-
-  return sg->refcnt;
-}
-
-/** Increment the reference count of the specified segment. */
-Segment* sg_get(Segment* const sg)
-{
-  tl_assert(sg);
-
-  sg->refcnt++;
-  return sg;
-}
-
-/** Decrement the reference count of the specified segment and deallocate the
- *  segment if the reference count became zero.
- */
-void sg_put(Segment* const sg)
-{
-  if (sg == 0)
-    return;
-
-  if (drd_trace_segment)
-  {
-    char msg[256];
-    VG_(snprintf)(msg, sizeof(msg),
-                  "Decrementing segment reference count %d -> %d with vc ",
-                  sg->refcnt, sg->refcnt - 1);
-    vc_snprint(msg + VG_(strlen)(msg), sizeof(msg) - VG_(strlen)(msg),
-               &sg->vc);
-    VG_(message)(Vg_UserMsg, "%s", msg);
-  }
-
-  tl_assert(sg->refcnt >= 1);
-
-  if (--sg->refcnt == 0)
-  {
-    sg_delete(sg);
-  }
-}
-
-/** Merge sg1 and sg2 into sg1. */
-void sg_merge(const Segment* const sg1, Segment* const sg2)
-{
-  tl_assert(sg1);
-  tl_assert(sg1->refcnt == 1);
-  tl_assert(sg2);
-  tl_assert(sg2->refcnt == 1);
-
-  if (drd_trace_segment)
-  {
-      char msg[256];
-
-      VG_(snprintf)(msg, sizeof(msg), "Merging segments with vector clocks ");
-      vc_snprint(msg + VG_(strlen)(msg), sizeof(msg) - VG_(strlen)(msg),
-                 &sg1->vc);
-      VG_(snprintf)(msg + VG_(strlen)(msg), sizeof(msg) - VG_(strlen)(msg),
-                    " and ");
-      vc_snprint(msg + VG_(strlen)(msg), sizeof(msg) - VG_(strlen)(msg),
-                 &sg2->vc);
-      VG_(message)(Vg_UserMsg, "%s", msg);
-  }
-
-  // Keep sg1->stacktrace.
-  // Keep sg1->vc.
-  // Merge sg2->bm into sg1->bm.
-  bm_merge2(sg1->bm, sg2->bm);
 }
 
 void sg_print(const Segment* const sg)
@@ -236,17 +140,12 @@ void sg_set_trace(Bool const trace_segment)
   drd_trace_segment = trace_segment;
 }
 
-ULong sg_get_created_segments_count(void)
+ULong sg_get_segments_created_count(void)
 {
-  return s_created_segments_count;
+  return s_segments_created_count;
 }
 
-ULong sg_get_alive_segments_count(void)
+ULong sg_get_max_segments_alive_count(void)
 {
-  return s_alive_segments_count;
-}
-
-ULong sg_get_max_alive_segments_count(void)
-{
-  return s_max_alive_segments_count;
+  return s_max_segments_alive_count;
 }

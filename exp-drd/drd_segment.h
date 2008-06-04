@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
+  Copyright (C) 2006-2007 Bart Van Assche
   bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
@@ -42,24 +42,22 @@ typedef struct segment
 {
   struct segment*    next;
   struct segment*    prev;
-  int                refcnt;
   ExeContext*        stacktrace;
   VectorClock        vc;
   struct bitmap*     bm;
 } Segment;
 
-
-Segment* sg_new(const ThreadId creator, const ThreadId created);
-int sg_get_refcnt(const Segment* const sg);
-Segment* sg_get(Segment* const sg);
-void sg_put(Segment* const sg);
-void sg_merge(const Segment* const sg1, Segment* const sg2);
+void sg_init(Segment* const sg,
+             ThreadId const creator,
+             ThreadId const created);
+void sg_cleanup(Segment* const sg);
+Segment* sg_new(ThreadId const creator, ThreadId const created);
+void sg_delete(Segment* const sg);
 void sg_print(const Segment* const sg);
 Bool sg_get_trace(void);
-void sg_set_trace(const Bool trace_segment);
-ULong sg_get_created_segments_count(void);
-ULong sg_get_alive_segments_count(void);
-ULong sg_get_max_alive_segments_count(void);
+void sg_set_trace(Bool const trace_segment);
+ULong sg_get_segments_created_count(void);
+ULong sg_get_max_segments_alive_count(void);
 
 
 #endif // __SEGMENT_H

@@ -8,9 +8,9 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Nicholas Nethercote
+   Copyright (C) 2000-2007 Nicholas Nethercote
       njn@valgrind.org
-   Copyright (C) 2004-2008 Paul Mackerras
+   Copyright (C) 2004-2007 Paul Mackerras
       paulus@samba.org
 
    This program is free software; you can redistribute it and/or
@@ -95,11 +95,9 @@
 /* Structure containing bits of information that we want to save
    on signal delivery. */
 struct vg_sig_private {
-   UInt  magicPI;
-   UInt  sigNo_private;
-   ULong _unused; /* makes the struct size be zero % 16 */
-   VexGuestPPC64State vex_shadow1;
-   VexGuestPPC64State vex_shadow2;
+   UInt magicPI;
+   UInt sigNo_private;
+   VexGuestPPC64State shadow;
 };
 
 /* Structure put on stack for all signal handlers. */
@@ -135,8 +133,8 @@ struct rt_sigframe {
 */
 static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
 {
-   ThreadId        tid = tst->tid;
-   NSegment const* stackseg = NULL;
+   ThreadId tid = tst->tid;
+   NSegment const *stackseg = NULL;
 
    if (VG_(extend_stack)(addr, tst->client_stack_szB)) {
       stackseg = VG_(am_find_nsegment)(addr);
@@ -167,7 +165,7 @@ static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
    /* For tracking memory events, indicate the entire frame has been
       allocated. */
    VG_TRACK( new_mem_stack_signal, addr - VG_STACK_REDZONE_SZB,
-             size + VG_STACK_REDZONE_SZB, tid );
+             size + VG_STACK_REDZONE_SZB );
 
    return True;
 }
@@ -177,7 +175,6 @@ static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
 void VG_(sigframe_create)( ThreadId tid, 
                            Addr sp_top_of_frame,
                            const vki_siginfo_t *siginfo,
-                           const struct vki_ucontext *siguc,
                            void *handler, 
                            UInt flags,
                            const vki_sigset_t *mask,
@@ -191,7 +188,6 @@ void VG_(sigframe_create)( ThreadId tid,
    struct rt_sigframe* frame;
 
    /* Stack must be 16-byte aligned */
-   vg_assert(VG_IS_16_ALIGNED(sizeof(struct vg_sig_private)));
    vg_assert(VG_IS_16_ALIGNED(sizeof(struct rt_sigframe)));
 
    sp_top_of_frame &= ~0xf;
@@ -303,8 +299,7 @@ void VG_(sigframe_create)( ThreadId tid,
    priv = &frame->priv;
    priv->magicPI       = 0x31415927;
    priv->sigNo_private = sigNo;
-   priv->vex_shadow1   = tst->arch.vex_shadow1;
-   priv->vex_shadow2   = tst->arch.vex_shadow2;
+   priv->shadow        = tst->arch.vex_shadow;
 
    if (0)
       VG_(printf)("pushed signal frame; %R1 now = %p, "
@@ -368,8 +363,7 @@ void VG_(sigframe_destroy)( ThreadId tid, Bool isRT )
    LibVEX_GuestPPC64_put_XER( frame->uc.uc_mcontext.gp_regs[VKI_PT_XER], 
                               &tst->arch.vex );
 
-   tst->arch.vex_shadow1 = priv->vex_shadow1;
-   tst->arch.vex_shadow2 = priv->vex_shadow2;
+   tst->arch.vex_shadow = priv->shadow;
 
    VG_TRACK(die_mem_stack_signal, sp, frame_size);
 

@@ -136,7 +136,7 @@
    struct with uninitialized paddings - libxcb
    Memcheck:Param
    writev(vector[...])
-   obj:/lib*/*.so
+   obj:/lib*/libc-2.6*.so
    obj:/usr/lib*/libxcb.so.1.0.0
    obj:/usr/lib*/libxcb.so.1.0.0
    fun:xcb_send_request
@@ -147,7 +147,7 @@
    struct with uninitialized paddings - libxcb
    Memcheck:Param
    writev(vector[...])
-   obj:/lib*/*.so
+   obj:/lib*/libc-2.6*.so
    obj:/usr/lib*/libxcb.so.1.0.0
    obj:/usr/lib*/libxcb.so.1.0.0
    obj:/usr/lib*/libxcb.so.1.0.0
@@ -246,7 +246,7 @@
    obj:/usr/lib*/libORBit*.so*
    obj:/usr/lib*/libORBit*.so*
 }
- 
+
 
 # There's something strange about a % 127 in XftFontOpenInfo
 # (hashing) which gcc turns into a multiply by 33818641 and
@@ -304,3 +304,26 @@
 
 ##----------------------------------------------------------------------##
 
+## More general versions of some of the old X suppressions above
+{
+   Ubuntu804 libXaw.so.7.0/libXaw.so.7.0/libXaw.so.7.0(Cond)
+   Memcheck:Cond
+   obj:/usr/*lib*/libXaw*so*
+   obj:/usr/*lib*/libXaw*so*
+   obj:/usr/*lib*/libXaw*so*
+}
+{
+   Ubuntu804 libXaw.so.7.0/libXaw.so.7.0/libXt(Cond)
+   Memcheck:Cond
+   obj:/usr/*lib*/libXaw*so*
+   obj:/usr/*lib*/libXaw*so*
+   obj:/usr/*lib*/libXt*so*
+}
+
+{
+   Ubuntu804-hack-1
+   Memcheck:Overlap
+   fun:mempcpy
+   fun:_IO_default_xsputn
+   obj:/lib*/libc-2.*so*
+}

@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
+  Copyright (C) 2006-2007 Bart Van Assche
   bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
@@ -50,14 +50,14 @@
 typedef struct
 {
   ThreadId threadid;
-  UInt     count;
+  UInt count;
 } VCElem;
 
 typedef struct
 {
-  unsigned capacity;
-  unsigned size;
-  VCElem*  vc;
+  unsigned       capacity;
+  unsigned       size;
+  VCElem* vc;
 } VectorClock;
 
 
@@ -67,9 +67,6 @@ void vc_init(VectorClock* const vc,
 void vc_cleanup(VectorClock* const vc);
 void vc_copy(VectorClock* const new,
              const VectorClock* const rhs);
-void vc_assign(VectorClock* const lhs,
-               const VectorClock* const rhs);
-UInt vc_get(VectorClock* const vc, const ThreadId tid);
 void vc_increment(VectorClock* const vc, ThreadId const threadid);
 Bool vc_lte(const VectorClock* const vc1,
             const VectorClock* const vc2);
@@ -79,9 +76,6 @@ void vc_min(VectorClock* const result,
             const VectorClock* const rhs);
 void vc_combine(VectorClock* const result,
                 const VectorClock* const rhs);
-Bool vc_combine2(VectorClock* const result,
-                 const VectorClock* const rhs,
-                 const ThreadId tid);
 void vc_print(const VectorClock* const vc);
 void vc_snprint(Char* const str, Int const size,
                 const VectorClock* const vc);

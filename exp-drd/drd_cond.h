@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
+  Copyright (C) 2006-2007 Bart Van Assche
   bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
@@ -27,25 +27,33 @@
 // call.
 
 
-#ifndef __DRD_COND_H
-#define __DRD_COND_H
+#ifndef __COND_H
+#define __COND_H
 
 
-#include "drd_thread.h"      // DrdThreadid
-#include "pub_tool_basics.h" // Addr
+#include "pub_tool_basics.h"      // Addr, SizeT
+#include "drd_vc.h"
+#include "drd_thread.h"           // DrdThreadId
 
 
-struct cond_info;
-
+struct cond_info
+{
+  Addr  cond;  // Pointer to client condition variable.
+  SizeT size;  // sizeof(pthread_cond_t)
+  int   waiter_count;
+  Addr  mutex; // Client mutex specified in pthread_cond_wait() call, and null
+              // if no client threads are currently waiting on this cond.var.
+};
 
 void cond_set_trace(const Bool trace_cond);
-void cond_pre_init(const Addr cond);
-void cond_post_destroy(const Addr cond);
-int cond_pre_wait(const Addr cond, const Addr mutex);
+void cond_init(const Addr cond, const SizeT size);
+void cond_destroy(struct cond_info* const p);
+struct cond_info* cond_get(Addr const mutex);
+int cond_pre_wait(const Addr cond, const SizeT cond_size, const Addr mutex);
 int cond_post_wait(const Addr cond);
-void cond_pre_signal(const Addr cond);
-void cond_pre_broadcast(const Addr cond);
-void cond_thread_delete(const DrdThreadId tid);
+void cond_pre_signal(Addr const cond);
+void cond_pre_broadcast(Addr const cond);
+void cond_stop_using_mem(const Addr a1, const Addr a2);
 
 
-#endif /* __DRD_COND_H */
+#endif /* __COND_H */

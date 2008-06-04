@@ -2,7 +2,7 @@
    This file is part of Callgrind, a Valgrind tool for call graph
    profiling programs.
 
-   Copyright (C) 2002-2008, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2007, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This tool is derived from and contains lot of code from Cachegrind
    Copyright (C) 2002 Nicholas Nethercote (njn@valgrind.org)
@@ -370,7 +370,7 @@ void CLG_(print_addr)(Addr addr)
     Char fl_buf[FILENAME_LEN];
     Char fn_buf[FN_NAME_LEN];
     const UChar* obj_name;
-    DebugInfo* di;
+    SegInfo* si;
     int ln, i=0, opos=0;
 	
     if (addr == 0) {
@@ -378,15 +378,15 @@ void CLG_(print_addr)(Addr addr)
 	return;
     }
 
-    CLG_(get_debug_info)(addr, fl_buf, fn_buf, &ln, &di);
+    CLG_(get_debug_info)(addr, fl_buf, fn_buf, &ln, &si);
 
     if (VG_(strcmp)(fn_buf,"???")==0)
 	VG_(printf)("%p", addr);
     else
 	VG_(printf)("%p %s", addr, fn_buf);
 
-    if (di) {
-      obj_name = VG_(seginfo_filename)(di);
+    if (si) {
+      obj_name = VG_(seginfo_filename)(si);
       if (obj_name) {
 	while(obj_name[i]) {
 	  if (obj_name[i]=='/') opos = i+1;

@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
+  Copyright (C) 2006-2007 Bart Van Assche
   bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
@@ -23,8 +23,8 @@
 */
 
 
-#ifndef __DRD_BITMAP_H
-#define __DRD_BITMAP_H
+#ifndef __DRD_BITMAP3_H
+#define __DRD_BITMAP3_H
 
 
 #include "pub_tool_oset.h"
@@ -40,18 +40,18 @@
 
 /* Macro definitions. */
 
-#define ADDR0_BITS 16
+#define ADDR0_BITS 12
 
-#define ADDR0_COUNT ((UWord)1 << ADDR0_BITS)
+#define ADDR0_COUNT (1UL << ADDR0_BITS)
 
 #define ADDR0_MASK (ADDR0_COUNT - 1)
 
-#define SPLIT_ADDRESS(a)            \
-  UWord a##0 = ((a) & ADDR0_MASK);  \
+#define SPLIT_ADDRESS(a)						\
+  UWord a##0 = ((a) & ADDR0_MASK);                                      \
   UWord a##1 = ((a) >> ADDR0_BITS);
 
 // Assumption: sizeof(Addr) == sizeof(UWord).
-#define MAKE_ADDRESS(a1, a0)  \
+#define MAKE_ADDRESS(a1, a0)			\
   (Addr)(((UWord)(a1) << (ADDR0_BITS)) | ((UWord)(a0)))
 
 #define BITS_PER_UWORD (8UL*sizeof(UWord))
@@ -75,16 +75,16 @@
 #define UWORD_HIGHEST_ADDRESS(a) ((a) | (BITS_PER_UWORD - 1))
 
 
-/* Local variables. */
+// Local functions.
+
+// Similar to const_cast<> in C++.
+static __inline__ OSet* const_to_non_const_oset(const OSet* os)
+{ return (OSet*)os; }
+
+
+// Local constants.
 
 static ULong s_bitmap2_creation_count;
-static ULong s_node_creation_count;
-
-
-
-/*********************************************************************/
-/*           Functions for manipulating a struct bitmap1.            */
-/*********************************************************************/
 
 
 /* Lowest level, corresponding to the lowest ADDR0_BITS of an address. */
@@ -96,394 +96,72 @@ struct bitmap1
 
 static __inline__ UWord bm0_mask(const Addr a)
 {
-  return ((UWord)1 << UWORD_LSB(a));
+  return (1UL << UWORD_LSB(a));
 }
 
 static __inline__ void bm0_set(UWord* bm0, const Addr a)
 {
   //tl_assert(a < ADDR0_COUNT);
-  bm0[a >> BITS_PER_BITS_PER_UWORD] |= (UWord)1 << UWORD_LSB(a);
-}
-
-/** Set all of the addresses in range [ a1 .. a1 + size [ in bitmap bm0. */
-static __inline__ void bm0_set_range(UWord* bm0,
-                                     const Addr a1, const SizeT size)
-{
-#if 0
-  tl_assert(a1 < ADDR0_COUNT);
-  tl_assert(size > 0);
-  tl_assert(a1 + size <= ADDR0_COUNT);
-  tl_assert(UWORD_MSB(a1) == UWORD_MSB(a1 + size - 1));
-#endif
-  bm0[a1 >> BITS_PER_BITS_PER_UWORD]
-    |= (((UWord)1 << size) - 1) << UWORD_LSB(a1);
+  bm0[a >> BITS_PER_BITS_PER_UWORD] |= 1UL << UWORD_LSB(a);
 }
 
 static __inline__ void bm0_clear(UWord* bm0, const Addr a)
 {
   //tl_assert(a < ADDR0_COUNT);
-  bm0[a >> BITS_PER_BITS_PER_UWORD] &= ~((UWord)1 << UWORD_LSB(a));
-}
-
-/** Clear all of the addresses in range [ a1 .. a1 + size [ in bitmap bm0. */
-static __inline__ void bm0_clear_range(UWord* bm0,
-                                       const Addr a1, const SizeT size)
-{
-#if 0
-  tl_assert(a1 < ADDR0_COUNT);
-  tl_assert(size > 0);
-  tl_assert(a1 + size <= ADDR0_COUNT);
-  tl_assert(UWORD_MSB(a1) == UWORD_MSB(a1 + size - 1));
-#endif
-  bm0[a1 >> BITS_PER_BITS_PER_UWORD]
-    &= ~(((UWord)1 << size) - 1) << UWORD_LSB(a1);
+  bm0[a >> BITS_PER_BITS_PER_UWORD] &= ~(1UL << UWORD_LSB(a));
 }
 
 static __inline__ UWord bm0_is_set(const UWord* bm0, const Addr a)
 {
   //tl_assert(a < ADDR0_COUNT);
-  return (bm0[a >> BITS_PER_BITS_PER_UWORD] & ((UWord)1 << UWORD_LSB(a)));
-}
-
-/** Return true if any of the bits [ a1 .. a1+size [ are set in bm0. */
-static __inline__ UWord bm0_is_any_set(const UWord* bm0,
-                                       const Addr a1, const SizeT size)
-{
-#if 0
-  tl_assert(a1 < ADDR0_COUNT);
-  tl_assert(size > 0);
-  tl_assert(a1 + size <= ADDR0_COUNT);
-  tl_assert(UWORD_MSB(a1) == UWORD_MSB(a1 + size - 1));
-#endif
-  return (bm0[a1 >> BITS_PER_BITS_PER_UWORD]
-          & ((((UWord)1 << size) - 1) << UWORD_LSB(a1)));
+  return (bm0[a >> BITS_PER_BITS_PER_UWORD] & (1UL << UWORD_LSB(a)));
 }
 
 
-
-/*********************************************************************/
-/*           Functions for manipulating a struct bitmap.             */
-/*********************************************************************/
-
-
-/* Second level bitmap. */
 struct bitmap2
 {
-  Addr           addr;   ///< address >> ADDR0_BITS
-  int            refcnt;
+  Addr           addr; ///< address >> ADDR0_BITS
   struct bitmap1 bm1;
 };
-
-/* One node of bitmap::oset. */
-struct bitmap2ref
-{
-  Addr            addr; ///< address >> ADDR0_BITS
-  struct bitmap2* bm2;
-};
-
-struct bm_cache_elem
-{
-  Addr            a1;
-  struct bitmap2* bm2;
-};
-
-#define N_CACHE_ELEM 4
 
 /* Complete bitmap. */
 struct bitmap
 {
-  struct bm_cache_elem cache[N_CACHE_ELEM];
-  OSet*                oset;
+  OSet* oset;
 };
 
-
-static struct bitmap2* bm2_new(const UWord a1);
-static struct bitmap2* bm2_make_exclusive(struct bitmap* const bm,
-                                          struct bitmap2ref* const bm2ref);
-
-
 static __inline__
-Bool bm_cache_lookup(const struct bitmap* const bm, const UWord a1,
-                     struct bitmap2** bm2)
+struct bitmap2* bm_lookup(const struct bitmap* const bm, const Addr a)
 {
-  tl_assert(bm);
-  tl_assert(bm2);
-
-#if N_CACHE_ELEM > 8
-#error Please update the code below.
-#endif
-#if N_CACHE_ELEM >= 1
-  if (a1 == bm->cache[0].a1)
-  {
-    *bm2 = bm->cache[0].bm2;
-    return True;
-  }
-#endif
-#if N_CACHE_ELEM >= 2
-  if (a1 == bm->cache[1].a1)
-  {
-    *bm2 = bm->cache[1].bm2;
-    return True;
-  }
-#endif
-#if N_CACHE_ELEM >= 3
-  if (a1 == bm->cache[2].a1)
-  {
-    *bm2 = bm->cache[2].bm2;
-    return True;
-  }
-#endif
-#if N_CACHE_ELEM >= 4
-  if (a1 == bm->cache[3].a1)
-  {
-    *bm2 = bm->cache[3].bm2;
-    return True;
-  }
-#endif
-#if N_CACHE_ELEM >= 5
-  if (a1 == bm->cache[4].a1)
-  {
-    *bm2 = bm->cache[4].bm2;
-    return True;
-  }
-#endif
-#if N_CACHE_ELEM >= 6
-  if (a1 == bm->cache[5].a1)
-  {
-    *bm2 = bm->cache[5].bm2;
-    return True;
-  }
-#endif
-#if N_CACHE_ELEM >= 7
-  if (a1 == bm->cache[6].a1)
-  {
-    *bm2 = bm->cache[6].bm2;
-    return True;
-  }
-#endif
-#if N_CACHE_ELEM >= 8
-  if (a1 == bm->cache[7].a1)
-  {
-    *bm2 = bm->cache[7].bm2;
-    return True;
-  }
-#endif
-  *bm2 = 0;
-  return False;
+  const UWord a1 = a >> ADDR0_BITS;
+  return VG_(OSetGen_Lookup)(const_to_non_const_oset(bm->oset), (void*)&a1);
 }
 
 static __inline__
-void bm_update_cache(struct bitmap* const bm,
-                     const UWord a1,
-                     struct bitmap2* const bm2)
+struct bitmap2* bm2_insert(const struct bitmap* const bm,
+                           const UWord a1)
 {
-  tl_assert(bm);
+   struct bitmap2* const node = VG_(OSetGen_AllocNode)(bm->oset, sizeof(*node));
+   node->addr = a1;
+   VG_(memset)(&node->bm1, 0, sizeof(node->bm1));
+   VG_(OSetGen_Insert)(bm->oset, node);
 
-#if N_CACHE_ELEM > 8
-#error Please update the code below.
-#endif
-#if N_CACHE_ELEM >= 8
-  bm->cache[7] = bm->cache[6];
-#endif
-#if N_CACHE_ELEM >= 7
-  bm->cache[6] = bm->cache[5];
-#endif
-#if N_CACHE_ELEM >= 6
-  bm->cache[5] = bm->cache[4];
-#endif
-#if N_CACHE_ELEM >= 5
-  bm->cache[4] = bm->cache[3];
-#endif
-#if N_CACHE_ELEM >= 4
-  bm->cache[3] = bm->cache[2];
-#endif
-#if N_CACHE_ELEM >= 3
-  bm->cache[2] = bm->cache[1];
-#endif
-#if N_CACHE_ELEM >= 2
-  bm->cache[1] = bm->cache[0];
-#endif
-  bm->cache[0].a1  = a1;
-  bm->cache[0].bm2 = bm2;
+   s_bitmap2_creation_count++;
+
+   return node;
 }
 
-/** Look up the address a1 in bitmap bm and return a pointer to a potentially
- *  shared second level bitmap. The bitmap where the returned pointer points
- *  at may not be modified by the caller.
- *
- *  @param a1 client address shifted right by ADDR0_BITS.
- *  @param bm bitmap pointer.
- */
-static __inline__
-const struct bitmap2* bm2_lookup(const struct bitmap* const bm, const UWord a1)
-{
-  struct bitmap2*    bm2;
-  struct bitmap2ref* bm2ref;
-
-  tl_assert(bm);
-  if (! bm_cache_lookup(bm, a1, &bm2))
-  {
-    bm2ref = VG_(OSetGen_Lookup)(bm->oset, &a1);
-    if (bm2ref)
-    {
-      bm2 = bm2ref->bm2;
-    }
-    bm_update_cache(*(struct bitmap**)&bm, a1, bm2);
-  }
-  return bm2;
-}
-
-/** Look up the address a1 in bitmap bm and return a pointer to a second
- *  level bitmap that is not shared and hence may be modified.
- *
- *  @param a1 client address shifted right by ADDR0_BITS.
- *  @param bm bitmap pointer.
- */
-static __inline__
-struct bitmap2*
-bm2_lookup_exclusive(const struct bitmap* const bm, const UWord a1)
-{
-  struct bitmap2ref* bm2ref;
-  struct bitmap2* bm2;
-
-  bm2ref = 0;
-  if (bm_cache_lookup(bm, a1, &bm2))
-  {
-    if (bm2 == 0)
-      return 0;
-    if (bm2->refcnt > 1)
-    {
-      bm2ref = VG_(OSetGen_Lookup)(bm->oset, &a1);
-    }
-  }
-  else
-  {
-    bm2ref = VG_(OSetGen_Lookup)(bm->oset, &a1);
-    if (bm2ref == 0)
-      return 0;
-    bm2 = bm2ref->bm2;
-  }
-
-  tl_assert(bm2);
-
-  if (bm2->refcnt > 1)
-  {
-    tl_assert(bm2ref);
-    bm2 = bm2_make_exclusive(*(struct bitmap**)&bm, bm2ref);
-  }
-
-  return bm2;
-}
-
-/** Look up the address a1 in bitmap bm. The returned second level bitmap has
- *  reference count one and hence may be modified.
- *
- *  @param a1 client address shifted right by ADDR0_BITS.
- *  @param bm bitmap pointer.
- */
-static __inline__
-struct bitmap2* bm2_insert(const struct bitmap* const bm, const UWord a1)
-{
-  struct bitmap2ref* bm2ref;
-  struct bitmap2* bm2;
-
-  s_node_creation_count++;
-  bm2ref       = VG_(OSetGen_AllocNode)(bm->oset, sizeof(*bm2ref));
-  bm2ref->addr = a1;
-  bm2          = bm2_new(a1);
-  bm2ref->bm2  = bm2;
-  VG_(memset)(&bm2->bm1, 0, sizeof(bm2->bm1));
-  VG_(OSetGen_Insert)(bm->oset, bm2ref);
-  
-  bm_update_cache(*(struct bitmap**)&bm, a1, bm2);
-
-  return bm2;
-}
-
-/** Insert a new node in bitmap bm that points to the second level bitmap
- *  *bm2. This means that *bm2 becomes shared over two or more bitmaps.
- */
-static __inline__
-struct bitmap2* bm2_insert_addref(const struct bitmap* const bm,
-                                  struct bitmap2* const bm2)
-{
-  struct bitmap2ref* bm2ref;
-
-  tl_assert(bm);
-  //tl_assert(VG_(OSetGen_Lookup)(bm->oset, &bm2->addr) == 0);
-
-  s_node_creation_count++;
-  bm2ref       = VG_(OSetGen_AllocNode)(bm->oset, sizeof(*bm2ref));
-  bm2ref->addr = bm2->addr;
-  bm2ref->bm2  = bm2;
-  bm2->refcnt++;
-  VG_(OSetGen_Insert)(bm->oset, bm2ref);
-  
-  bm_update_cache(*(struct bitmap**)&bm, bm2->addr, bm2);
-
-  return bm2;
-}
-
-/** Look up the address a1 in bitmap bm, and insert it if not found.
- *  The returned second level bitmap may not be modified.
- *
- *  @param a1 client address shifted right by ADDR0_BITS.
- *  @param bm bitmap pointer.
- */
 static __inline__
 struct bitmap2* bm2_lookup_or_insert(const struct bitmap* const bm,
                                      const UWord a1)
 {
-  struct bitmap2ref* bm2ref;
-  struct bitmap2* bm2;
-
-  tl_assert(bm);
-  if (bm_cache_lookup(bm, a1, &bm2))
-  {
-    if (bm2 == 0)
-    {
-      bm2 = bm2_insert(bm, a1);
-    }
-  }
-  else
-  {
-    bm2ref = VG_(OSetGen_Lookup)(bm->oset, &a1);
-    if (bm2ref)
-    {
-      bm2 = bm2ref->bm2;
-    }
-    else
-    {
-      bm2 = bm2_insert(bm, a1);
-    }
-    bm_update_cache(*(struct bitmap**)&bm, a1, bm2);
-  }
-  return bm2;
-}
-
-/** Look up the address a1 in bitmap bm, and insert it if not found.
- *  The returned second level bitmap may be modified.
- *
- *  @param a1 client address shifted right by ADDR0_BITS.
- *  @param bm bitmap pointer.
- */
-static __inline__
-struct bitmap2* bm2_lookup_or_insert_exclusive(struct bitmap* const bm,
-                                               const UWord a1)
-{
-  struct bitmap2* bm2;
-
-  tl_assert(bm);
-  bm2 = (struct bitmap2*)bm2_lookup_or_insert(bm, a1);
-  tl_assert(bm2);
-  if (bm2->refcnt > 1)
-  {
-    struct bitmap2ref* bm2ref;
-    bm2ref = VG_(OSetGen_Lookup)(bm->oset, &a1);
-    bm2 = bm2_make_exclusive(bm, bm2ref);
-  }
-  return bm2;
+   struct bitmap2* p2 = VG_(OSetGen_Lookup)(const_to_non_const_oset(bm->oset), (void*)&a1);
+   if (p2 == 0)
+   {
+      p2 = bm2_insert(bm, a1);
+   }
+   return p2;
 }
 
 
-#endif /* __DRD_BITMAP_H */
+#endif /* __DRD_BITMAP3_H */

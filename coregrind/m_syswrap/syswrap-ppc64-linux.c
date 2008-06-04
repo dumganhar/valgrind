@@ -7,8 +7,8 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2008 Nicholas Nethercote <njn@valgrind.org>
-   Copyright (C) 2005-2008 Cerion Armour-Brown <cerion@open-works.co.uk>
+   Copyright (C) 2005-2007 Nicholas Nethercote <njn@valgrind.org>
+   Copyright (C) 2005-2007 Cerion Armour-Brown <cerion@open-works.co.uk>
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -46,7 +46,6 @@
 #include "pub_core_syscall.h"
 #include "pub_core_syswrap.h"
 #include "pub_core_tooliface.h"
-#include "pub_core_stacks.h"        // VG_(register_stack)
 
 #include "priv_types_n_macros.h"
 #include "priv_syswrap-generic.h"   /* for decls of generic wrappers */
@@ -333,8 +332,6 @@ static SysRes do_clone ( ThreadId ptid,
       ctst->client_stack_highest_word = (Addr)VG_PGROUNDUP(sp);
       ctst->client_stack_szB = ctst->client_stack_highest_word - seg->start;
 
-      VG_(register_stack)(seg->start, ctst->client_stack_highest_word);
-
       if (debug)
 	 VG_(printf)("\ntid %d: guessed client stack range %p-%p\n",
 		     ctid, seg->start, VG_PGROUNDUP(sp));
@@ -405,8 +402,7 @@ void setup_child ( /*OUT*/ ThreadArchState *child,
 {
    /* We inherit our parent's guest state. */
    child->vex = parent->vex;
-   child->vex_shadow1 = parent->vex_shadow1;
-   child->vex_shadow2 = parent->vex_shadow2;
+   child->vex_shadow = parent->vex_shadow;
 }
 
 
@@ -434,7 +430,6 @@ DECL_TEMPLATE(ppc64_linux, sys_clone);
 //zz DECL_TEMPLATE(ppc64_linux, sys_sigreturn);
 DECL_TEMPLATE(ppc64_linux, sys_rt_sigreturn);
 //zz DECL_TEMPLATE(ppc64_linux, sys_sigaction);
-DECL_TEMPLATE(ppc64_linux, sys_fadvise64);
 
 PRE(sys_socketcall)
 {
@@ -1011,13 +1006,6 @@ PRE(sys_clone)
    }
 }
 
-PRE(sys_fadvise64)
-{
-   PRINT("sys_fadvise64 ( %d, %lld, %llu, %d )", ARG1,ARG2,ARG3,ARG4);
-   PRE_REG_READ4(long, "fadvise64",
-                 int, fd, vki_loff_t, offset, vki_size_t, len, int, advice);
-}
-
 PRE(sys_rt_sigreturn)
 {
    /* See comments on PRE(sys_rt_sigreturn) in syswrap-amd64-linux.c for
@@ -1263,7 +1251,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 // _____(__NR_fstatfs,           sys_fstatfs),            // 100
 // _____(__NR_ioperm,            sys_ioperm),             // 101
    PLAXY(__NR_socketcall,        sys_socketcall),         // 102
-   LINXY(__NR_syslog,            sys_syslog),             // 103
+// _____(__NR_syslog,            sys_syslog),             // 103
    GENXY(__NR_setitimer,         sys_setitimer),          // 104
 
    GENXY(__NR_getitimer,         sys_getitimer),          // 105
@@ -1292,7 +1280,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
 
    GENXY(__NR_mprotect,          sys_mprotect),           // 125
 // _____(__NR_sigprocmask,       sys_sigprocmask),        // 126
-   GENX_(__NR_create_module,     sys_ni_syscall),         // 127
+// _____(__NR_create_module,     sys_create_module),      // 127
 // _____(__NR_init_module,       sys_init_module),        // 128
 // _____(__NR_delete_module,     sys_delete_module),      // 129
 
@@ -1417,7 +1405,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    LINX_(__NR_io_submit,         sys_io_submit),          // 230
    LINXY(__NR_io_cancel,         sys_io_cancel),          // 231
    LINX_(__NR_set_tid_address,   sys_set_tid_address),    // 232
-   PLAX_(__NR_fadvise64,         sys_fadvise64),          // 233
+// _____(__NR_fadvise64,         sys_fadvise64),          // 233
    LINX_(__NR_exit_group,        sys_exit_group),         // 234
 
 // _____(__NR_lookup_dcookie,    sys_lookup_dcookie),     // 235

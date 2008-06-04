@@ -1,6 +1,15 @@
 {
    dl
    exp-drd:ConflictingAccess
+   fun:_dl_lookup_symbol_x
+   fun:_dl_fixup
+   fun:_dl_runtime_resolve
+}
+{
+   dl
+   exp-drd:ConflictingAccess
+   fun:do_lookup_x
+   fun:_dl_lookup_symbol_x
    fun:_dl_fixup
    fun:_dl_runtime_resolve
 }
@@ -76,14 +85,6 @@
 {
    pthread
    exp-drd:ConflictingAccess
-   fun:clone
-   fun:create_thread
-   fun:pthread_create*
-   fun:pthread_create*
-}
-{
-   pthread
-   exp-drd:ConflictingAccess
    obj:/lib*/libc-*.so
    fun:__libc_thread_freeres
    fun:start_thread
@@ -109,60 +110,28 @@
    pthread
    exp-drd:ConflictingAccess
    fun:pthread_create@@GLIBC_*
-   fun:pthread_create*
+   fun:pthread_create@*
 }
 {
    pthread
    exp-drd:ConflictingAccess
    fun:clone
-   fun:do_clone
    fun:pthread_create@@GLIBC_*
-   fun:pthread_create*
-}
-{
-   pthread-glibc2.7-pthread_create
-   exp-drd:ConflictingAccess
-   fun:memset
-   fun:pthread_create*
-}
-{
-   pthread
-   exp-drd:ConflictingAccess
-   fun:pthread_mutex_lock
-   fun:pthread_mutex_lock
-}
-{
-   pthread
-   exp-drd:ConflictingAccess
-   fun:__pthread_mutex_cond_lock
-   fun:pthread_cond_wait@@GLIBC_*
-}
-{
-   pthread
-   exp-drd:ConflictingAccess
-   fun:clone
-   fun:pthread_create*
+   fun:pthread_create@*
 }
 {
    pthread
    exp-drd:ConflictingAccess
    fun:do_clone
    fun:pthread_create@@GLIBC_*
-   fun:pthread_create*
+   fun:pthread_create@*
 }
 {
    pthread
    exp-drd:ConflictingAccess
    fun:memset
    fun:pthread_create@@GLIBC_*
-   fun:pthread_create*
-}
-{
-   pthread
-   exp-drd:ConflictingAccess
-   fun:_dl_allocate_tls_init
-   fun:pthread_create@@GLIBC_*
-   fun:pthread_create*
+   fun:pthread_create@*
 }
 {
    pthread
@@ -170,40 +139,20 @@
    fun:memset
    fun:_dl_allocate_tls_init
    fun:pthread_create@@GLIBC_*
-   fun:pthread_create*
+   fun:pthread_create@*
 }
 {
    pthread
    exp-drd:ConflictingAccess
    fun:mempcpy
    fun:pthread_create@@GLIBC_*
-   fun:pthread_create*
+   fun:pthread_create@*
 }
 {
    pthread
    exp-drd:ConflictingAccess
    fun:pthread_join
    fun:pthread_join
-}
-{
-   pthread
-   exp-drd:ConflictingAccess
-   fun:allocate_stack
-   fun:pthread_create*
-   fun:pthread_create*
-}
-{
-   pthread
-   exp-drd:ConflictingAccess
-   fun:get_cached_stack
-   fun:allocate_stack
-   fun:pthread_create*
-   fun:pthread_create*
-}
-{
-   pthread
-   exp-drd:ConflictingAccess
-   fun:__deallocate_stack
 }
 {
    pthread
@@ -217,6 +166,21 @@
    pthread
    exp-drd:ConflictingAccess
    fun:__free_tcb
+}
+{
+   pthread
+   exp-drd:ConflictingAccess
+   fun:__deallocate_stack
+   fun:__free_tcb
+   fun:start_thread
+   fun:clone
+}
+{
+   pthread stack_cache_lock
+   exp-drd:ConflictingAccess
+   fun:__deallocate_stack
+   fun:start_thread
+   fun:clone
 }
 {
    pthread
@@ -296,16 +260,4 @@
    pthread
    exp-drd:ConflictingAccess
    fun:_pthread_cleanup_push_defer
-}
-{
-   gomp
-   exp-drd:ConflictingAccess
-   obj:/usr/lib*/libgomp.so*
-   obj:/usr/lib*/libgomp.so*
-}
-{
-   libxcb-xcb_wait_for_reply
-   exp-drd:CondErr
-   fun:pthread_cond_destroy*
-   fun:xcb_wait_for_reply
 }

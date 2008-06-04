@@ -9,13 +9,13 @@
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2008 Julian Seward
+   Copyright (C) 2007-2007 Julian Seward
       jseward@acm.org
 
    This code is based on previous work by Nicholas Nethercote
    (coregrind/m_oset.c) which is
 
-   Copyright (C) 2005-2008 Nicholas Nethercote
+   Copyright (C) 2005-2007 Nicholas Nethercote
        njn@valgrind.org
 
    which in turn was derived partially from:
@@ -57,62 +57,40 @@
 //---                      Public interface                      ---//
 //------------------------------------------------------------------//
 
-/* As of r7409 (15 Feb 08), all these word-based abstractions (WordFM,
-   WordSet, WordBag) now operate on unsigned words (UWord), whereas
-   they previously operated on signed words (Word).  This became a
-   problem, when using unboxed comparisons (when kCmp == NULL), with
-   the introduction of HG_(initIterAtFM), which allows iteration over
-   parts of mappings.  Iterating over a mapping in increasing order of
-   signed Word keys is not what callers expect when iterating through
-   maps whose keys represent addresses (Addr) since Addr is unsigned,
-   and causes logical problems and assertion failures. */
-
 typedef  struct _WordFM  WordFM; /* opaque */
 
-/* Allocate and initialise a WordFM.  If kCmp is non-NULL, elements in
-   the set are ordered according to the ordering specified by kCmp,
-   which becomes obvious if you use VG_(initIterFM),
-   VG_(initIterAtFM), VG_(nextIterFM), VG_(doneIterFM) to iterate over
-   sections of the map, or the whole thing.  If kCmp is NULL then the
-   ordering used is unsigned word ordering (UWord) on the key
-   values. */
+/* Allocate and initialise a WordFM */
 WordFM* HG_(newFM) ( void* (*alloc_nofail)( SizeT ),
                      void  (*dealloc)(void*),
-                     Word  (*kCmp)(UWord,UWord) );
+                     Word  (*kCmp)(Word,Word) );
 
 /* Free up the FM.  If kFin is non-NULL, it is applied to keys
    before the FM is deleted; ditto with vFin for vals. */
-void HG_(deleteFM) ( WordFM*, void(*kFin)(UWord), void(*vFin)(UWord) );
+void HG_(deleteFM) ( WordFM*, void(*kFin)(Word), void(*vFin)(Word) );
 
 /* Add (k,v) to fm.  If a binding for k already exists, it is updated
    to map to this new v.  In that case we should really return the
    previous v so that caller can finalise it.  Oh well. */
-void HG_(addToFM) ( WordFM* fm, UWord k, UWord v );
+void HG_(addToFM) ( WordFM* fm, Word k, Word v );
 
 // Delete key from fm, returning associated key and val if found
 Bool HG_(delFromFM) ( WordFM* fm,
-                      /*OUT*/UWord* oldK, /*OUT*/UWord* oldV, UWord key );
+                      /*OUT*/Word* oldK, /*OUT*/Word* oldV, Word key );
 
 // Look up in fm, assigning found key & val at spec'd addresses
 Bool HG_(lookupFM) ( WordFM* fm, 
-                     /*OUT*/UWord* keyP, /*OUT*/UWord* valP, UWord key );
+                     /*OUT*/Word* keyP, /*OUT*/Word* valP, Word key );
 
 // How many elements are there in fm?
-UWord HG_(sizeFM) ( WordFM* fm );
+Word HG_(sizeFM) ( WordFM* fm );
 
 // set up FM for iteration
 void HG_(initIterFM) ( WordFM* fm );
 
-// set up FM for iteration so that the first key subsequently produced
-// by HG_(nextIterFM) is the smallest key in the map >= start_at.
-// Naturally ">=" is defined by the comparison function supplied to
-// HG_(newFM), as documented above.
-void HG_(initIterAtFM) ( WordFM* fm, UWord start_at );
-
 // get next key/val pair.  Will assert if fm has been modified
-// or looked up in since initIterFM/initIterWithStartFM was called.
+// or looked up in since initIterFM was called.
 Bool HG_(nextIterFM) ( WordFM* fm,
-                       /*OUT*/UWord* pKey, /*OUT*/UWord* pVal );
+                       /*OUT*/Word* pKey, /*OUT*/Word* pVal );
 
 // clear the I'm iterating flag
 void HG_(doneIterFM) ( WordFM* fm );
@@ -124,7 +102,7 @@ void HG_(doneIterFM) ( WordFM* fm );
 // could not allocate memory, in which case the copy is abandoned
 // and NULL is returned.  Ditto with dopyV for values.
 WordFM* HG_(dopyFM) ( WordFM* fm,
-                      UWord(*dopyK)(UWord), UWord(*dopyV)(UWord) );
+                      Word(*dopyK)(Word), Word(*dopyV)(Word) );
 
 //------------------------------------------------------------------//
 //---                         end WordFM                         ---//
@@ -146,13 +124,13 @@ WordBag* HG_(newBag) ( void* (*alloc_nofail)( SizeT ),
 void HG_(deleteBag) ( WordBag* );
 
 /* Add a word. */
-void HG_(addToBag)( WordBag*, UWord );
+void HG_(addToBag)( WordBag*, Word );
 
 /* Find out how many times the given word exists in the bag. */
-UWord HG_(elemBag) ( WordBag*, UWord );
+Word HG_(elemBag) ( WordBag*, Word );
 
 /* Delete a word from the bag. */
-Bool HG_(delFromBag)( WordBag*, UWord );
+Bool HG_(delFromBag)( WordBag*, Word );
 
 /* Is the bag empty? */
 Bool HG_(isEmptyBag)( WordBag* );
@@ -161,15 +139,15 @@ Bool HG_(isEmptyBag)( WordBag* );
 Bool HG_(isSingletonTotalBag)( WordBag* );
 
 /* Return an arbitrary element from the bag. */
-UWord HG_(anyElementOfBag)( WordBag* );
+Word HG_(anyElementOfBag)( WordBag* );
 
 /* How many different / total elements are in the bag? */
-UWord HG_(sizeUniqueBag)( WordBag* ); /* fast */
-UWord HG_(sizeTotalBag)( WordBag* );  /* warning: slow */
+Word HG_(sizeUniqueBag)( WordBag* ); /* fast */
+Word HG_(sizeTotalBag)( WordBag* );  /* warning: slow */
 
 /* Iterating over the elements of a bag. */
 void HG_(initIterBag)( WordBag* );
-Bool HG_(nextIterBag)( WordBag*, /*OUT*/UWord* pVal, /*OUT*/UWord* pCount );
+Bool HG_(nextIterBag)( WordBag*, /*OUT*/Word* pVal, /*OUT*/Word* pCount );
 void HG_(doneIterBag)( WordBag* );
 
 //------------------------------------------------------------------//

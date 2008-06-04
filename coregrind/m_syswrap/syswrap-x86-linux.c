@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Nicholas Nethercote
+   Copyright (C) 2000-2007 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -37,6 +37,7 @@
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"
 #include "pub_core_threadstate.h"
+#include "pub_core_debuginfo.h"     // VG_(di_notify_mmap)
 #include "pub_core_aspacemgr.h"
 #include "pub_core_debuglog.h"
 #include "pub_core_libcbase.h"
@@ -52,7 +53,6 @@
 #include "pub_core_syscall.h"
 #include "pub_core_syswrap.h"
 #include "pub_core_tooliface.h"
-#include "pub_core_stacks.h"        // VG_(register_stack)
 
 #include "priv_types_n_macros.h"
 #include "priv_syswrap-generic.h"    /* for decls of generic wrappers */
@@ -269,8 +269,6 @@ static SysRes do_clone ( ThreadId ptid,
    if (seg && seg->kind != SkResvn) {
       ctst->client_stack_highest_word = (Addr)VG_PGROUNDUP(esp);
       ctst->client_stack_szB = ctst->client_stack_highest_word - seg->start;
-
-      VG_(register_stack)(seg->start, ctst->client_stack_highest_word);
 
       if (debug)
 	 VG_(printf)("tid %d: guessed client stack range %p-%p\n",
@@ -731,8 +729,7 @@ static void setup_child ( /*OUT*/ ThreadArchState *child,
 {
    /* We inherit our parent's guest state. */
    child->vex = parent->vex;
-   child->vex_shadow1 = parent->vex_shadow1;
-   child->vex_shadow2 = parent->vex_shadow2;
+   child->vex_shadow = parent->vex_shadow;
 
    /* We inherit our parent's LDT. */
    if (parent->vex.guest_LDT == (HWord)NULL) {

@@ -6,7 +6,7 @@
    This file is part of Massif, a Valgrind tool for profiling memory
    usage of programs.
 
-   Copyright (C) 2003-2008 Nicholas Nethercote
+   Copyright (C) 2003-2007 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -813,9 +813,7 @@ Int get_IPs( ThreadId tid, Bool is_custom_alloc, Addr ips[])
 
       // Ask for more IPs than clo_depth suggests we need.
       n_ips = VG_(get_StackTrace)( tid, ips, clo_depth + overestimate,
-                                   NULL/*array to dump SP values in*/,
-                                   NULL/*array to dump FP values in*/,
-                                   0/*first_ip_delta*/ );
+                                        0/*first_ip_delta*/ );
       tl_assert(n_ips > 0);
 
       // If the original stack trace is smaller than asked-for, redo=False.
@@ -1732,7 +1730,7 @@ static void die_mem_stack(Addr a, SizeT len)
    die_mem_stack_2(a, len, "stk-die");
 }
 
-static void new_mem_stack_signal(Addr a, SizeT len, ThreadId tid)
+static void new_mem_stack_signal(Addr a, SizeT len)
 {
    new_mem_stack_2(a, len, "sig-new");
 }
@@ -2199,7 +2197,7 @@ static void ms_pre_clo_init(void)
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a heap profiler");
    VG_(details_copyright_author)(
-      "Copyright (C) 2003-2008, and GNU GPL'd, by Nicholas Nethercote");
+      "Copyright (C) 2003-2007, and GNU GPL'd, by Nicholas Nethercote");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
 
    // Basic functions

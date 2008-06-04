@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
+  Copyright (C) 2006-2007 Bart Van Assche
   bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
@@ -58,19 +58,13 @@ void vc_cleanup(VectorClock* const vc)
   vc_reserve(vc, 0);
 }
 
-/** Copy constructor -- initializes *new. */
+/**
+ * Copy constructor -- initializes 'new'.
+ */
 void vc_copy(VectorClock* const new,
              const VectorClock* const rhs)
 {
   vc_init(new, rhs->vc, rhs->size);
-}
-
-/** Assignment operator -- *lhs is already a valid vector clock. */
-void vc_assign(VectorClock* const lhs,
-               const VectorClock* const rhs)
-{
-  vc_cleanup(lhs);
-  vc_copy(lhs, rhs);
 }
 
 void vc_increment(VectorClock* const vc, ThreadId const threadid)
@@ -104,7 +98,8 @@ void vc_increment(VectorClock* const vc, ThreadId const threadid)
  *    vc2, and if additionally all corresponding counters in v2 are higher or
  *    equal.
  */
-Bool vc_lte(const VectorClock* const vc1, const VectorClock* const vc2)
+Bool vc_lte(const VectorClock* const vc1,
+            const VectorClock* const vc2)
 {
   unsigned i;
   unsigned j = 0;
@@ -116,7 +111,7 @@ Bool vc_lte(const VectorClock* const vc1, const VectorClock* const vc2)
     }
     if (j >= vc2->size || vc2->vc[j].threadid > vc1->vc[i].threadid)
       return False;
-    //tl_assert(j < vc2->size && vc2->vc[j].threadid == vc1->vc[i].threadid);
+    tl_assert(j < vc2->size && vc2->vc[j].threadid == vc1->vc[i].threadid);
     if (vc1->vc[i].count > vc2->vc[j].count)
       return False;
   }
@@ -133,68 +128,16 @@ Bool vc_ordered(const VectorClock* const vc1,
   return vc_lte(vc1, vc2) || vc_lte(vc2, vc1);
 }
 
-/** Compute elementwise minimum. */
-void vc_min(VectorClock* const result, const VectorClock* const rhs)
-{
-  unsigned i;
-  unsigned j;
-
-  tl_assert(result);
-  tl_assert(rhs);
-
-  vc_check(result);
-
-  /* Next, combine both vector clocks into one. */
-  i = 0;
-  for (j = 0; j < rhs->size; j++)
-  {
-    while (i < result->size && result->vc[i].threadid < rhs->vc[j].threadid)
-    {
-      /* Thread ID is missing in second vector clock. Clear the count. */
-      result->vc[i].count = 0;
-      i++;
-    }
-    if (i >= result->size)
-    {
-      break;
-    }
-    if (result->vc[i].threadid <= rhs->vc[j].threadid)
-    {
-      /* The thread ID is present in both vector clocks. Compute the minimum */
-      /* of vc[i].count and vc[j].count. */
-      tl_assert(result->vc[i].threadid == rhs->vc[j].threadid);
-      if (rhs->vc[j].count < result->vc[i].count)
-      {
-        result->vc[i].count = rhs->vc[j].count;
-      }
-    }
-  }
-  vc_check(result);
-}
-
 /**
- * Compute elementwise maximum.
+ * Compute elementwise minimum.
  */
-void vc_combine(VectorClock* const result,
-                const VectorClock* const rhs)
-{
-  vc_combine2(result, rhs, -1);
-}
-
-/** Compute elementwise maximum.
- *
- *  @return True if *result and *rhs are equal, or if *result and *rhs only
- *          differ in the component with thread ID tid.
- */
-Bool vc_combine2(VectorClock* const result,
-                 const VectorClock* const rhs,
-                 const ThreadId tid)
+void vc_min(VectorClock* const result,
+            const VectorClock* const rhs)
 {
   unsigned i;
   unsigned j;
   unsigned shared;
   unsigned new_size;
-  Bool     almost_equal = True;
 
   tl_assert(result);
   tl_assert(rhs);
@@ -224,27 +167,16 @@ Bool vc_combine2(VectorClock* const result,
   i = 0;
   for (j = 0; j < rhs->size; j++)
   {
-    /* First of all, skip those clocks in result->vc[] for which there */
-    /* is no corresponding clock in rhs->vc[].                         */
+    vc_check(result);
+
     while (i < result->size && result->vc[i].threadid < rhs->vc[j].threadid)
-    {
-      if (result->vc[i].threadid != tid)
-      {
-        almost_equal = False;
-      }
       i++;
-    }
-    /* If the end of *result is met, append rhs->vc[j] to *result. */
     if (i >= result->size)
     {
       result->size++;
       result->vc[i] = rhs->vc[j];
-      if (result->vc[i].threadid != tid)
-      {
-        almost_equal = False;
-      }
+      vc_check(result);
     }
-    /* If clock rhs->vc[j] is not in *result, insert it. */
     else if (result->vc[i].threadid > rhs->vc[j].threadid)
     {
       unsigned k;
@@ -254,31 +186,94 @@ Bool vc_combine2(VectorClock* const result,
       }
       result->size++;
       result->vc[i] = rhs->vc[j];
-      if (result->vc[i].threadid != tid)
-      {
-        almost_equal = False;
-      }
+      vc_check(result);
     }
-    /* Otherwise, both *result and *rhs have a clock for thread            */
-    /* result->vc[i].threadid == rhs->vc[j].threadid. Compute the maximum. */
     else
     {
       tl_assert(result->vc[i].threadid == rhs->vc[j].threadid);
-      if (result->vc[i].threadid != tid
-          && rhs->vc[j].count != result->vc[i].count)
-      {
-        almost_equal = False;
-      }
-      if (rhs->vc[j].count > result->vc[i].count)
+      if (rhs->vc[j].count < result->vc[i].count)
       {
         result->vc[i].count = rhs->vc[j].count;
       }
+      vc_check(result);
     }
   }
   vc_check(result);
   tl_assert(result->size == new_size);
+}
 
-  return almost_equal;
+/**
+ * Compute elementwise maximum.
+ */
+void vc_combine(VectorClock* const result,
+                const VectorClock* const rhs)
+{
+  unsigned i;
+  unsigned j;
+  unsigned shared;
+  unsigned new_size;
+
+  tl_assert(result);
+  tl_assert(rhs);
+
+  // First count the number of shared thread id's.
+  j = 0;
+  shared = 0;
+  for (i = 0; i < result->size; i++)
+  {
+    while (j < rhs->size && rhs->vc[j].threadid < result->vc[i].threadid)
+      j++;
+    if (j >= rhs->size)
+      break;
+    if (result->vc[i].threadid == rhs->vc[j].threadid)
+      shared++;
+  }
+
+  vc_check(result);
+
+  new_size = result->size + rhs->size - shared;
+  if (new_size > result->capacity)
+    vc_reserve(result, new_size);
+
+  vc_check(result);
+
+  // Next, combine both vector clocks into one.
+  i = 0;
+  for (j = 0; j < rhs->size; j++)
+  {
+    vc_check(result);
+
+    while (i < result->size && result->vc[i].threadid < rhs->vc[j].threadid)
+      i++;
+    if (i >= result->size)
+    {
+      result->size++;
+      result->vc[i] = rhs->vc[j];
+      vc_check(result);
+    }
+    else if (result->vc[i].threadid > rhs->vc[j].threadid)
+    {
+      unsigned k;
+      for (k = result->size; k > i; k--)
+      {
+        result->vc[k] = result->vc[k - 1];
+      }
+      result->size++;
+      result->vc[i] = rhs->vc[j];
+      vc_check(result);
+    }
+    else
+    {
+      tl_assert(result->vc[i].threadid == rhs->vc[j].threadid);
+      if (rhs->vc[j].count > result->vc[i].count)
+      {
+        result->vc[i].count = rhs->vc[j].count;
+      }
+      vc_check(result);
+    }
+  }
+  vc_check(result);
+  tl_assert(result->size == new_size);
 }
 
 void vc_print(const VectorClock* const vc)
@@ -300,20 +295,15 @@ void vc_snprint(Char* const str, Int const size,
                 const VectorClock* const vc)
 {
   unsigned i;
-  unsigned j = 1;
 
   tl_assert(vc);
   VG_(snprintf)(str, size, "[");
   for (i = 0; i < vc->size; i++)
   {
     tl_assert(vc->vc);
-    for ( ; j <= vc->vc[i].threadid; j++)
-    {
-      VG_(snprintf)(str + VG_(strlen)(str), size - VG_(strlen)(str),
-                    "%s %d",
-                    i > 0 ? "," : "",
-                    (j == vc->vc[i].threadid) ? vc->vc[i].count : 0);
-    }
+    VG_(snprintf)(str + VG_(strlen)(str), size - VG_(strlen)(str),
+                  "%s %d: %d", i > 0 ? "," : "",
+                  vc->vc[i].threadid, vc->vc[i].count);
   }
   VG_(snprintf)(str + VG_(strlen)(str), size - VG_(strlen)(str), " ]");
 }

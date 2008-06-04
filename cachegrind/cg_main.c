@@ -8,7 +8,7 @@
    This file is part of Cachegrind, a Valgrind tool for cache
    profiling programs.
 
-   Copyright (C) 2002-2008 Nicholas Nethercote
+   Copyright (C) 2002-2007 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -112,7 +112,7 @@ typedef struct {
 } LineCC;
 
 // First compare file, then fn, then line.
-static Word cmp_CodeLoc_LineCC(const void *vloc, const void *vcc)
+static Word cmp_CodeLoc_LineCC(void *vloc, void *vcc)
 {
    Word res;
    CodeLoc* a = (CodeLoc*)vloc;
@@ -182,7 +182,7 @@ static Int  no_debugs           = 0;
 /*--- String table operations                              ---*/
 /*------------------------------------------------------------*/
 
-static Word stringCmp( const void* key, const void* elem )
+static Word stringCmp( void* key, void* elem )
 {
    return VG_(strcmp)(*(Char**)key, *(Char**)elem);
 }
@@ -1732,7 +1732,7 @@ static void cg_pre_clo_init(void)
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a cache and branch-prediction profiler");
    VG_(details_copyright_author)(
-      "Copyright (C) 2002-2008, and GNU GPL'd, by Nicholas Nethercote et al.");
+      "Copyright (C) 2002-2007, and GNU GPL'd, by Nicholas Nethercote et al.");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
    VG_(details_avg_translation_sizeB) ( 500 );
 

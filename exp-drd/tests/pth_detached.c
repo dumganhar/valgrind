@@ -1,7 +1,6 @@
-/** Test whether detached threads are handled properly.
- *  Copyright (c) 2006-2008 by Bart Van Assche (bart.vanassche@gmail.com).
- */
-
+/* Test whether detached threads are handled properly.
+   Contributed by Bart Van Assche (bart.vanassche@gmail.com).
+*/
 
 #include <assert.h>
 #include <pthread.h>
@@ -10,19 +9,27 @@
 #include <unistd.h>
 #include "../drd_clientreq.h"
 
-
 static int s_finished_count;
 static pthread_mutex_t s_mutex;
 
+static void set_thread_name(const char* const fmt, const int arg)
+{
+  int res;
+  char name[32];
+  snprintf(name, sizeof(name), fmt, arg);
+  name[sizeof(name) - 1] = 0;
+  VALGRIND_DO_CLIENT_REQUEST(res, 0, VG_USERREQ__SET_THREAD_NAME,
+                             name, 0, 0, 0, 0);
+}
 
-static void increment_finished_count()
+void increment_finished_count()
 {
   pthread_mutex_lock(&s_mutex);
   s_finished_count++;
   pthread_mutex_unlock(&s_mutex);
 }
 
-static int get_finished_count()
+int get_finished_count()
 {
   int result;
   pthread_mutex_lock(&s_mutex);
@@ -33,6 +40,7 @@ static int get_finished_count()
 
 static void* thread_func1(void* arg)
 {
+  set_thread_name("thread_func1[%d]", *(int*)arg);
   write(STDOUT_FILENO, ".", 1);
   increment_finished_count();
   return 0;
@@ -40,6 +48,7 @@ static void* thread_func1(void* arg)
 
 static void* thread_func2(void* arg)
 {
+  set_thread_name("thread_func2[%d]", *(int*)arg);
   pthread_detach(pthread_self());
   write(STDOUT_FILENO, ".", 1);
   increment_finished_count();
@@ -54,6 +63,8 @@ int main(int argc, char** argv)
   int i;
   int detachstate;
   pthread_attr_t attr;
+
+  set_thread_name("main", 0);
 
   for (i = 0; i < count1 || i < count2; i++)
     thread_arg[i] = i;
@@ -90,7 +101,7 @@ int main(int argc, char** argv)
     nanosleep(&delay, 0);
   }
 
-  write(STDOUT_FILENO, "\n", 1);
+  printf("\n");
 
   pthread_mutex_destroy(&s_mutex);
 

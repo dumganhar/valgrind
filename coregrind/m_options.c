@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Nicholas Nethercote
+   Copyright (C) 2000-2007 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -80,13 +80,11 @@ Int    VG_(clo_dump_error)     = 0;
 Int    VG_(clo_backtrace_size) = 12;
 Char*  VG_(clo_sim_hints)      = NULL;
 Bool   VG_(clo_sym_offsets)    = False;
-Bool   VG_(clo_read_var_info)  = False;
 Bool   VG_(clo_run_libc_freeres) = True;
 Bool   VG_(clo_track_fds)      = False;
 Bool   VG_(clo_show_below_main)= False;
 Bool   VG_(clo_show_emwarns)   = False;
 Word   VG_(clo_max_stackframe) = 2000000;
-Word   VG_(clo_main_stacksize) = 0; /* use client's rlimit.stack */
 Bool   VG_(clo_wait_for_gdb)   = False;
 VgSmc  VG_(clo_smc_check)      = Vg_SmcStack;
 HChar* VG_(clo_kernel_variant) = NULL;

@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
+  Copyright (C) 2006-2007 Bart Van Assche
   bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
@@ -30,7 +30,7 @@
 #include "pub_tool_execontext.h" // ExeContext
 
 
-typedef void (*StartUsingMem)(const Addr a1, const Addr a2, UInt ec_uniq);
+typedef void (*StartUsingMem)(const Addr a1, const Addr a2);
 typedef void (*StopUsingMem)(const Addr a1, const Addr a2);
 
 

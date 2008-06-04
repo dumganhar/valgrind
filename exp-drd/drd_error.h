@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2008 Bart Van Assche
+  Copyright (C) 2006-2007 Bart Van Assche
   bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
@@ -27,7 +27,7 @@
 #define __DRD_ERROR_H
 
 
-#include "pub_drd_bitmap.h"     // BmAccessTypeT
+#include "pub_drd_bitmap.h"         // BmAccessTypeT
 #include "drd_thread.h"         // DrdThreadId
 #include "pub_tool_basics.h"    // SizeT
 #include "pub_tool_debuginfo.h" // SegInfo
@@ -37,26 +37,10 @@
 /* DRD error types. */
 
 typedef enum {
-#define STR_DataRaceErr  "ConflictingAccess"
    DataRaceErr    = 1,
-#define STR_MutexErr     "MutexErr"
    MutexErr       = 2,
-#define STR_CondErr      "CondErr"
-   CondErr        = 3,
-#define STR_CondRaceErr  "CondRaceErr"
-   CondRaceErr    = 4,
-#define STR_CondDestrErr "CondDestrErr"
-   CondDestrErr   = 5,
-#define STR_SemaphoreErr "SemaphoreErr"
-   SemaphoreErr   = 6,
-#define STR_BarrierErr   "BarrierErr"
-   BarrierErr     = 7,
-#define STR_RwlockErr    "RwlockErr"
-   RwlockErr      = 8,
-#define STR_HoldtimeErr  "HoldtimeErr"
-   HoldtimeErr    = 9,
-#define STR_GenericErr   "GenericErr"
-   GenericErr     = 10,
+   CondRaceErr    = 3,
+   CondErr = 4,
 } DrdErrorKind;
 
 /* The classification of a faulting address. */
@@ -82,14 +66,25 @@ struct {                      // Used by:
    OffT        rwoffset;      //   ALL
    ExeContext* lastchange;    //   Mallocd
    DrdThreadId stack_tid;     //   Stack
-   DebugInfo*  debuginfo;     //   Segment
+   SegInfo*    seginfo;       //   Segment
    Char        name[256];     //   Segment
    Char        descr[256];    //   Segment
 }
    AddrInfo;
 
+#ifdef OLD_RACE_DETECTION_ALGORITHM
+/* Records info about a data race. */
 typedef struct {
-   DrdThreadId   tid;         // Thread ID of the running thread.
+   ThreadId tid1;      // Thread ID of first thread involved in the data race.
+   ThreadId tid2;      // Thread ID of second thread involved in the data race.
+   Addr     range_begin;  // Start address of range involved.
+   Addr     range_end;    // Last address (exclusive) of range involved.
+   UInt     range_access; // How the range was accessed (LHS_[RW] | RHS_[RW]).
+} DataRaceInfo;
+#endif
+
+typedef struct {
+   ThreadId      tid;         // Thread ID of the running thread.
    Addr          addr;        // Conflicting address in current thread.
    SizeT         size;        // Size in bytes of conflicting operation.
    BmAccessTypeT access_type; // Access type: load or store.
@@ -103,44 +98,28 @@ typedef struct {
 
 typedef struct {
    Addr cond;
-} CondErrInfo;
-
-typedef struct {
-   Addr cond;
    Addr mutex;
 } CondRaceErrInfo;
 
 typedef struct {
-   Addr        cond;
-   Addr        mutex;
-   DrdThreadId tid;
-} CondDestrErrInfo;
+   Addr cond;
+} CondErrInfo;
 
-typedef struct {
-   Addr semaphore;
-} SemaphoreErrInfo;
-
-typedef struct {
-   Addr barrier;
-} BarrierErrInfo;
-
-typedef struct {
-   Addr rwlock;
-} RwlockErrInfo;
-
-typedef struct {
-  Addr        synchronization_object;
-  ExeContext* acquired_at;
-  UInt        hold_time_ms;
-  UInt        threshold_ms;
-} HoldtimeErrInfo;
-
-typedef struct {
-} GenericErrInfo;
-
-
-void set_show_conflicting_segments(const Bool scs);
+void describe_addr(Addr const a, SizeT const len, AddrInfo* const ai);
+Char* describe_addr_text(Addr const a, SizeT const len, AddrInfo* const ai,
+                         Char* const buf, UInt const n_buf);
+#ifdef OLD_RACE_DETECTION_ALGORITHM
+void drd_report_data_race(const DataRaceInfo* const dri);
+#endif
+//void drd_report_data_race2(const DataRaceErrInfo* const dri);
 void drd_register_error_handlers(void);
 
 
 #endif /* __DRD_ERROR_H */
+
+
+/*
+ * Local variables:
+ * c-basic-offset: 3
+ * End:
+ */

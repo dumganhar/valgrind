@@ -8,10 +8,10 @@
 ##------------------------------------------------------------##
 
 # Process this file with autoconf to produce a configure script.
-AC_INIT(Valgrind, 3.4.0.SVN, valgrind-users@lists.sourceforge.net)
+AC_INIT(Valgrind, 3.3.1, valgrind-users@lists.sourceforge.net)
 AC_CONFIG_SRCDIR(coregrind/m_main.c)
 AM_CONFIG_HEADER(config.h)
-AM_INIT_AUTOMAKE([foreign])
+AM_INIT_AUTOMAKE
 
 AM_MAINTAINER_MODE
 
@@ -55,17 +55,10 @@ CFLAGS="-Wno-long-long"
 
 AC_PROG_LN_S
 AC_PROG_CC
-AM_PROG_CC_C_O
+##AM_PROG_CC_C_O
 AC_PROG_CPP
 AC_PROG_CXX
 AC_PROG_RANLIB
-
-# If no AR variable was specified, look up the name of the archiver. Otherwise
-# do not touch the AR variable.
-if test "x$AR" = "x"; then
-  AC_PATH_PROGS([AR], ["${LD%ld}ar" "ar"], [ar])
-fi
-AC_ARG_VAR([AR],[Archiver command])
 
 # Check for the compiler support
 if test "${GCC}" != "yes" ; then
@@ -93,13 +86,22 @@ AC_SUBST(ASFLAGS)
 # We don't want gcc < 3.0
 AC_MSG_CHECKING([for a supported version of gcc])
 
-[gcc_version=`${CC} --version | head -n 1 | sed 's/^[^0-9.]*\([0-9.]*\).*$/\1/'`]
+gcc_version=`${CC} --version | head -n 1`
 
 case "${gcc_version}" in
-     2.*)
+     gcc-2.7.*)
 	AC_MSG_RESULT([no (${gcc_version})])
 	AC_MSG_ERROR([please use a recent (>= gcc-3.0) version of gcc])
 	;;
+     gcc-2.8.*)
+	AC_MSG_RESULT([no (${gcc_version})])
+	AC_MSG_ERROR([please use a recent (>= gcc-3.0) version of gcc])
+	;;
+     gcc-2.9*)
+	AC_MSG_RESULT([no (${gcc_version})])
+	AC_MSG_ERROR([please use a recent (>= gcc-3.0) version of gcc])
+	;;
+
      *)
 	AC_MSG_RESULT([ok (${gcc_version})])
 	;;
@@ -405,7 +407,7 @@ DEFAULT_SUPP=""
 AC_SUBST(DEFAULT_SUPP)
 
 
-GLIBC_VERSION=""
+libc=""
 
 AC_EGREP_CPP([GLIBC_22], [
 #include <features.h>
@@ -415,7 +417,7 @@ AC_EGREP_CPP([GLIBC_22], [
  #endif
 #endif
 ],
-GLIBC_VERSION="2.2")
+libc="2.2")
 
 AC_EGREP_CPP([GLIBC_23], [
 #include <features.h>
@@ -425,7 +427,7 @@ AC_EGREP_CPP([GLIBC_23], [
  #endif
 #endif
 ],
-GLIBC_VERSION="2.3")
+libc="2.3")
 
 AC_EGREP_CPP([GLIBC_24], [
 #include <features.h>
@@ -435,7 +437,7 @@ AC_EGREP_CPP([GLIBC_24], [
  #endif
 #endif
 ],
-GLIBC_VERSION="2.4")
+libc="2.4")
 
 AC_EGREP_CPP([GLIBC_25], [
 #include <features.h>
@@ -445,7 +447,7 @@ AC_EGREP_CPP([GLIBC_25], [
  #endif
 #endif
 ],
-GLIBC_VERSION="2.5")
+libc="2.5")
 
 AC_EGREP_CPP([GLIBC_26], [
 #include <features.h>
@@ -455,7 +457,7 @@ AC_EGREP_CPP([GLIBC_26], [
  #endif
 #endif
 ],
-GLIBC_VERSION="2.6")
+libc="2.6")
 
 AC_EGREP_CPP([GLIBC_27], [
 #include <features.h>
@@ -465,7 +467,7 @@ AC_EGREP_CPP([GLIBC_27], [
  #endif
 #endif
 ],
-GLIBC_VERSION="2.7")
+libc="2.7")
 
 AC_EGREP_CPP([GLIBC_28], [
 #include <features.h>
@@ -475,7 +477,7 @@ AC_EGREP_CPP([GLIBC_28], [
  #endif
 #endif
 ],
-GLIBC_VERSION="2.8")
+libc="2.8")
 
 AC_EGREP_CPP([AIX5_LIBC], [
 #include <standards.h>
@@ -483,17 +485,16 @@ AC_EGREP_CPP([AIX5_LIBC], [
   AIX5_LIBC
 #endif
 ],
-GLIBC_VERSION="aix5")
+libc="aix5")
 
-AC_MSG_CHECKING([the GLIBC_VERSION version])
+AC_MSG_CHECKING([the libc version])
 
-case "${GLIBC_VERSION}" in
+case "${libc}" in
      2.2)
 	AC_MSG_RESULT(2.2 family)
 	AC_DEFINE([GLIBC_2_2], 1, [Define to 1 if you're using glibc 2.2.x])
 	DEFAULT_SUPP="glibc-2.2.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.2-LinuxThreads-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
 
      2.3)
@@ -501,7 +502,6 @@ case "${GLIBC_VERSION}" in
 	AC_DEFINE([GLIBC_2_3], 1, [Define to 1 if you're using glibc 2.3.x])
 	DEFAULT_SUPP="glibc-2.3.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
 
      2.4)
@@ -509,7 +509,6 @@ case "${GLIBC_VERSION}" in
 	AC_DEFINE([GLIBC_2_4], 1, [Define to 1 if you're using glibc 2.4.x])
 	DEFAULT_SUPP="glibc-2.4.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
 
      2.5)
@@ -517,30 +516,25 @@ case "${GLIBC_VERSION}" in
 	AC_DEFINE([GLIBC_2_5], 1, [Define to 1 if you're using glibc 2.5.x])
 	DEFAULT_SUPP="glibc-2.5.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
      2.6)
 	AC_MSG_RESULT(2.6 family)
 	AC_DEFINE([GLIBC_2_6], 1, [Define to 1 if you're using glibc 2.6.x])
 	DEFAULT_SUPP="glibc-2.6.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
      2.7)
 	AC_MSG_RESULT(2.7 family)
 	AC_DEFINE([GLIBC_2_7], 1, [Define to 1 if you're using glibc 2.7.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.7.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
      2.8)
 	AC_MSG_RESULT(2.8 family)
 	AC_DEFINE([GLIBC_2_8], 1, [Define to 1 if you're using glibc 2.8.x])
-	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.8.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
-	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
-
      aix5)
 	AC_MSG_RESULT(AIX 5.1 or 5.2 or 5.3)
 	AC_DEFINE([AIX5_LIBC], 1, [Define to 1 if you're using AIX 5.1 or 5.2 or 5.3])
@@ -549,12 +543,11 @@ case "${GLIBC_VERSION}" in
 
      *)
 	AC_MSG_RESULT(unsupported version)
-	AC_MSG_ERROR([Valgrind requires glibc version 2.2 - 2.8])
-	AC_MSG_ERROR([or AIX 5.1 or 5.2 or 5.3 GLIBC_VERSION])
+	AC_MSG_ERROR([Valgrind requires glibc version 2.2 - 2.7])
+	AC_MSG_ERROR([or AIX 5.1 or 5.2 or 5.3 libc])
 	;;
 esac
 
-AC_SUBST(GLIBC_VERSION)
 
 # We don't know how to detect the X client library version
 # (detecting the server version is easy, but no help).  So we
@@ -565,227 +558,6 @@ if test "${no_x}" != 'yes' ; then
    DEFAULT_SUPP="xfree-4.supp ${DEFAULT_SUPP}"
    DEFAULT_SUPP="xfree-3.supp ${DEFAULT_SUPP}"
 fi
-
-
-# Check for CLOCK_MONOTONIC
-
-AC_MSG_CHECKING([for CLOCK_MONOTONIC])
-
-AC_TRY_COMPILE(
-[
-#include <time.h>
-], [
-  struct timespec t;
-  clock_gettime(CLOCK_MONOTONIC, &t);
-  return 0;
-],
-[
-AC_MSG_RESULT([yes])
-AC_DEFINE([HAVE_CLOCK_MONOTONIC], 1,
-          [Define to 1 if you have the `CLOCK_MONOTONIC' constant.])
-], [
-AC_MSG_RESULT([no])
-])
-
-
-# Check for PTHREAD_MUTEX_ADAPTIVE_NP
-
-AC_MSG_CHECKING([for PTHREAD_MUTEX_ADAPTIVE_NP])
-
-AC_TRY_COMPILE(
-[
-#define _GNU_SOURCE
-#include <pthread.h>
-], [
-  return (PTHREAD_MUTEX_ADAPTIVE_NP);
-],
-[
-AC_MSG_RESULT([yes])
-AC_DEFINE([HAVE_PTHREAD_MUTEX_ADAPTIVE_NP], 1,
-          [Define to 1 if you have the `PTHREAD_MUTEX_ADAPTIVE_NP' constant.])
-], [
-AC_MSG_RESULT([no])
-])
-
-
-# Check for PTHREAD_MUTEX_ERRORCHECK_NP
-
-AC_MSG_CHECKING([for PTHREAD_MUTEX_ERRORCHECK_NP])
-
-AC_TRY_COMPILE(
-[
-#define _GNU_SOURCE
-#include <pthread.h>
-], [
-  return (PTHREAD_MUTEX_ERRORCHECK_NP);
-],
-[
-AC_MSG_RESULT([yes])
-AC_DEFINE([HAVE_PTHREAD_MUTEX_ERRORCHECK_NP], 1,
-          [Define to 1 if you have the `PTHREAD_MUTEX_ERRORCHECK_NP' constant.])
-], [
-AC_MSG_RESULT([no])
-])
-
-
-# Check for PTHREAD_MUTEX_RECURSIVE_NP
-
-AC_MSG_CHECKING([for PTHREAD_MUTEX_RECURSIVE_NP])
-
-AC_TRY_COMPILE(
-[
-#define _GNU_SOURCE
-#include <pthread.h>
-], [
-  return (PTHREAD_MUTEX_RECURSIVE_NP);
-],
-[
-AC_MSG_RESULT([yes])
-AC_DEFINE([HAVE_PTHREAD_MUTEX_RECURSIVE_NP], 1,
-          [Define to 1 if you have the `PTHREAD_MUTEX_RECURSIVE_NP' constant.])
-], [
-AC_MSG_RESULT([no])
-])
-
-
-# Check for PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP
-
-AC_MSG_CHECKING([for PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP])
-
-AC_TRY_COMPILE(
-[
-#define _GNU_SOURCE
-#include <pthread.h>
-], [
-  pthread_mutex_t m = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
-  return 0;
-],
-[
-AC_MSG_RESULT([yes])
-AC_DEFINE([HAVE_PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP], 1,
-          [Define to 1 if you have the `PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP' constant.])
-], [
-AC_MSG_RESULT([no])
-])
-
-
-# Check whether pthread_mutex_t has a member called __m_kind.
-
-AC_MSG_CHECKING([for pthread_mutex_t::__m_kind])
-
-AC_TRY_COMPILE(
-[
-  #include <pthread.h>
-], [
-  pthread_mutex_t m;
-  return m.__m_kind;
-], [
-AC_MSG_RESULT([yes])
-AC_DEFINE([HAVE_PTHREAD_MUTEX_T__M_KIND], 1,
-          [Define to 1 if pthread_mutex_t has a member called __m_kind.])
-], [
-AC_MSG_RESULT([no])
-])
-
-
-# Check whether pthread_mutex_t has a member called __data.__kind.
-
-AC_MSG_CHECKING([for pthread_mutex_t::__data.__kind])
-
-AC_TRY_COMPILE(
-[
-#include <pthread.h>
-], [
-  pthread_mutex_t m;
-  return m.__data.__kind;
-], [
-AC_MSG_RESULT([yes])
-AC_DEFINE([HAVE_PTHREAD_MUTEX_T__DATA__KIND], 1,
-          [Define to 1 if pthread_mutex_t has a member __data.__kind.])
-], [
-AC_MSG_RESULT([no])
-])
-
-
-# does this compiler support -fopenmp, does it have the include file
-# <omp.h> and does it have libgomp ?
-
-AC_MSG_CHECKING([for OpenMP])
-
-safe_CFLAGS=$CFLAGS
-CFLAGS="-fopenmp"
-
-AC_LINK_IFELSE(
-[
-#include <omp.h> 
-int main(int argc, char** argv)
-{
-  omp_set_dynamic(0);
-  return 0;
-}
-],
-[
-ac_have_openmp=yes
-AC_MSG_RESULT([yes])
-], [
-ac_have_openmp=no
-AC_MSG_RESULT([no])
-])
-CFLAGS=$safe_CFLAGS
-
-AM_CONDITIONAL([HAVE_OPENMP], [test x$ac_have_openmp = xyes])
-
-
-# does this compiler support -maltivec and does it have the include file
-# <altivec.h> ?
-
-AC_MSG_CHECKING([for Altivec])
-
-safe_CFLAGS=$CFLAGS
-CFLAGS="-maltivec"
-
-AC_TRY_COMPILE(
-[
-#include <altivec.h>
-], [
-  vector unsigned int v;
-],
-[
-ac_have_altivec=yes
-AC_MSG_RESULT([yes])
-], [
-ac_have_altivec=no
-AC_MSG_RESULT([no])
-])
-CFLAGS=$safe_CFLAGS
-
-AM_CONDITIONAL([HAS_ALTIVEC], [test x$ac_have_altivec = xyes])
-AM_CONDITIONAL([HAVE_ALTIVEC_H], [test x$ac_have_altivec = xyes])
-
-
-# Check for eventfd_t, eventfd() and eventfd_read()
-AC_MSG_CHECKING([for eventfd()])
-
-AC_TRY_LINK(
-[
-#include <sys/eventfd.h>
-], [
-  eventfd_t ev;
-  int fd;
-
-  fd = eventfd(5, 0);
-  eventfd_read(fd, &ev);
-  return 0;
-],
-[
-AC_MSG_RESULT([yes])
-AC_DEFINE([HAVE_EVENTFD], 1,
-          [Define to 1 if you have the `eventfd' function.])
-AC_DEFINE([HAVE_EVENTFD_READ], 1,
-          [Define to 1 if you have the `eventfd_read' function.])
-], [
-AC_MSG_RESULT([no])
-])
 
 
 # does this compiler support -m32 ?
@@ -936,7 +708,7 @@ AC_SUBST(PREFERRED_STACK_BOUNDARY)
 
 
 # does this compiler support -Wno-pointer-sign ?
-AC_MSG_CHECKING([if gcc accepts -Wno-pointer-sign])
+AC_MSG_CHECKING([if gcc accepts -Wno-pointer-sign ])
 
 safe_CFLAGS=$CFLAGS
 CFLAGS="-Wno-pointer-sign"
@@ -959,7 +731,7 @@ fi
 
 
 # does this compiler support -Wdeclaration-after-statement ?
-AC_MSG_CHECKING([if gcc accepts -Wdeclaration-after-statement])
+AC_MSG_CHECKING([if gcc accepts -Wdeclaration-after-statement ])
 
 safe_CFLAGS=$CFLAGS
 CFLAGS="-Wdeclaration-after-statement"
@@ -985,41 +757,8 @@ if test x$declaration_after_statement = xyes; then
 fi
 
 
-# does this compiler support -Wextra or the older -W ?
-
-AC_MSG_CHECKING([if gcc accepts -Wextra or -W])
-
-safe_CFLAGS=$CFLAGS
-CFLAGS="-Wextra"
-
-AC_TRY_COMPILE(
-[ ],
-[
-  return 0;
-],
-[
-AC_SUBST([FLAG_W_EXTRA], [-Wextra])
-AC_MSG_RESULT([-Wextra])
-], [
-  CFLAGS="-W"
-  AC_TRY_COMPILE(
-  [ ],
-  [
-    return 0;
-  ],
-  [
-  AC_SUBST([FLAG_W_EXTRA], [-W])
-  AC_MSG_RESULT([-W])
-  ], [
-  AC_SUBST([FLAG_W_EXTRA], [])
-  AC_MSG_RESULT([not supported])
-  ])
-])
-CFLAGS=$safe_CFLAGS
-
-
 # does this compiler support -fno-stack-protector ?
-AC_MSG_CHECKING([if gcc accepts -fno-stack-protector])
+AC_MSG_CHECKING([if gcc accepts -fno-stack-protector ])
 
 safe_CFLAGS=$CFLAGS
 CFLAGS="-fno-stack-protector"
@@ -1045,32 +784,9 @@ if test x$no_stack_protector = xyes; then
 fi
 
 
-# does this compiler support --param inline-unit-growth=... ?
-
-AC_MSG_CHECKING([if gcc accepts --param inline-unit-growth])
-
-safe_CFLAGS=$CFLAGS
-CFLAGS="--param inline-unit-growth=900"
-
-AC_TRY_COMPILE(
-[ ],
-[
-  return 0;
-],
-[
-AC_SUBST([FLAG_UNLIMITED_INLINE_UNIT_GROWTH],
-         ["--param inline-unit-growth=900"])
-AC_MSG_RESULT([yes])
-], [
-AC_SUBST([FLAG_UNLIMITED_INLINE_UNIT_GROWTH], [""])
-AC_MSG_RESULT([no])
-])
-CFLAGS=$safe_CFLAGS
-
-
 # does this compiler support __builtin_expect?
 AC_MSG_CHECKING([if gcc supports __builtin_expect])
-
+ 
 AC_TRY_LINK(, [
 return __builtin_expect(1, 1) ? 1 : 0
 ],
@@ -1126,33 +842,7 @@ AC_MSG_RESULT([no])
 AM_CONDITIONAL(BUILD_SSE3_TESTS, test x$ac_have_as_sse3 = xyes)
 
 
-# Ditto for SSSE3 instructions (note extra S)
-# Note, this doesn't generate a C-level symbol.  It generates a
-# automake-level symbol (BUILD_SSSE3_TESTS), used in test Makefile.am's
-AC_MSG_CHECKING([if x86/amd64 assembler speaks SSSE3])
-
-AC_TRY_COMPILE(, [
-  do { long long int x; 
-   __asm__ __volatile__(
-      "pabsb (%0),%%xmm7" : : "r"(&x) : "xmm7" ); }
-  while (0)
-],
-[
-ac_have_as_ssse3=yes
-AC_MSG_RESULT([yes])
-], [
-ac_have_as_ssse3=no
-AC_MSG_RESULT([no])
-])
-
-AM_CONDITIONAL(BUILD_SSSE3_TESTS, test x$ac_have_as_ssse3 = xyes)
-
-
 # Check for TLS support in the compiler and linker
-if test "x${cross_compiling}" = "xno"; then
-# Native compilation: check whether running a program using TLS succeeds.
-# Linking only is not sufficient -- e.g. on Red Hat 7.3 linking TLS programs
-# succeeds but running programs using TLS fails.
 AC_CACHE_CHECK([for TLS support], vg_cv_tls,
 	       [AC_ARG_ENABLE(tls, [  --enable-tls            platform supports TLS],
 		[vg_cv_tls=$enableval],
@@ -1160,16 +850,6 @@ AC_CACHE_CHECK([for TLS support], vg_cv_tls,
                                                 [[return foo;]])],
                                [vg_cv_tls=yes],
                                [vg_cv_tls=no])])])
-else
-# Cross-compiling: check whether linking a program using TLS succeeds.
-AC_CACHE_CHECK([for TLS support], vg_cv_tls,
-	       [AC_ARG_ENABLE(tls, [  --enable-tls            platform supports TLS],
-		[vg_cv_tls=$enableval],
-               	[AC_LINK_IFELSE([AC_LANG_PROGRAM([[static __thread int foo;]],
-                                                [[return foo;]])],
-                               [vg_cv_tls=yes],
-                               [vg_cv_tls=no])])])
-fi
 
 if test "$vg_cv_tls" = yes; then
 AC_DEFINE([HAVE_TLS], 1, [can use __thread to define thread-local variables])
@@ -1178,20 +858,7 @@ fi
 
 # Checks for header files.
 AC_HEADER_STDC
-AC_CHECK_HEADERS([       \
-        endian.h         \
-        mqueue.h         \
-        sys/endian.h     \
-        sys/epoll.h      \
-        sys/eventfd.h    \
-        sys/klog.h       \
-        sys/poll.h       \
-        sys/signal.h     \
-        sys/signalfd.h   \
-        sys/syscall.h    \
-        sys/time.h       \
-        sys/types.h      \
-        ])
+AC_CHECK_HEADERS([sys/endian.h endian.h mqueue.h])
 
 
 # Checks for typedefs, structures, and compiler characteristics.
@@ -1206,30 +873,7 @@ AC_FUNC_MEMCMP
 AC_FUNC_MMAP
 AC_TYPE_SIGNAL
 
-AC_CHECK_LIB([rt], [clock_gettime])
-
-AC_CHECK_FUNCS([     \
-        clock_gettime\
-        epoll_create \
-        epoll_pwait  \
-        floor        \
-        klogctl      \
-        mallinfo     \
-        memchr       \
-        memset       \
-        mkdir        \
-        ppoll        \
-        semtimedop   \
-        signalfd     \
-        syscall      \
-        strchr       \
-        strdup       \
-        strpbrk      \
-        strrchr      \
-        strstr       \
-        timerfd      \
-        utimensat    \
-        ])
+AC_CHECK_FUNCS([floor memchr memset mkdir strchr strdup strpbrk strrchr strstr semtimedop])
 
 
 # Do we have a useable MPI setup on the primary and/or secondary targets?
@@ -1336,7 +980,6 @@ AC_OUTPUT(
    Makefile 
    valgrind.spec
    valgrind.pc
-   glibc-2.X.supp
    docs/Makefile 
    docs/lib/Makefile
    docs/images/Makefile

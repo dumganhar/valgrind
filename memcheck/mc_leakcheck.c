@@ -7,7 +7,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2007 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -215,9 +215,7 @@ static Int lc_compar(void* n1, void* n2)
 {
    MC_Chunk* mc1 = *(MC_Chunk**)n1;
    MC_Chunk* mc2 = *(MC_Chunk**)n2;
-   if (mc1->data < mc2->data) return -1;
-   if (mc1->data > mc2->data) return  1;
-   return 0;
+   return (mc1->data < mc2->data ? -1 : 1);
 }
 
 /* If ptr is pointing to a heap-allocated block which hasn't been seen

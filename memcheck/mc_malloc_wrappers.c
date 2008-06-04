@@ -8,7 +8,7 @@
    This file is part of MemCheck, a heavyweight Valgrind tool for
    detecting memory errors.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2007 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -71,6 +71,7 @@ VgHashTable MC_(mempool_list) = NULL;
 /* Records blocks after freeing. */
 static MC_Chunk* freed_list_start  = NULL;
 static MC_Chunk* freed_list_end    = NULL;
+static Long      freed_list_volume = 0;
 
 /* Put a shadow chunk on the freed blocks queue, possibly freeing up
    some of the oldest blocks in the queue at the same time. */
@@ -82,35 +83,33 @@ static void add_to_freed_queue ( MC_Chunk* mc )
    if (freed_list_end == NULL) {
       tl_assert(freed_list_start == NULL);
       freed_list_end    = freed_list_start = mc;
-      VG_(free_queue_volume) = (Long)mc->szB;
+      freed_list_volume = (Long)mc->szB;
    } else {
       tl_assert(freed_list_end->next == NULL);
       freed_list_end->next = mc;
       freed_list_end       = mc;
-      VG_(free_queue_volume) += (Long)mc->szB;
+      freed_list_volume += (Long)mc->szB;
       if (show)
          VG_(printf)("mc_freelist: acquire: volume now %lld\n", 
-                     VG_(free_queue_volume));
+                     freed_list_volume);
    }
-   VG_(free_queue_length)++;
    mc->next = NULL;
 
    /* Release enough of the oldest blocks to bring the free queue
       volume below vg_clo_freelist_vol. */
 
-   while (VG_(free_queue_volume) > MC_(clo_freelist_vol)) {
+   while (freed_list_volume > MC_(clo_freelist_vol)) {
       MC_Chunk* mc1;
 
       tl_assert(freed_list_start != NULL);
       tl_assert(freed_list_end != NULL);
 
       mc1 = freed_list_start;
-      VG_(free_queue_volume) -= (Long)mc1->szB;
-      VG_(free_queue_length)--;
+      freed_list_volume -= (Long)mc1->szB;
       if (show)
          VG_(printf)("mc_freelist: discard: volume now %lld\n", 
-                     VG_(free_queue_volume));
-      tl_assert(VG_(free_queue_volume) >= 0);
+                     freed_list_volume);
+      tl_assert(freed_list_volume >= 0);
 
       if (freed_list_start == freed_list_end) {
          freed_list_start = freed_list_end = NULL;
@@ -132,14 +131,14 @@ MC_Chunk* MC_(get_freed_list_head)(void)
 
 /* Allocate its shadow chunk, put it on the appropriate list. */
 static
-MC_Chunk* create_MC_Chunk ( ExeContext* ec, Addr p, SizeT szB,
+MC_Chunk* create_MC_Chunk ( ThreadId tid, Addr p, SizeT szB,
                             MC_AllocKind kind)
 {
    MC_Chunk* mc  = VG_(malloc)(sizeof(MC_Chunk));
    mc->data      = p;
    mc->szB       = szB;
    mc->allockind = kind;
-   mc->where     = ec;
+   mc->where     = VG_(record_ExeContext)(tid, 0/*first_ip_delta*/);
 
    /* Paranoia ... ensure the MC_Chunk is off-limits to the client, so
       the mc->data field isn't visible to the leak checker.  If memory
@@ -186,8 +185,6 @@ void* MC_(new_block) ( ThreadId tid,
                        Addr p, SizeT szB, SizeT alignB, UInt rzB,
                        Bool is_zeroed, MC_AllocKind kind, VgHashTable table)
 {
-   ExeContext* ec;
-
    cmalloc_n_mallocs ++;
 
    // Allocate and zero if necessary
@@ -211,18 +208,12 @@ void* MC_(new_block) ( ThreadId tid,
    // Only update this stat if allocation succeeded.
    cmalloc_bs_mallocd += (ULong)szB;
 
-   ec = VG_(record_ExeContext)(tid, 0/*first_ip_delta*/);
-   tl_assert(ec);
-
-   VG_(HT_add_node)( table, create_MC_Chunk(ec, p, szB, kind) );
+   VG_(HT_add_node)( table, create_MC_Chunk(tid, p, szB, kind) );
 
    if (is_zeroed)
       MC_(make_mem_defined)( p, szB );
-   else {
-      UInt ecu = VG_(get_ECU_from_ExeContext)(ec);
-      tl_assert(VG_(is_plausible_ECU)(ecu));
-      MC_(make_mem_undefined_w_otag)( p, szB, ecu | MC_OKIND_HEAP );
-   }
+   else
+      MC_(make_mem_undefined)( p, szB );
 
    return (void*)p;
 }
@@ -398,21 +389,11 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
       a_new = (Addr)VG_(cli_malloc)(VG_(clo_alignment), new_szB);
 
       if (a_new) {
-         UInt        ecu;
-         ExeContext* ec;
-
-         ec = VG_(record_ExeContext)(tid, 0/*first_ip_delta*/);
-         tl_assert(ec);
-         ecu = VG_(get_ECU_from_ExeContext)(ec);
-         tl_assert(VG_(is_plausible_ECU)(ecu));
-
          /* First half kept and copied, second half new, red zones as normal */
-         MC_(make_mem_noaccess)( a_new-MC_MALLOC_REDZONE_SZB, 
-                                 MC_MALLOC_REDZONE_SZB );
-         MC_(copy_address_range_state) ( (Addr)p_old, a_new, mc->szB );
-         MC_(make_mem_undefined_w_otag)( a_new+mc->szB, new_szB-mc->szB,
-                                                        ecu | MC_OKIND_HEAP );
-         MC_(make_mem_noaccess)        ( a_new+new_szB, MC_MALLOC_REDZONE_SZB );
+         MC_(make_mem_noaccess)( a_new-MC_MALLOC_REDZONE_SZB, MC_MALLOC_REDZONE_SZB );
+         MC_(copy_address_range_state)( (Addr)p_old, a_new, mc->szB );
+         MC_(make_mem_undefined)( a_new+mc->szB, new_szB-mc->szB );
+         MC_(make_mem_noaccess) ( a_new+new_szB, MC_MALLOC_REDZONE_SZB );
 
          /* Possibly fill new area with specified junk */
          if (MC_(clo_malloc_fill) != -1) {
@@ -438,7 +419,7 @@ void* MC_(realloc) ( ThreadId tid, void* p_old, SizeT new_szB )
          die_and_free_mem ( tid, mc, MC_MALLOC_REDZONE_SZB );
 
          // Allocate a new chunk.
-         mc = create_MC_Chunk( ec, a_new, new_szB, MC_AllocMalloc );
+         mc = create_MC_Chunk( tid, a_new, new_szB, MC_AllocMalloc );
       }
 
       p_new = (void*)a_new;
@@ -527,9 +508,7 @@ mp_compar(void* n1, void* n2)
 {
    MC_Chunk* mc1 = *(MC_Chunk**)n1;
    MC_Chunk* mc2 = *(MC_Chunk**)n2;
-   if (mc1->data < mc2->data) return -1;
-   if (mc1->data > mc2->data) return  1;
-   return 0;
+   return (mc1->data < mc2->data ? -1 : 1);
 }
 
 static void 

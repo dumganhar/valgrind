@@ -8,7 +8,7 @@
    This file is part of Helgrind, a Valgrind tool for detecting errors
    in threaded programs.
 
-   Copyright (C) 2007-2008 OpenWorks LLP
+   Copyright (C) 2007-2007 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -48,7 +48,6 @@
 #include "pub_tool_options.h"
 #include "pub_tool_xarray.h"
 #include "pub_tool_stacktrace.h"
-#include "pub_tool_debuginfo.h"  /* VG_(get_data_description) */
 
 #include "helgrind.h"
 
@@ -225,6 +224,14 @@ static void hg_free ( void* p ) {
 #define ROUNDUP(a, N)   ((a + N - 1) & ~(N-1))
 /* Round a down to the next multiple of N.  N must be a power of 2 */
 #define ROUNDDN(a, N)   ((a) & ~(N-1))
+
+#ifdef HAVE_BUILTIN_EXPECT
+#define LIKELY(cond)   __builtin_expect(!!(cond),1)
+#define UNLIKELY(cond) __builtin_expect(!!(cond),0)
+#else
+#define LIKELY(cond)   (cond)
+#define UNLIKELY(cond) (cond)
+#endif
 
 
 /*----------------------------------------------------------------*/
@@ -2509,7 +2516,7 @@ static void threads__sanity_check ( Char* who )
    Char*     how = "no error";
    Thread*   thr;
    WordSetID wsA, wsW;
-   UWord*    ls_words;
+   Word*     ls_words;
    Word      ls_size, i;
    Lock*     lk;
    Segment*  seg;
@@ -2669,7 +2676,7 @@ static void shmem__sanity_check ( Char* who )
    Word    smga;
    SecMap* sm;
    Word    i, j, ws_size, n_valid_tags;
-   UWord*  ws_words;
+   Word*   ws_words;
    Addr*   valid_tags;
    HG_(initIterFM)( map_shmem );
    // for sm in SecMaps {
@@ -4940,14 +4947,13 @@ static void shadow_mem_make_NoAccess ( Thread* thr, Addr aIN, SizeT len )
                (void*)firstA, (UWord)len, (void*)lastA);
    locksToDelete = HG_(emptyWS)( univ_lsets );
    
-   /* Iterate over all locks in the range firstA .. lastA inclusive. */
-   HG_(initIterAtFM)( map_locks, firstA );
-   while (HG_(nextIterFM)( map_locks, (Word*)&gla, (Word*)&lk )
-          && gla <= lastA) {
+   /* FIXME: don't iterate over the complete lock set */
+   HG_(initIterFM)( map_locks );
+   while (HG_(nextIterFM)( map_locks,
+                           (Word*)&gla, (Word*)&lk )) {
       tl_assert(is_sane_LockN(lk));
-      tl_assert(gla >= firstA);
-      tl_assert(gla <= lastA);
-
+      if (gla < firstA || gla > lastA)
+         continue;
       locksToDelete = HG_(addToWS)( univ_lsets, locksToDelete, (Word)lk );
       /* If the lock is held, we must remove it from the currlock sets
          of all threads that hold it.  Also take the opportunity to
@@ -5422,15 +5428,6 @@ void evh__new_mem ( Addr a, SizeT len ) {
    shadow_mem_make_New( get_current_Thread(), a, len );
    if (len >= SCE_BIGRANGE_T && (clo_sanity_flags & SCE_BIGRANGE))
       all__sanity_check("evh__new_mem-post");
-}
-
-static
-void evh__new_mem_w_tid ( Addr a, SizeT len, ThreadId tid ) {
-   if (SHOW_EVENTS >= 2)
-      VG_(printf)("evh__new_mem_w_tid(%p, %lu)\n", (void*)a, len );
-   shadow_mem_make_New( get_current_Thread(), a, len );
-   if (len >= SCE_BIGRANGE_T && (clo_sanity_flags & SCE_BIGRANGE))
-      all__sanity_check("evh__new_mem_w_tid-post");
 }
 
 static
@@ -6619,7 +6616,7 @@ typedef
    }
    LAOGLinkExposition;
 
-static Word cmp_LAOGLinkExposition ( UWord llx1W, UWord llx2W ) {
+static Word cmp_LAOGLinkExposition ( Word llx1W, Word llx2W ) {
    /* Compare LAOGLinkExposition*s by (src_ga,dst_ga) field pair. */
    LAOGLinkExposition* llx1 = (LAOGLinkExposition*)llx1W;
    LAOGLinkExposition* llx2 = (LAOGLinkExposition*)llx2W;
@@ -6636,7 +6633,7 @@ static WordFM* laog_exposition = NULL; /* WordFM LAOGLinkExposition* NULL */
 
 static void laog__show ( Char* who ) {
    Word i, ws_size;
-   UWord* ws_words;
+   Word* ws_words;
    Lock* me;
    LAOGLinks* links;
    VG_(printf)("laog (requested by %s) {\n", who);
@@ -6796,7 +6793,7 @@ static WordSetID /* in univ_laog */ laog__preds ( Lock* lk ) {
 __attribute__((noinline))
 static void laog__sanity_check ( Char* who ) {
    Word i, ws_size;
-   UWord* ws_words;
+   Word* ws_words;
    Lock* me;
    LAOGLinks* links;
    if ( !laog )
@@ -6850,7 +6847,7 @@ Lock* laog__do_dfs_from_to ( Lock* src, WordSetID dsts /* univ_lsets */ )
    Lock*     here;
    WordSetID succs;
    Word      succs_size;
-   UWord*    succs_words;
+   Word*     succs_words;
    //laog__sanity_check();
 
    /* If the destination set is empty, we can never get there from
@@ -6902,7 +6899,7 @@ static void laog__pre_thread_acquires_lock (
                Lock*   lk
             )
 {
-   UWord*   ls_words;
+   Word*    ls_words;
    Word     ls_size, i;
    Lock*    other;
 
@@ -6987,7 +6984,7 @@ static void laog__handle_one_lock_deletion ( Lock* lk )
 {
    WordSetID preds, succs;
    Word preds_size, succs_size, i, j;
-   UWord *preds_words, *succs_words;
+   Word *preds_words, *succs_words;
 
    preds = laog__preds( lk );
    succs = laog__succs( lk );
@@ -7017,8 +7014,8 @@ static void laog__handle_lock_deletions (
                WordSetID /* in univ_laog */ locksToDelete
             )
 {
-   Word   i, ws_size;
-   UWord* ws_words;
+   Word  i, ws_size;
+   Word* ws_words;
 
    if (!laog)
       laog = HG_(newFM)( hg_zalloc, hg_free, NULL/*unboxedcmp*/ );
@@ -7722,7 +7719,7 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
 /* maps (by value) strings to a copy of them in ARENA_TOOL */
 static UWord stats__string_table_queries = 0;
 static WordFM* string_table = NULL;
-static Word string_table_cmp ( UWord s1, UWord s2 ) {
+static Word string_table_cmp ( Word s1, Word s2 ) {
    return (Word)VG_(strcmp)( (HChar*)s1, (HChar*)s2 );
 }
 static HChar* string_table_strdup ( HChar* str ) {
@@ -7750,7 +7747,7 @@ static HChar* string_table_strdup ( HChar* str ) {
 /* maps from Lock .unique fields to LockP*s */
 static UWord stats__ga_LockN_to_P_queries = 0;
 static WordFM* yaWFM = NULL;
-static Word lock_unique_cmp ( UWord lk1W, UWord lk2W )
+static Word lock_unique_cmp ( Word lk1W, Word lk2W )
 {
    Lock* lk1 = (Lock*)lk1W;
    Lock* lk2 = (Lock*)lk2W;
@@ -7830,8 +7827,6 @@ typedef
             SVal  old_state;
             ExeContext* mb_lastlock;
             Thread* thr;
-            Char  descr1[96];
-            Char  descr2[96];
          } Race;
          struct {
             Thread* thr;  /* doing the freeing */
@@ -7921,20 +7916,6 @@ static void record_error_Race ( Thread* thr,
    // FIXME: tid vs thr
    tl_assert(isWrite == False || isWrite == True);
    tl_assert(szB == 8 || szB == 4 || szB == 2 || szB == 1);
-
-   tl_assert(sizeof(xe.XE.Race.descr1) == sizeof(xe.XE.Race.descr2));
-   xe.XE.Race.descr1[0] = xe.XE.Race.descr2[0] = 0;
-   if (VG_(get_data_description)(
-             &xe.XE.Race.descr1[0],
-             &xe.XE.Race.descr2[0],
-             sizeof(xe.XE.Race.descr1)-1,
-             data_addr )) {
-      tl_assert( xe.XE.Race.descr1
-                    [ sizeof(xe.XE.Race.descr1)-1 ] == 0);
-      tl_assert( xe.XE.Race.descr2
-                    [ sizeof(xe.XE.Race.descr2)-1 ] == 0);
-   }
-
    VG_(maybe_record_error)( map_threads_reverse_lookup_SLOW(thr),
                             XE_Race, data_addr, NULL, &xe );
 }
@@ -8106,8 +8087,8 @@ static Int cmp_Thread_by_errmsg_index ( void* thr1V, void* thr2V ) {
 static XArray* /* of Thread* */ get_sorted_thread_set ( WordSetID tset )
 {
    XArray* xa;
-   UWord*  ts_words;
-   UWord   ts_size, i;
+   Word*   ts_words;
+   Word    ts_size, i;
    xa = VG_(newXA)( hg_zalloc, hg_free, sizeof(Thread*) );
    tl_assert(xa);
    HG_(getPayloadWS)( &ts_words, &ts_size, univ_tsets, tset );
@@ -8470,12 +8451,6 @@ static void hg_pp_Error ( Error* err )
                       old_state, old_buf, new_state, new_buf);
       }
 
-      /* If we have a better description of the address, show it. */
-      if (xe->XE.Race.descr1[0] != 0)
-         VG_(message)(Vg_UserMsg, "  %s", &xe->XE.Race.descr1);
-      if (xe->XE.Race.descr2[0] != 0)
-         VG_(message)(Vg_UserMsg, "  %s", &xe->XE.Race.descr2);
-
       break; /* case XE_Race */
    } /* case XE_Race */
 
@@ -8786,7 +8761,7 @@ static void hg_pre_clo_init ( void )
    VG_(details_version)         (NULL);
    VG_(details_description)     ("a thread error detector");
    VG_(details_copyright_author)(
-      "Copyright (C) 2007-2008, and GNU GPL'd, by OpenWorks LLP et al.");
+      "Copyright (C) 2007-2007, and GNU GPL'd, by OpenWorks LLP et al.");
    VG_(details_bug_reports_to)  (VG_BUGS_TO);
    VG_(details_avg_translation_sizeB) ( 200 );
 
@@ -8825,13 +8800,13 @@ static void hg_pre_clo_init ( void )
                                    hg_cli__realloc,
                                    HG_CLI__MALLOC_REDZONE_SZB );
 
-   VG_(needs_var_info)();
+   VG_(needs_data_syms)();
 
    //VG_(needs_xml_output)          ();
 
    VG_(track_new_mem_startup)     ( evh__new_mem_w_perms );
-   VG_(track_new_mem_stack_signal)( evh__new_mem_w_tid );
-   VG_(track_new_mem_brk)         ( evh__new_mem_w_tid );
+   VG_(track_new_mem_stack_signal)( evh__die_mem );
+   VG_(track_new_mem_brk)         ( evh__new_mem );
    VG_(track_new_mem_mmap)        ( evh__new_mem_w_perms );
    VG_(track_new_mem_stack)       ( evh__new_mem );
 

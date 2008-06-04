@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Nicholas Nethercote
+   Copyright (C) 2000-2007 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -46,7 +46,6 @@
 #include "pub_core_syscall.h"
 #include "pub_core_syswrap.h"
 #include "pub_core_tooliface.h"
-#include "pub_core_stacks.h"        // VG_(register_stack)
 
 #include "priv_types_n_macros.h"
 #include "priv_syswrap-generic.h"   /* for decls of generic wrappers */
@@ -259,8 +258,6 @@ static SysRes do_clone ( ThreadId ptid,
       ctst->client_stack_highest_word = (Addr)VG_PGROUNDUP(rsp);
       ctst->client_stack_szB = ctst->client_stack_highest_word - seg->start;
 
-      VG_(register_stack)(seg->start, ctst->client_stack_highest_word);
-
       if (debug)
 	 VG_(printf)("tid %d: guessed client stack range %p-%p\n",
 		     ctid, seg->start, VG_PGROUNDUP(rsp));
@@ -322,8 +319,7 @@ void setup_child ( /*OUT*/ ThreadArchState *child,
 {  
    /* We inherit our parent's guest state. */
    child->vex = parent->vex;
-   child->vex_shadow1 = parent->vex_shadow1;
-   child->vex_shadow2 = parent->vex_shadow2;
+   child->vex_shadow = parent->vex_shadow;
 }  
 
 
@@ -1169,7 +1165,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    GENXY(__NR_times,             sys_times),          // 100 
    PLAXY(__NR_ptrace,            sys_ptrace),         // 101 
    GENX_(__NR_getuid,            sys_getuid),         // 102 
-   LINXY(__NR_syslog,            sys_syslog),         // 103 
+   //   (__NR_syslog,            sys_syslog),         // 103 
    GENX_(__NR_getgid,            sys_getgid),         // 104 
 
    GENX_(__NR_setuid,            sys_setuid),         // 105 
@@ -1254,7 +1250,7 @@ const SyscallTableEntry ML_(syscall_table)[] = {
    //   (__NR_setdomainname,     sys_setdomainname),  // 171 
    GENX_(__NR_iopl,              sys_iopl),           // 172 
    LINX_(__NR_ioperm,            sys_ioperm),         // 173 
-   GENX_(__NR_create_module,     sys_ni_syscall),     // 174 
+   //   (__NR_create_module,     sys_ni_syscall),     // 174 
 
    //   (__NR_init_module,       sys_init_module),    // 175 
    //   (__NR_delete_module,     sys_delete_module),  // 176 

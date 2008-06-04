@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2008 Julian Seward 
+   Copyright (C) 2000-2007 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -541,21 +541,10 @@ UInt VG_(read_millisecond_timer) ( void )
    now += (ULong)(nsec / 1000);
 #  else
 
-   struct vki_timespec ts_now;
+   struct vki_timeval tv_now;
    SysRes res;
-   res = VG_(do_syscall2)(__NR_clock_gettime, VKI_CLOCK_MONOTONIC,
-                          (UWord)&ts_now);
-   if (res.isError == 0)
-   {
-     now = ts_now.tv_sec * 1000000ULL + ts_now.tv_nsec / 1000;
-   }
-   else
-   {
-     struct vki_timeval tv_now;
-     res = VG_(do_syscall2)(__NR_gettimeofday, (UWord)&tv_now, (UWord)NULL);
-     vg_assert(! res.isError);
-     now = tv_now.tv_sec * 1000000ULL + tv_now.tv_usec;
-   }
+   res = VG_(do_syscall2)(__NR_gettimeofday, (UWord)&tv_now, (UWord)NULL);
+   now = tv_now.tv_sec * 1000000ULL + tv_now.tv_usec;
 #  endif
    
    if (base == 0)
