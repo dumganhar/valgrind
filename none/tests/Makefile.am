@@ -1,28 +1,22 @@
 
-include $(top_srcdir)/Makefile.tool-tests.am
+# For AM_FLAG_M3264_PRI
+include $(top_srcdir)/Makefile.flags.am
 
 SUBDIRS = .
-
-# Arch-specific tests.
-if VGCONF_ARCHS_INCLUDE_X86
+if VGP_X86_LINUX
 SUBDIRS += x86
 endif
-if VGCONF_ARCHS_INCLUDE_AMD64
+if VGP_AMD64_LINUX
 SUBDIRS += amd64
 endif
-if VGCONF_ARCHS_INCLUDE_PPC32
+if VGP_PPC32_LINUX
 SUBDIRS += ppc32
 endif
-if VGCONF_ARCHS_INCLUDE_PPC64
+if VGP_PPC64_LINUX
 SUBDIRS += ppc64
 endif
 
-# OS-specific tests
-if VGCONF_OS_IS_LINUX
-SUBDIRS += linux
-endif
-
-DIST_SUBDIRS = x86 amd64 ppc32 ppc64 linux .
+DIST_SUBDIRS = ${VG_ARCH_ALL} .
 
 noinst_SCRIPTS = \
 	filter_cmdline0 filter_linenos \
@@ -55,16 +49,26 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	execve.vgtest execve.stdout.exp execve.stderr.exp \
 	faultstatus.vgtest faultstatus.stderr.exp \
 	fcntl_setown.vgtest fcntl_setown.stdout.exp fcntl_setown.stderr.exp \
-	fdleak_cmsg.stderr.exp fdleak_cmsg.vgtest \
-	fdleak_creat.stderr.exp fdleak_creat.vgtest \
-	fdleak_dup.stderr.exp fdleak_dup.vgtest \
-	fdleak_dup2.stderr.exp fdleak_dup2.vgtest \
-	fdleak_fcntl.stderr.exp fdleak_fcntl.vgtest \
-	fdleak_ipv4.stderr.exp fdleak_ipv4.stdout.exp fdleak_ipv4.vgtest \
-	fdleak_open.stderr.exp fdleak_open.vgtest \
-	fdleak_pipe.stderr.exp fdleak_pipe.vgtest \
-	fdleak_socketpair.stderr.exp fdleak_socketpair.vgtest \
-	floored.stderr.exp floored.stdout.exp floored.vgtest \
+	fdleak_cmsg.stderr.exp fdleak_cmsg.stderr.exp2 \
+	fdleak_cmsg.stderr.exp3 fdleak_cmsg.stderr.exp4 \
+	fdleak_cmsg.vgtest \
+	fdleak_creat.stderr.exp fdleak_creat.stderr.exp2 \
+	fdleak_creat.stderr.exp3 fdleak_creat.vgtest \
+	fdleak_dup.stderr.exp fdleak_dup.stderr.exp2 \
+	fdleak_dup.stderr.exp3 fdleak_dup.vgtest \
+	fdleak_dup2.stderr.exp fdleak_dup2.stderr.exp2 \
+	fdleak_dup2.stderr.exp3 fdleak_dup2.vgtest \
+	fdleak_fcntl.stderr.exp fdleak_fcntl.stderr.exp2 \
+	fdleak_fcntl.stderr.exp3 fdleak_fcntl.stderr.exp4 \
+	fdleak_fcntl.vgtest \
+	fdleak_ipv4.stderr.exp fdleak_ipv4.stderr.exp2 \
+	fdleak_ipv4.stdout.exp fdleak_ipv4.vgtest \
+	fdleak_open.stderr.exp fdleak_open.stderr.exp2 fdleak_open.vgtest \
+	fdleak_pipe.stderr.exp fdleak_pipe.stderr.exp2 fdleak_pipe.vgtest \
+	fdleak_socketpair.stderr.exp fdleak_socketpair.stderr.exp2 \
+	fdleak_socketpair.vgtest \
+	floored.stderr.exp floored.stdout.exp \
+	floored.vgtest \
 	fork.stderr.exp fork.stdout.exp fork.vgtest \
 	fucomip.stderr.exp fucomip.vgtest \
 	gxx304.stderr.exp gxx304.vgtest \
@@ -72,6 +76,11 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	map_unaligned.stderr.exp map_unaligned.vgtest \
 	map_unmap.stderr.exp map_unmap.stdout.exp map_unmap.vgtest \
 	mq.stderr.exp mq.vgtest \
+	mremap.stderr.exp mremap.stdout.exp mremap.vgtest \
+	mremap2.stderr.exp \
+	mremap2.stdout.exp mremap2.stdout.exp2 \
+	mremap2.stdout.exp-glibc28-amd64 \
+	mremap2.vgtest \
 	munmap_exe.stderr.exp munmap_exe.vgtest \
 	nestedfns.stderr.exp nestedfns.stdout.exp nestedfns.vgtest \
 	pending.stdout.exp pending.stderr.exp pending.vgtest \
@@ -135,7 +144,7 @@ check_PROGRAMS = \
 	fdleak_fcntl fdleak_ipv4 fdleak_open fdleak_pipe \
 	fdleak_socketpair \
 	floored fork fucomip manythreads \
-	munmap_exe map_unaligned map_unmap mq \
+	munmap_exe map_unaligned map_unmap mq mremap mremap2 \
 	nestedfns \
 	pending \
 	pth_atfork1 pth_blockedsig pth_cancel1 pth_cancel2 pth_cvsimple \
@@ -149,17 +158,18 @@ check_PROGRAMS = \
 	tls tls.so tls2.so vgprintf \
 	coolo_sigaction gxx304
 
-AM_CFLAGS   += $(AM_FLAG_M3264_PRI)
-AM_CXXFLAGS += $(AM_FLAG_M3264_PRI)
+AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g $(AM_FLAG_M3264_PRI)
+AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include -I$(top_builddir)/include
+AM_CXXFLAGS = $(AM_CFLAGS)
 
 # Extra stuff for C tests
-ansi_CFLAGS		= $(AM_CFLAGS) -ansi
+ansi_CFLAGS		= $(AM_FLAG_M3264_PRI) -ansi
 floored_LDADD 		= -lm
 manythreads_LDADD	= -lpthread
 mq_LDADD		= -lrt
 pth_atfork1_LDADD	= -lpthread
 pth_blockedsig_LDADD	= -lpthread
-pth_cancel1_CFLAGS	= $(AM_CFLAGS) -Wno-shadow
+pth_cancel1_CFLAGS	= $(AM_FLAG_M3264_PRI) -Wno-shadow
 pth_cancel1_LDADD	= -lpthread
 pth_cancel2_LDADD	= -lpthread
 pth_cvsimple_LDADD	= -lpthread
@@ -170,7 +180,7 @@ pth_mutexspeed_LDADD	= -lpthread
 pth_once_LDADD		= -lpthread
 pth_rwlock_LDADD	= -lpthread
 pth_stackalign_LDADD	= -lpthread
-if VGCONF_OS_IS_AIX5
+if VGO_AIX5
  res_search_LDADD       = -lpthread
 else
  res_search_LDADD       = -lresolv -lpthread
@@ -182,7 +192,7 @@ threaded_fork_LDADD	= -lpthread
 threadederrno_LDADD	= -lpthread
 tls_SOURCES		= tls.c tls2.c
 tls_DEPENDENCIES	= tls.so
-if VGCONF_OS_IS_AIX5
+if VGO_AIX5
  tls_LDFLAGS		= 
 else
  tls_LDFLAGS		= -Wl,-rpath,$(top_builddir)/none/tests
@@ -190,14 +200,14 @@ endif
 tls_LDADD		= tls.so -lpthread
 tls_so_SOURCES		= tls_so.c
 tls_so_DEPENDENCIES	= tls2.so
-if VGCONF_OS_IS_AIX5
+if VGO_AIX5
  tls_so_LDFLAGS		= -shared -fPIC
  tls_so_LDADD		= `pwd`/tls2.so
 else
  tls_so_LDFLAGS		= -Wl,-rpath,$(top_builddir)/none/tests -shared -fPIC
  tls_so_LDADD		= tls2.so
 endif
-tls_so_CFLAGS		= $(AM_CFLAGS) -fPIC
+tls_so_CFLAGS		= $(AM_FLAG_M3264_PRI) -fPIC
 tls2_so_SOURCES		= tls2_so.c
 tls2_so_LDFLAGS		= -shared
 

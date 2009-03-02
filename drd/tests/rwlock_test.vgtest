@@ -1,1 +1,1 @@
-prog: rwlock_test
+prog: rwlock_vgtest

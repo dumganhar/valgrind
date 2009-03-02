@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "../memcheck.h"
-#include "leak.h"
 
 int main(void)
 {
@@ -11,13 +10,16 @@ int main(void)
    int* reachable;
    int* dubious;
    int* leaked;
-   DECLARE_LEAK_COUNTERS;
+   long n_reachable  = 0;
+   long n_dubious    = 0;
+   long n_leaked     = 0;
+   long n_suppressed = 0;
 
    /* we require these longs to have same size as a machine word */
    assert(sizeof(long) == sizeof(void*));
 
    /* Error counting */
-   printf("errors: %d\n\n", VALGRIND_COUNT_ERRORS);
+   printf("errors: %d\n", VALGRIND_COUNT_ERRORS);
 
    if (x == 0) {
       y++;
@@ -25,16 +27,14 @@ int main(void)
       y--;
    }
 
-   printf("errors: %d\n\n", VALGRIND_COUNT_ERRORS);
-
-   // Get a baseline, after start-up and also after printf (because Darwin
-   // printf allocates memory the first time it's called!)
-   GET_INITIAL_LEAK_COUNTS;
+   printf("errors: %d\n", VALGRIND_COUNT_ERRORS);
 
    /* Leak checking */
-   GET_FINAL_LEAK_COUNTS;
-   PRINT_LEAK_COUNTS(stdout);
-   printf("\n");
+   VALGRIND_DO_LEAK_CHECK;
+   VALGRIND_COUNT_LEAKS(n_leaked, n_dubious, n_reachable, n_suppressed);
+   if (n_reachable == 24) n_reachable = 0; /* handle glibc differences */
+   printf("leaks: %ldB, %ldB, %ldB, %ldB\n",
+          n_leaked, n_dubious, n_reachable, n_suppressed);
 
    leaked = malloc(77);
    leaked = 0;
@@ -44,9 +44,12 @@ int main(void)
 
    reachable = malloc(99);
 
-   GET_FINAL_LEAK_COUNTS;
-   PRINT_LEAK_COUNTS(stdout);
-   printf("\n");
+   VALGRIND_DO_LEAK_CHECK;
+   VALGRIND_DO_LEAK_CHECK;
+   VALGRIND_COUNT_LEAKS(n_leaked, n_dubious, n_reachable, n_suppressed);
+   if (n_reachable == 123) n_reachable = 99; /* handle glibc differences */
+   printf("leaks: %ldB, %ldB, %ldB, %ldB\n",
+          n_leaked, n_dubious, n_reachable, n_suppressed);
 
    printf("errors: %d\n", VALGRIND_COUNT_ERRORS);
 

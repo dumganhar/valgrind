@@ -79,7 +79,7 @@ typedef
 
 
 void* MC_(new_block)  ( ThreadId tid,
-                        Addr p, SizeT size, SizeT align,
+                        Addr p, SizeT size, SizeT align, UInt rzB,
                         Bool is_zeroed, MC_AllocKind kind,
                         VgHashTable table);
 void MC_(handle_free) ( ThreadId tid,
@@ -121,7 +121,6 @@ void  MC_(free)                 ( ThreadId tid, void* p );
 void  MC_(__builtin_delete)     ( ThreadId tid, void* p );
 void  MC_(__builtin_vec_delete) ( ThreadId tid, void* p );
 void* MC_(realloc)              ( ThreadId tid, void* p, SizeT new_size );
-SizeT MC_(malloc_usable_size)   ( ThreadId tid, void* p );
 
 
 /*------------------------------------------------------------*/
@@ -249,13 +248,6 @@ extern SizeT MC_(bytes_dubious);
 extern SizeT MC_(bytes_reachable);
 extern SizeT MC_(bytes_suppressed);
 
-/* For VALGRIND_COUNT_LEAK_BLOCKS client request */
-extern SizeT MC_(blocks_leaked);
-extern SizeT MC_(blocks_indirect);
-extern SizeT MC_(blocks_dubious);
-extern SizeT MC_(blocks_reachable);
-extern SizeT MC_(blocks_suppressed);
-
 typedef
    enum {
       LC_Off,
@@ -329,7 +321,7 @@ void MC_(record_freemismatch_error)    ( ThreadId tid, MC_Chunk* mc );
 
 void MC_(record_overlap_error)  ( ThreadId tid, Char* function,
                                   Addr src, Addr dst, SizeT szB );
-void MC_(record_core_mem_error) ( ThreadId tid, Char* msg );
+void MC_(record_core_mem_error) ( ThreadId tid, Bool isAddrErr, Char* msg );
 void MC_(record_regparam_error) ( ThreadId tid, Char* msg, UInt otag );
 void MC_(record_memparam_error) ( ThreadId tid, Addr a, 
                                   Bool isAddrErr, Char* msg, UInt otag );

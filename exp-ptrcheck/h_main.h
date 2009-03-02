@@ -65,7 +65,6 @@ void  h_replace_free ( ThreadId tid, void* p );
 void  h_replace___builtin_delete ( ThreadId tid, void* p );
 void  h_replace___builtin_vec_delete ( ThreadId tid, void* p );
 void* h_replace_realloc ( ThreadId tid, void* p_old, SizeT new_size );
-SizeT h_replace_malloc_usable_size ( ThreadId tid, void* p );
 
 void h_new_mem_startup( Addr a, SizeT len,
                         Bool rr, Bool ww, Bool xx, ULong di_handle );
@@ -78,8 +77,8 @@ void h_pre_mem_read_asciiz ( CorePart part, ThreadId tid,
                              Char* s, Addr lo );
 
 void h_post_reg_write_demux ( CorePart part, ThreadId tid,
-                              PtrdiffT guest_state_offset, SizeT size);
-void h_post_reg_write_clientcall(ThreadId tid, PtrdiffT guest_state_offset,
+                              OffT guest_state_offset, SizeT size);
+void h_post_reg_write_clientcall(ThreadId tid, OffT guest_state_offset,
                                  SizeT size, Addr f );
 
 void h_pre_syscall ( ThreadId tid, UInt syscallno );

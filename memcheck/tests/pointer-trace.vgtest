@@ -1,2 +1,3 @@
 prog: pointer-trace
-vgopts: -q --leak-check=yes
+vgopts: --leak-check=yes
+stderr_filter: filter_leak_check_size

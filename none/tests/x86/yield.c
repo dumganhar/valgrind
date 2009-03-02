@@ -42,9 +42,11 @@ static void *rep_nopper(void *v)
 
 	while(alive) {
 		rep_nop++;
+#ifdef __x86__
                 // This gives a hint to a P4, telling it to pause 
                 // (ie. we're in a spin-wait loop)
 		asm volatile ("rep; nop" : : : "memory");
+#endif
 	}
 
 	return 0;
@@ -52,6 +54,9 @@ static void *rep_nopper(void *v)
 
 int main()
 {
+#if defined(__powerpc__)
+	printf("PASS\n");
+#else
 	pthread_t a, b;
 
 	pthread_create(&a, NULL, spinner, NULL);
@@ -82,6 +87,7 @@ int main()
 	else
 		printf("FAIL spin=%d rep_nop=%d rep_nop:spin ratio: %g\n", 
 		       spin, rep_nop, (float)rep_nop / spin);
+#endif
 
 	return 0;
 }

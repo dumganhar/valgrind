@@ -14,7 +14,7 @@ main (int argc, char **argv)
 
    CLOSE_INHERITED_FDS;
 
-   sprintf(filename, "/tmp/file.%d", getpid());
+   sprintf(filename, "/tmp/file.%d\n", getpid());
    creat(filename, 0);
    unlink(filename);
    return 0;

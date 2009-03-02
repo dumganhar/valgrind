@@ -101,7 +101,7 @@ typedef
       /* Associated file (SkFile{C,V} only) */
       ULong   dev;
       ULong   ino;
-      Off64T  offset;
+      ULong   offset;
       UInt    mode;
       Int     fnIdx;    // file name table index, if name is known
       /* Permissions (SkAnon{C,V}, SkFile{C,V} only) */

@@ -1178,13 +1178,6 @@ arguments.</para>
   </listitem>
 
   <listitem>
-    <para><varname>VALGRIND_COUNT_LEAK_BLOCKS</varname>: identical to
-    <varname>VALGRIND_COUNT_LEAKS</varname> except that it returns the
-    number of blocks rather than the number of bytes in each
-    category.</para>
-  </listitem>
-
-  <listitem>
     <para><varname>VALGRIND_GET_VBITS</varname> and
     <varname>VALGRIND_SET_VBITS</varname>: allow you to get and set the
     V (validity) bits for an address range.  You should probably only
@@ -1470,7 +1463,7 @@ install</computeroutput>.  The final install tree should then contain
 this:</para>
 
 <programlisting><![CDATA[
-LD_PRELOAD=$prefix/lib/valgrind/libmpiwrap-<platform>.so   \
+LD_PRELOAD=$prefix/lib/valgrind/<platform>/libmpiwrap.so   \
            mpirun [args] $prefix/bin/valgrind ./hello
 ]]></programlisting>
 
@@ -1506,7 +1499,7 @@ the wrappers engaged:</para>
 
 <programlisting><![CDATA[
 MPIWRAP_DEBUG=[wrapper-args]                                  \
-   LD_PRELOAD=$prefix/lib/valgrind/libmpiwrap-<platform>.so   \
+   LD_PRELOAD=$prefix/lib/valgrind/<platform>/libmpiwrap.so   \
    mpirun [mpirun-args]                                       \
    $prefix/bin/valgrind [valgrind-args]                       \
    [application] [app-args]
@@ -1514,9 +1507,9 @@ MPIWRAP_DEBUG=[wrapper-args]                                  \
 
 <para>As an alternative to
 <computeroutput>LD_PRELOAD</computeroutput>ing
-<computeroutput>libmpiwrap-&lt;platform&gt;.so</computeroutput>, you can
-simply link it to your application if desired.  This should not disturb
-native behaviour of your application in any way.</para>
+<computeroutput>libmpiwrap.so</computeroutput>, you can simply link it
+to your application if desired.  This should not disturb native
+behaviour of your application in any way.</para>
 </sect2>
 
 

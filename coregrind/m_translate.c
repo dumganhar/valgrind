@@ -1547,7 +1547,8 @@ Bool VG_(translate) ( ThreadId tid,
           VG_(add_to_unredir_transtab)( &vge,
                                         nraddr,
                                         (Addr)(&tmpbuf[0]), 
-                                        tmpbuf_used );
+                                        tmpbuf_used,
+                                        do_self_check );
       }
    }
 

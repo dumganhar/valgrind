@@ -1,3 +1,2 @@
-prereq: test -e bar_trivial
 prog: bar_trivial
 vgopts: -q

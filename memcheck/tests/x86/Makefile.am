@@ -1,11 +1,11 @@
-
-include $(top_srcdir)/Makefile.tool-tests.am
-
 noinst_SCRIPTS = filter_stderr filter_pushfpopf filter_tronical
+
+noinst_HEADERS = scalar.h
 
 INSN_TESTS = insn_basic insn_fpu insn_cmov insn_mmx insn_mmxext insn_sse insn_sse2
 
 EXTRA_DIST = $(noinst_SCRIPTS) \
+	bug133694.vgtest bug133694.stderr.exp bug133694.stdout.exp \
 	bug152022.vgtest bug152022.stderr.exp bug152022.stdout.exp \
 	espindola2.vgtest espindola2.stderr.exp \
 	fpeflags.stderr.exp fpeflags.vgtest \
@@ -17,6 +17,13 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	pushfpopf.stderr.exp pushfpopf.stdout.exp pushfpopf.vgtest \
 	pushfw_x86.vgtest pushfw_x86.stdout.exp pushfw_x86.stderr.exp \
 	pushpopmem.stderr.exp pushpopmem.stdout.exp pushpopmem.vgtest \
+	scalar.stderr.exp scalar.stderr.exp2 scalar.vgtest \
+	scalar_fork.stderr.exp scalar_fork.vgtest \
+	scalar_exit_group.stderr.exp scalar_exit_group.stderr.exp2 \
+	scalar_exit_group.vgtest \
+	scalar_supp.stderr.exp scalar_supp.stderr.exp2 \
+	scalar_supp.vgtest scalar_supp.supp \
+	scalar_vfork.stderr.exp scalar_vfork.vgtest \
 	sse1_memory.stderr.exp sse1_memory.stdout.exp sse1_memory.vgtest \
 	sse2_memory.stderr.exp sse2_memory.stdout.exp sse2_memory.vgtest \
 	tronical.stderr.exp tronical.vgtest \
@@ -26,17 +33,21 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 	xor-undef-x86.vgtest
 
 check_PROGRAMS = \
+	bug133694 \
 	bug152022 \
 	espindola2 \
 	fxsave \
 	int3-x86 \
+	scalar_exit_group scalar_fork scalar_supp scalar_vfork \
 	fpeflags pushfpopf \
 	pushfw_x86 \
-	pushpopmem sse_memory tronical \
+	pushpopmem scalar sse_memory tronical \
 	more_x86_fp fprem xor-undef-x86
 
-AM_CFLAGS   += @FLAG_M32@ $(FLAG_MMMX) $(FLAG_MSSE)
-AM_CXXFLAGS += @FLAG_M32@ $(FLAG_MMMX) $(FLAG_MSSE)
+AM_CPPFLAGS  = -I$(top_srcdir)/include
+AM_CFLAGS    = $(WERROR) @FLAG_M32@ -Winline -Wall -Wshadow -g \
+		$(FLAG_MMMX) $(FLAG_MSSE)
+AM_CXXFLAGS  = $(AM_CFLAGS)
 AM_CCASFLAGS = @FLAG_M32@
 
 # must be built with these flags -- bug only occurred with them

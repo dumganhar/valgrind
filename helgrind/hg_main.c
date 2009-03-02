@@ -3475,15 +3475,6 @@ static void* hg_cli__realloc ( ThreadId tid, void* payloadV, SizeT new_size )
    }  
 }
 
-static SizeT hg_cli_malloc_usable_size ( ThreadId tid, void* p )
-{
-   MallocMeta *md = VG_(HT_lookup)( hg_mallocmeta_table, (UWord)p );
-
-   // There may be slop, but pretend there isn't because only the asked-for
-   // area will have been shadowed properly.
-   return ( md ? md->szB : 0 );
-}
-
 
 /*--------------------------------------------------------------*/
 /*--- Instrumentation                                        ---*/
@@ -4009,32 +4000,39 @@ Bool hg_handle_client_request ( ThreadId tid, UWord* args, UWord* ret)
 
 static Bool hg_process_cmd_line_option ( Char* arg )
 {
-   Char* tmp_str;
+   if      (VG_CLO_STREQ(arg, "--track-lockorders=no"))
+      HG_(clo_track_lockorders) = False;
+   else if (VG_CLO_STREQ(arg, "--track-lockorders=yes"))
+      HG_(clo_track_lockorders) = True;
 
-   if      VG_BOOL_CLO(arg, "--track-lockorders",
-                            HG_(clo_track_lockorders)) {}
-   else if VG_BOOL_CLO(arg, "--cmp-race-err-addrs",
-                            HG_(clo_cmp_race_err_addrs)) {}
-   else if VG_BOOL_CLO(arg, "--show-conflicts",
-                            HG_(clo_show_conflicts)) {}
+   else if (VG_CLO_STREQ(arg, "--cmp-race-err-addrs=no"))
+      HG_(clo_cmp_race_err_addrs) = False;
+   else if (VG_CLO_STREQ(arg, "--cmp-race-err-addrs=yes"))
+      HG_(clo_cmp_race_err_addrs) = True;
+
+   else if (VG_CLO_STREQ(arg, "--show-conflicts=no"))
+      HG_(clo_show_conflicts) = False;
+   else if (VG_CLO_STREQ(arg, "--show-conflicts=yes"))
+      HG_(clo_show_conflicts) = True;
 
    /* If you change the 10k/10mill limits, remember to also change
       them in assertions at the top of event_map_maybe_GC. */
-   else if VG_BINT_CLO(arg, "--conflict-cache-size",
-                       HG_(clo_conflict_cache_size), 10*1000, 10*1000*1000) {}
+   else VG_BNUM_CLO(arg, "--conflict-cache-size",
+                         HG_(clo_conflict_cache_size), 10*1000, 10*1000*1000)
 
    /* "stuvwx" --> stuvwx (binary) */
-   else if VG_STR_CLO(arg, "--hg-sanity-flags", tmp_str) {
+   else if (VG_CLO_STREQN(18, arg, "--hg-sanity-flags=")) {
       Int j;
+      Char* opt = & arg[18];
    
-      if (6 != VG_(strlen)(tmp_str)) {
+      if (6 != VG_(strlen)(opt)) {
          VG_(message)(Vg_UserMsg, 
                       "--hg-sanity-flags argument must have 6 digits");
          return False;
       }
       for (j = 0; j < 6; j++) {
-         if      ('0' == tmp_str[j]) { /* do nothing */ }
-         else if ('1' == tmp_str[j]) HG_(clo_sanity_flags) |= (1 << (6-1-j));
+         if      ('0' == opt[j]) { /* do nothing */ }
+         else if ('1' == opt[j]) HG_(clo_sanity_flags) |= (1 << (6-1-j));
          else {
             VG_(message)(Vg_UserMsg, "--hg-sanity-flags argument can "
                                      "only contain 0s and 1s");
@@ -4224,7 +4222,6 @@ static void hg_pre_clo_init ( void )
                                    hg_cli____builtin_delete,
                                    hg_cli____builtin_vec_delete,
                                    hg_cli__realloc,
-                                   hg_cli_malloc_usable_size,
                                    HG_CLI__MALLOC_REDZONE_SZB );
 
    /* 21 Dec 08: disabled this; it mostly causes H to start more

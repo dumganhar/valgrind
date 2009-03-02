@@ -1,6 +1,4 @@
 
-include $(top_srcdir)/Makefile.tool-tests.am
-
 noinst_SCRIPTS = filter_cpuid filter_stderr filter_int gen_insn_test.pl
 
 CLEANFILES = $(addsuffix .c,$(INSN_TESTS))
@@ -63,9 +61,9 @@ if BUILD_SSSE3_TESTS
  check_PROGRAMS += ssse3_misaligned
 endif
 
-AM_CFLAGS   += @FLAG_M64@
-AM_CXXFLAGS += @FLAG_M64@
-AM_CCASFLAGS = @FLAG_M64@
+AM_CFLAGS   = $(WERROR) -Winline -Wall -Wshadow -g -I$(top_srcdir)/include
+		@FLAG_M64@
+AM_CXXFLAGS = $(AM_CFLAGS)
 
 # generic C ones
 bug132918_LDADD		= -lm

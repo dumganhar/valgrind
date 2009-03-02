@@ -52,7 +52,6 @@ extern Bool ML_(client_signal_OK)(Int sigNo);
 extern
 Bool ML_(fd_allowed)(Int fd, const Char *syscallname, ThreadId tid, Bool soft);
 
-extern void ML_(record_fd_open_named)          (ThreadId tid, Int fd);
 extern void ML_(record_fd_open_nameless)       (ThreadId tid, Int fd);
 extern void ML_(record_fd_open_with_given_name)(ThreadId tid, Int fd,
                                                 char *pathname);
@@ -68,14 +67,7 @@ Bool ML_(do_sigkill)(Int pid, Int tgid);
 extern 
 void 
 ML_(notify_aspacem_and_tool_of_mmap) ( Addr a, SizeT len, UInt prot, 
-                                       UInt mm_flags, Int fd, Off64T offset );
-
-extern void
-ML_(buf_and_len_pre_check) ( ThreadId tid, Addr buf_p, Addr buflen_p,
-                             Char* buf_s, Char* buflen_s );
-extern void
-ML_(buf_and_len_post_check) ( ThreadId tid, SysRes res,
-                              Addr buf_p, Addr buflen_p, Char* s );
+                                       UInt mm_flags, Int fd, ULong offset );
 
 
 DECL_TEMPLATE(generic, sys_ni_syscall);            // * P -- unimplemented
@@ -104,6 +96,7 @@ DECL_TEMPLATE(generic, sys_mkdir);
 DECL_TEMPLATE(generic, sys_rmdir);
 DECL_TEMPLATE(generic, sys_dup);
 DECL_TEMPLATE(generic, sys_times);
+DECL_TEMPLATE(generic, sys_fcntl);        // POSIX (but complicated)
 DECL_TEMPLATE(generic, sys_setpgid);
 DECL_TEMPLATE(generic, sys_umask);
 DECL_TEMPLATE(generic, sys_dup2);
@@ -178,6 +171,7 @@ DECL_TEMPLATE(generic, sys_newfstat);              // * P (SVr4,BSD4.3)
 // For the remainder, not really sure yet
 DECL_TEMPLATE(generic, sys_ptrace);                // (x86?) (almost-P)
 DECL_TEMPLATE(generic, sys_setrlimit);             // SVr4, 4.3BSD
+DECL_TEMPLATE(generic, sys_ioctl);                 // x86? (various)
 DECL_TEMPLATE(generic, sys_old_getrlimit);         // SVr4, 4.3BSD L?
 DECL_TEMPLATE(generic, sys_statfs);                // * L?
 DECL_TEMPLATE(generic, sys_fstatfs);               // * L?
@@ -197,6 +191,7 @@ DECL_TEMPLATE(generic, sys_ftruncate64);           // %% (P?)
 DECL_TEMPLATE(generic, sys_lchown);                // * (L?)
 DECL_TEMPLATE(generic, sys_mincore);               // * L?
 DECL_TEMPLATE(generic, sys_getdents64);            // * (SVr4,SVID?)
+DECL_TEMPLATE(generic, sys_fcntl64);               // * P?
 DECL_TEMPLATE(generic, sys_statfs64);              // * (?)
 DECL_TEMPLATE(generic, sys_fstatfs64);             // * (?)
 
@@ -225,6 +220,8 @@ extern void   ML_(generic_PRE_sys_recv)         ( TId, UW, UW, UW );
 extern void   ML_(generic_POST_sys_recv)        ( TId, UW, UW, UW, UW );
 extern void   ML_(generic_PRE_sys_connect)      ( TId, UW, UW, UW );
 extern void   ML_(generic_PRE_sys_setsockopt)   ( TId, UW, UW, UW, UW, UW );
+extern void   ML_(generic_PRE_sys_getsockopt)   ( TId, UW, UW, UW, UW, UW );
+extern void   ML_(generic_POST_sys_getsockopt)  ( TId, SR, UW, UW, UW, UW, UW );
 extern void   ML_(generic_PRE_sys_getsockname)  ( TId, UW, UW, UW );
 extern void   ML_(generic_POST_sys_getsockname) ( TId, SR, UW, UW, UW );
 extern void   ML_(generic_PRE_sys_getpeername)  ( TId, UW, UW, UW );

@@ -1,7 +1,8 @@
 /*
-  This file is part of drd, a thread error detector.
+  This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2008 Bart Van Assche
+  bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -42,24 +43,23 @@
 
 /* Local variables. */
 
-static Bool s_show_conflicting_segments = True;
+static Bool s_drd_show_conflicting_segments = True;
 
 
-void DRD_(set_show_conflicting_segments)(const Bool scs)
+void set_show_conflicting_segments(const Bool scs)
 {
-  s_show_conflicting_segments = scs;
+  s_drd_show_conflicting_segments = scs;
 }
 
-/**
- * Describe a data address range [a,a+len[ as good as possible, for error
- * messages, putting the result in ai.
+/** Describe a data address range [a,a+len[ as good as possible, for error
+ *  messages, putting the result in ai.
  */
 static
 void describe_malloced_addr(Addr const a, SizeT const len, AddrInfo* const ai)
 {
   Addr data;
 
-  if (DRD_(heap_addrinfo)(a, &data, &ai->size, &ai->lastchange))
+  if (drd_heap_addrinfo(a, &data, &ai->size, &ai->lastchange))
   {
     ai->akind = eMallocd;
     ai->rwoffset = a - data;
@@ -70,29 +70,28 @@ void describe_malloced_addr(Addr const a, SizeT const len, AddrInfo* const ai)
   }
 }
 
-/**
- * Report where an object has been observed for the first time. The printed
- * call stack will either refer to a pthread_*_init() or a pthread_*lock()
- * call.
+/** Report where an object has been observed for the first time. The printed
+ *  call stack will either refer to a pthread_*_init() or a pthread_*lock()
+ *  call.
  */
 static void first_observed(const Addr obj)
 {
   DrdClientobj* cl;
 
-  cl = DRD_(clientobj_get_any)(obj);
+  cl = clientobj_get_any(obj);
   if (cl)
   {
     tl_assert(cl->any.first_observed_at);
     VG_(message)(Vg_UserMsg,
                  "%s 0x%lx was first observed at:",
-                 DRD_(clientobj_type_name)(cl->any.type),
+                 clientobj_type_name(cl->any.type),
                  obj);
     VG_(pp_ExeContext)(cl->any.first_observed_at);
   }
 }
 
 static
-void drd_report_data_race(Error* const err, const DataRaceErrInfo* const dri)
+void drd_report_data_race2(Error* const err, const DataRaceErrInfo* const dri)
 {
   AddrInfo ai;
   const unsigned descr_size = 256;
@@ -115,7 +114,7 @@ void drd_report_data_race(Error* const err, const DataRaceErrInfo* const dri)
   VG_(message)(Vg_UserMsg,
                "Conflicting %s by thread %d/%d at 0x%08lx size %ld",
                dri->access_type == eStore ? "store" : "load",
-               DRD_(DrdThreadIdToVgThreadId)(dri->tid),
+               DrdThreadIdToVgThreadId(dri->tid),
                dri->tid,
                dri->addr,
                dri->size);
@@ -151,11 +150,10 @@ void drd_report_data_race(Error* const err, const DataRaceErrInfo* const dri)
       VG_(message)(Vg_UserMsg, "Allocation context: unknown.");
     }
   }
-  if (s_show_conflicting_segments)
+  if (s_drd_show_conflicting_segments)
   {
-    DRD_(thread_report_conflicting_segments)(dri->tid,
-                                             dri->addr, dri->size,
-                                             dri->access_type);
+    thread_report_conflicting_segments(dri->tid,
+                                       dri->addr, dri->size, dri->access_type);
   }
 
   VG_(free)(descr2);
@@ -172,7 +170,7 @@ static void drd_tool_error_pp(Error* const e)
   switch (VG_(get_error_kind)(e))
   {
   case DataRaceErr: {
-    drd_report_data_race(e, VG_(get_error_extra)(e));
+    drd_report_data_race2(e, VG_(get_error_extra)(e));
     break;
   }
   case MutexErr: {
@@ -213,7 +211,7 @@ static void drd_tool_error_pp(Error* const e)
                  "%s: cond 0x%lx, mutex 0x%lx locked by thread %d/%d",
                  VG_(get_error_string)(e),
                  cdi->cond, cdi->mutex,
-                 DRD_(DrdThreadIdToVgThreadId)(cdi->tid), cdi->tid);
+                 DrdThreadIdToVgThreadId(cdi->tid), cdi->tid);
     VG_(pp_ExeContext)(VG_(get_error_where)(e));
     first_observed(cdi->mutex);
     break;
@@ -256,21 +254,13 @@ static void drd_tool_error_pp(Error* const e)
     break;
   }
   case BarrierErr: {
-    BarrierErrInfo* bei = (BarrierErrInfo*)(VG_(get_error_extra)(e));
+    BarrierErrInfo* bei =(BarrierErrInfo*)(VG_(get_error_extra)(e));
     tl_assert(bei);
     VG_(message)(Vg_UserMsg,
                  "%s: barrier 0x%lx",
                  VG_(get_error_string)(e),
                  bei->barrier);
     VG_(pp_ExeContext)(VG_(get_error_where)(e));
-    if (bei->other_context)
-    {
-      VG_(message)(Vg_UserMsg,
-                   "Conflicting wait call by thread %d/%d:",
-                   DRD_(DrdThreadIdToVgThreadId)(bei->other_tid),
-                   bei->other_tid);
-      VG_(pp_ExeContext)(bei->other_context);
-    }
     first_observed(bei->barrier);
     break;
   }
@@ -381,8 +371,7 @@ static Bool drd_tool_error_recog(Char* const name, Supp* const supp)
   return True;
 }
 
-static
-Bool drd_tool_error_read_extra(Int fd, Char* buf, Int nBuf, Supp* supp)
+static Bool drd_tool_error_read_extra(Int fd, Char* buf, Int nBuf, Supp* supp)
 {
   return True;
 }
@@ -417,9 +406,14 @@ static Char* drd_tool_error_name(Error* e)
 }
 
 static void drd_tool_error_print_extra(Error* e)
-{ }
+{
+  switch (VG_(get_error_kind)(e))
+  {
+    // VG_(printf)("   %s\n", VG_(get_error_string)(err));
+  }
+}
 
-void DRD_(register_error_handlers)(void)
+void drd_register_error_handlers(void)
 {
   // Tool error reporting.
   VG_(needs_tool_errors)(drd_tool_error_eq,

@@ -1,5 +1,6 @@
 
-include $(top_srcdir)/Makefile.tool-tests.am
+# For AM_FLAG_M3264_PRI
+include $(top_srcdir)/Makefile.flags.am
 
 noinst_SCRIPTS = filter_stderr
 
@@ -120,12 +121,17 @@ EXTRA_DIST = $(noinst_SCRIPTS) \
 		tc24_nonzero_sem.stderr.exp-glibc25-amd64
 
 check_PROGRAMS = \
+	bar_bad \
+	bar_trivial \
 	hg01_all_ok \
 	hg02_deadlock \
 	hg03_inherit \
 	hg04_race \
 	hg05_race2 \
 	hg06_readshared \
+	pth_barrier \
+	rwlock_race \
+	rwlock_test \
 	tc01_simple_race \
 	tc02_simple_tls \
 	tc03_re_excl \
@@ -151,12 +157,15 @@ check_PROGRAMS = \
 	tc23_bogus_condwait \
 	tc24_nonzero_sem
 
-if HAVE_PTHREAD_BARRIER
-check_PROGRAMS += bar_bad bar_trivial
-endif
+AM_CPPFLAGS = -I$(top_srcdir) -I$(top_srcdir)/include \
+                -I$(top_srcdir)/coregrind -I$(top_builddir)/include \
+                -I@VEX_DIR@/pub
 
-AM_CFLAGS   += $(AM_FLAG_M3264_PRI)
-AM_CXXFLAGS += $(AM_FLAG_M3264_PRI)
+# are these necessary?
+AM_CFLAGS	= $(WERROR) -Winline -Wall -Wshadow -g $(AM_FLAG_M3264_PRI)
+LDADD		= -lpthread
 
-LDADD = -lpthread
-
+# only needed because of referencing sources in drd/tests
+pth_barrier_SOURCES	= ../../drd/tests/pth_barrier.c
+rwlock_race_SOURCES	= ../../drd/tests/rwlock_race.c
+rwlock_test_SOURCES	= ../../drd/tests/rwlock_test.c

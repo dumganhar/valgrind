@@ -50,7 +50,7 @@
 #include "pub_core_machine.h"    // VG_PLAT_USES_PPCTOC
 #include "pub_core_xarray.h"
 #include "pub_core_oset.h"
-#include "pub_core_stacktrace.h" // VG_(get_StackTrace) XXX: circular dependency
+#include "pub_core_stacktrace.h" // VG_(get_StackTrace)
 
 #include "priv_misc.h"           /* dinfo_zalloc/free */
 #include "priv_d3basics.h"       /* ML_(pp_GX) */
@@ -1091,41 +1091,32 @@ static void search_all_loctabs ( Addr ptr, /*OUT*/DebugInfo** pdi,
 
 /* The whole point of this whole big deal: map a code address to a
    plausible symbol name.  Returns False if no idea; otherwise True.
-   Caller supplies buf and nbuf.  If do_cxx_demangling is False, don't do
-   C++ demangling, regardless of VG_(clo_demangle) -- probably because the
-   call has come from VG_(get_fnname_raw)().  findText
+   Caller supplies buf and nbuf.  If demangle is False, don't do
+   demangling, regardless of VG_(clo_demangle) -- probably because the
+   call has come from VG_(get_fnname_nodemangle)().  findText
    indicates whether we're looking for a text symbol or a data symbol
    -- caller must choose one kind or the other. */
 static
-Bool get_sym_name ( Bool do_cxx_demangling, Bool do_z_demangling,
-                    Bool do_below_main_renaming,
-                    Addr a, Char* buf, Int nbuf,
+Bool get_sym_name ( Bool demangle, Addr a, Char* buf, Int nbuf,
                     Bool match_anywhere_in_sym, Bool show_offset,
-                    Bool findText, /*OUT*/PtrdiffT* offsetP )
+                    Bool findText, /*OUT*/OffT* offsetP )
 {
    DebugInfo* di;
    Word       sno;
-   PtrdiffT   offset;
+   Int        offset;
 
    search_all_symtabs ( a, &di, &sno, match_anywhere_in_sym, findText );
    if (di == NULL) 
       return False;
-
-   VG_(demangle) ( do_cxx_demangling, do_z_demangling,
-                   di->symtab[sno].name, buf, nbuf );
-
-   /* Do the below-main hack */
-   // To reduce the endless nuisance of multiple different names 
-   // for "the frame below main()" screwing up the testsuite, change all
-   // known incarnations of said into a single name, "(below main)", if
-   // --show-below-main=yes.
-   if ( do_below_main_renaming && ! VG_(clo_show_below_main) &&
-        Vg_FnNameBelowMain == VG_(get_fnname_kind)(buf) )
-   {
-      VG_(strncpy_safely)(buf, "(below main)", nbuf);
+   if (demangle) {
+      VG_(demangle) ( True/*do C++ demangle*/,
+                      di->symtab[sno].name, buf, nbuf );
+   } else {
+      VG_(strncpy_safely) ( buf, di->symtab[sno].name, nbuf );
    }
+
    offset = a - di->symtab[sno].addr;
-   if (offsetP) *offsetP = offset;
+   if (offsetP) *offsetP = (OffT)offset;
 
    if (show_offset && offset != 0) {
       Char     buf2[12];
@@ -1133,7 +1124,7 @@ Bool get_sym_name ( Bool do_cxx_demangling, Bool do_z_demangling,
       Char*    end = buf + nbuf;
       Int      len;
 
-      len = VG_(sprintf)(buf2, "%c%ld",
+      len = VG_(sprintf)(buf2, "%c%d",
 			 offset < 0 ? '-' : '+',
 			 offset < 0 ? -offset : offset);
       vg_assert(len < (Int)sizeof(buf2));
@@ -1143,8 +1134,6 @@ Bool get_sym_name ( Bool do_cxx_demangling, Bool do_z_demangling,
 	 VG_(memcpy)(symend, cp, len+1);
       }
    }
-
-   buf[nbuf-1] = 0; /* paranoia */
 
    return True;
 }
@@ -1170,9 +1159,7 @@ Addr VG_(get_tocptr) ( Addr guest_code_addr )
    match anywhere in function, but don't show offsets. */
 Bool VG_(get_fnname) ( Addr a, Char* buf, Int nbuf )
 {
-   return get_sym_name ( /*C++-demangle*/True, /*Z-demangle*/True,
-                         /*below-main-renaming*/True,
-                         a, buf, nbuf,
+   return get_sym_name ( /*demangle*/True, a, buf, nbuf,
                          /*match_anywhere_in_fun*/True, 
                          /*show offset?*/False,
                          /*text syms only*/True,
@@ -1183,9 +1170,7 @@ Bool VG_(get_fnname) ( Addr a, Char* buf, Int nbuf )
    match anywhere in function, and show offset if nonzero. */
 Bool VG_(get_fnname_w_offset) ( Addr a, Char* buf, Int nbuf )
 {
-   return get_sym_name ( /*C++-demangle*/True, /*Z-demangle*/True,
-                         /*below-main-renaming*/True,
-                         a, buf, nbuf,
+   return get_sym_name ( /*demangle*/True, a, buf, nbuf,
                          /*match_anywhere_in_fun*/True, 
                          /*show offset?*/True,
                          /*text syms only*/True,
@@ -1197,23 +1182,18 @@ Bool VG_(get_fnname_w_offset) ( Addr a, Char* buf, Int nbuf )
    and don't show offsets. */
 Bool VG_(get_fnname_if_entry) ( Addr a, Char* buf, Int nbuf )
 {
-   return get_sym_name ( /*C++-demangle*/True, /*Z-demangle*/True,
-                         /*below-main-renaming*/True,
-                         a, buf, nbuf,
+   return get_sym_name ( /*demangle*/True, a, buf, nbuf,
                          /*match_anywhere_in_fun*/False, 
                          /*show offset?*/False,
                          /*text syms only*/True,
                          /*offsetP*/NULL );
 }
 
-/* This is only available to core... don't C++-demangle, don't Z-demangle,
-   don't rename below-main, match anywhere in function, and don't show
-   offsets. */
-Bool VG_(get_fnname_raw) ( Addr a, Char* buf, Int nbuf )
+/* This is only available to core... don't demangle C++ names,
+   match anywhere in function, and don't show offsets. */
+Bool VG_(get_fnname_nodemangle) ( Addr a, Char* buf, Int nbuf )
 {
-   return get_sym_name ( /*C++-demangle*/False, /*Z-demangle*/False,
-                         /*below-main-renaming*/False,
-                         a, buf, nbuf,
+   return get_sym_name ( /*demangle*/False, a, buf, nbuf,
                          /*match_anywhere_in_fun*/True, 
                          /*show offset?*/False,
                          /*text syms only*/True,
@@ -1221,55 +1201,29 @@ Bool VG_(get_fnname_raw) ( Addr a, Char* buf, Int nbuf )
 }
 
 /* This is only available to core... don't demangle C++ names, but do
-   do Z-demangling and below-main-renaming, match anywhere in function, and
-   don't show offsets. */
-Bool VG_(get_fnname_no_cxx_demangle) ( Addr a, Char* buf, Int nbuf )
+   do Z-demangling, match anywhere in function, and don't show
+   offsets. */
+Bool VG_(get_fnname_Z_demangle_only) ( Addr a, Char* buf, Int nbuf )
 {
-   return get_sym_name ( /*C++-demangle*/False, /*Z-demangle*/True,
-                         /*below-main-renaming*/True,
-                         a, buf, nbuf,
-                         /*match_anywhere_in_fun*/True, 
-                         /*show offset?*/False,
-                         /*text syms only*/True,
-                         /*offsetP*/NULL );
-}
+#  define N_TMPBUF 4096 /* arbitrary, 4096 == ERRTXT_LEN */
+   Char tmpbuf[N_TMPBUF];
+   Bool ok;
+   vg_assert(nbuf > 0);
+   ok = get_sym_name ( /*demangle*/False, a, tmpbuf, N_TMPBUF,
+                       /*match_anywhere_in_fun*/True, 
+                       /*show offset?*/False,
+                       /*text syms only*/True,
+                       /*offsetP*/NULL );
+   tmpbuf[N_TMPBUF-1] = 0; /* paranoia */
+   if (!ok) 
+      return False;
 
-Vg_FnNameKind VG_(get_fnname_kind) ( Char* name )
-{
-   if (VG_STREQ("main", name)) {
-      return Vg_FnNameMain;
+   /* We have something, at least.  Try to Z-demangle it. */
+   VG_(demangle)( False/*don't do C++ demangling*/, tmpbuf, buf, nbuf);
 
-   } else if (
-#if defined(VGO_linux)
-       VG_STREQ("__libc_start_main",  name) ||  // glibc glibness
-       VG_STREQ("generic_start_main", name) ||  // Yellow Dog doggedness
-#elif defined(VGO_aix5)
-       VG_STREQ("__start", name)            ||  // AIX aches
-#else
-#      error Unknown OS
-#endif
-       0) {
-      return Vg_FnNameBelowMain;
-
-   } else {
-      return Vg_FnNameNormal;
-   }
-}
-
-Vg_FnNameKind VG_(get_fnname_kind_from_IP) ( Addr ip )
-{
-   // We don't need a big buffer;  all the special names are small.
-   #define BUFLEN 50
-   Char buf[50];
-
-   // We don't demangle, because it's faster not to, and the special names
-   // we're looking for won't be demangled.
-   if (VG_(get_fnname_raw) ( ip, buf, BUFLEN )) {
-      buf[BUFLEN-1] = '\0';      // paranoia
-      return VG_(get_fnname_kind)(buf);
-   } else {
-      return Vg_FnNameNormal;    // Don't know the name, treat it as normal.
-   }
+   buf[nbuf-1] = 0; /* paranoia */
+   return True;
+#  undef N_TMPBUF
 }
 
 /* Looks up data_addr in the collection of data symbols, and if found
@@ -1278,13 +1232,11 @@ Vg_FnNameKind VG_(get_fnname_kind_from_IP) ( Addr ip )
    from the symbol start is put into *offset. */
 Bool VG_(get_datasym_and_offset)( Addr data_addr,
                                   /*OUT*/Char* dname, Int n_dname,
-                                  /*OUT*/PtrdiffT* offset )
+                                  /*OUT*/OffT* offset )
 {
    Bool ok;
    vg_assert(n_dname > 1);
-   ok = get_sym_name ( /*C++-demangle*/False, /*Z-demangle*/False,
-                       /*below-main-renaming*/False,
-                       data_addr, dname, n_dname,
+   ok = get_sym_name ( /*demangle*/False, data_addr, dname, n_dname,
                        /*match_anywhere_in_sym*/True, 
                        /*show offset?*/False,
                        /*data syms only please*/False,
@@ -1984,7 +1936,7 @@ Bool VG_(use_CF_info) ( /*MOD*/Addr* ipP,
    offset of data_addr from the start of the variable.  Note that
    regs, which supplies ip,sp,fp values, will be NULL for global
    variables, and non-NULL for local variables. */
-static Bool data_address_is_in_var ( /*OUT*/PtrdiffT* offset,
+static Bool data_address_is_in_var ( /*OUT*/UWord* offset,
                                      XArray* /* TyEnt */ tyents,
                                      DiVariable*   var,
                                      RegSummary*   regs,
@@ -2054,8 +2006,8 @@ static void format_message ( /*OUT*/Char* dname1,
                              Int      n_dname,
                              Addr     data_addr,
                              DiVariable* var,
-                             PtrdiffT var_offset,
-                             PtrdiffT residual_offset,
+                             OffT     var_offset,
+                             OffT     residual_offset,
                              XArray* /*UChar*/ described,
                              Int      frameNo, 
                              ThreadId tid )
@@ -2298,14 +2250,14 @@ Bool consider_vars_in_frame ( /*OUT*/Char* dname1,
                    && VG_(sizeXA)(vars) > 0) );
       for (j = 0; j < VG_(sizeXA)( vars ); j++) {
          DiVariable* var = (DiVariable*)VG_(indexXA)( vars, j );
-         PtrdiffT    offset;
+         SizeT       offset;
          if (debug)
             VG_(printf)("QQQQ:    var:name=%s %#lx-%#lx %#lx\n",
                         var->name,arange->aMin,arange->aMax,ip);
          if (data_address_is_in_var( &offset, di->admin_tyents,
                                      var, &regs,
                                      data_addr, di )) {
-            PtrdiffT residual_offset = 0;
+            OffT residual_offset = 0;
             XArray* described = ML_(describe_type)( &residual_offset,
                                                     di->admin_tyents, 
                                                     var->typeR, offset );
@@ -2392,7 +2344,7 @@ Bool VG_(get_data_description)( /*OUT*/Char* dname1,
          of any of them bracket data_addr. */
       vars = global_arange->vars;
       for (i = 0; i < VG_(sizeXA)( vars ); i++) {
-         PtrdiffT offset;
+         SizeT offset;
          DiVariable* var = (DiVariable*)VG_(indexXA)( vars, i );
          vg_assert(var->name);
          /* Note we use a NULL RegSummary* here.  It can't make any
@@ -2404,7 +2356,7 @@ Bool VG_(get_data_description)( /*OUT*/Char* dname1,
          if (data_address_is_in_var( &offset, di->admin_tyents, var, 
                                      NULL/* RegSummary* */, 
                                      data_addr, di )) {
-            PtrdiffT residual_offset = 0;
+            OffT residual_offset = 0;
             XArray* described = ML_(describe_type)( &residual_offset,
                                                     di->admin_tyents,
                                                     var->typeR, offset );
@@ -2957,7 +2909,7 @@ const UChar* VG_(seginfo_filename)(const DebugInfo* di)
    return di->filename;
 }
 
-PtrdiffT VG_(seginfo_get_text_bias)(const DebugInfo* di)
+ULong VG_(seginfo_get_text_bias)(const DebugInfo* di)
 {
    return di->text_present ? di->text_bias : 0;
 }

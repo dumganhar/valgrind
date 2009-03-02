@@ -1350,7 +1350,8 @@ static Bool sanity_check_redir_tt_tc ( void )
 void VG_(add_to_unredir_transtab)( VexGuestExtents* vge,
                                    Addr64           entry,
                                    AddrH            code,
-                                   UInt             code_len )
+                                   UInt             code_len,
+                                   Bool             is_self_checking )
 {
    Int   i, j, code_szQ;
    HChar *srcP, *dstP;

@@ -196,11 +196,11 @@ static Char* clo_fnname = "_dl_runtime_resolve";
 
 static Bool lk_process_cmd_line_option(Char* arg)
 {
-   if VG_STR_CLO(arg, "--fnname", clo_fnname) {}
-   else if VG_BOOL_CLO(arg, "--basic-counts",      clo_basic_counts) {}
-   else if VG_BOOL_CLO(arg, "--detailed-counts",   clo_detailed_counts) {}
-   else if VG_BOOL_CLO(arg, "--trace-mem",         clo_trace_mem) {}
-   else if VG_BOOL_CLO(arg, "--trace-superblocks", clo_trace_sbs) {}
+   VG_STR_CLO(arg, "--fnname", clo_fnname)
+   else VG_BOOL_CLO(arg, "--basic-counts",      clo_basic_counts)
+   else VG_BOOL_CLO(arg, "--detailed-counts",   clo_detailed_counts)
+   else VG_BOOL_CLO(arg, "--trace-mem",         clo_trace_mem)
+   else VG_BOOL_CLO(arg, "--trace-superblocks", clo_trace_sbs)
    else
       return False;
    
@@ -886,12 +886,12 @@ static void lk_fini(Int exitcode)
       VG_(message)(Vg_UserMsg, "");
       VG_(message)(Vg_UserMsg, "Ratios:");
       tl_assert(n_SBs_entered); // Paranoia time.
-      VG_(message)(Vg_UserMsg, "  guest instrs : SB entered  = %'llu : 10",
+      VG_(message)(Vg_UserMsg, "  guest instrs : SB entered  = %3llu : 10",
          10 * n_guest_instrs / n_SBs_entered);
-      VG_(message)(Vg_UserMsg, "       IRStmts : SB entered  = %'llu : 10",
+      VG_(message)(Vg_UserMsg, "       IRStmts : SB entered  = %3llu : 10",
          10 * n_IRStmts / n_SBs_entered);
       tl_assert(n_guest_instrs); // Paranoia time.
-      VG_(message)(Vg_UserMsg, "       IRStmts : guest instr = %'llu : 10",
+      VG_(message)(Vg_UserMsg, "       IRStmts : guest instr = %3llu : 10",
          10 * n_IRStmts / n_guest_instrs);
    }
 

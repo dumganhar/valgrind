@@ -1,7 +1,8 @@
 /*
-  This file is part of drd, a thread error detector.
+  This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2008 Bart Van Assche
+  bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -30,35 +31,31 @@
 #include "pub_tool_libcprint.h"   // Vg_DebugMsg
 
 
-/* Global variables. */
+// Local variables.
 
-Bool DRD_(g_any_address_traced) = False;
-
-
-/* Local variables. */
-
-static struct bitmap* DRD_(s_suppressed);
-static Bool DRD_(s_trace_suppression);
+static struct bitmap* s_suppressed;
+static Bool s_trace_suppression;
+Bool g_any_address_traced = False;
 
 
-/* Function definitions. */
+// Function definitions.
 
-void DRD_(suppression_set_trace)(const Bool trace_suppression)
+void suppression_set_trace(const Bool trace_suppression)
 {
-   DRD_(s_trace_suppression) = trace_suppression;
+   s_trace_suppression = trace_suppression;
 }
 
-void DRD_(suppression_init)(void)
+void drd_suppression_init(void)
 {
-  tl_assert(DRD_(s_suppressed) == 0);
-  DRD_(s_suppressed) = DRD_(bm_new)();
-  tl_assert(DRD_(s_suppressed));
+  tl_assert(s_suppressed == 0);
+  s_suppressed = bm_new();
+  tl_assert(s_suppressed);
 }
 
-void DRD_(start_suppression)(const Addr a1, const Addr a2,
-                             const char* const reason)
+void drd_start_suppression(const Addr a1, const Addr a2,
+                           const char* const reason)
 {
-  if (DRD_(s_trace_suppression))
+  if (s_trace_suppression)
   {
     VG_(message)(Vg_DebugMsg, "start suppression of 0x%lx sz %ld (%s)",
                  a1, a2 - a1, reason);
@@ -66,12 +63,12 @@ void DRD_(start_suppression)(const Addr a1, const Addr a2,
 
   tl_assert(a1 < a2);
   // tl_assert(! drd_is_any_suppressed(a1, a2));
-  DRD_(bm_access_range_store)(DRD_(s_suppressed), a1, a2);
+  bm_access_range_store(s_suppressed, a1, a2);
 }
 
-void DRD_(finish_suppression)(const Addr a1, const Addr a2)
+void drd_finish_suppression(const Addr a1, const Addr a2)
 {
-  if (DRD_(s_trace_suppression))
+  if (s_trace_suppression)
   {
     VG_(message)(Vg_DebugMsg, "finish suppression of 0x%lx sz %ld",
                  a1, a2 - a1);
@@ -79,13 +76,13 @@ void DRD_(finish_suppression)(const Addr a1, const Addr a2)
   }
 
   tl_assert(a1 < a2);
-  if (! DRD_(is_suppressed)(a1, a2))
+  if (! drd_is_suppressed(a1, a2))
   {
      VG_(message)(Vg_DebugMsg, "?? [0x%lx,0x%lx[ not suppressed ??", a1, a2);
      VG_(get_and_pp_StackTrace)(VG_(get_running_tid)(), 12);
      tl_assert(False);
   }
-  DRD_(bm_clear_store)(DRD_(s_suppressed), a1, a2);
+  bm_clear_store(s_suppressed, a1, a2);
 }
 
 /**
@@ -93,9 +90,9 @@ void DRD_(finish_suppression)(const Addr a1, const Addr a2)
  * bytes in the range a1 .. a2 - 1 inclusive. Return false in case the range
  * is only partially suppressed or not suppressed at all.
  */
-Bool DRD_(is_suppressed)(const Addr a1, const Addr a2)
+Bool drd_is_suppressed(const Addr a1, const Addr a2)
 {
-  return DRD_(bm_has)(DRD_(s_suppressed), a1, a2, eStore);
+  return bm_has(s_suppressed, a1, a2, eStore);
 }
 
 /**
@@ -103,47 +100,46 @@ Bool DRD_(is_suppressed)(const Addr a1, const Addr a2)
  * of the bytes in the range a1 .. a2 - 1 inclusive. Return false in case none
  * of the bytes in the specified range is suppressed.
  */
-Bool DRD_(is_any_suppressed)(const Addr a1, const Addr a2)
+Bool drd_is_any_suppressed(const Addr a1, const Addr a2)
 {
-  return DRD_(bm_has_any_store)(DRD_(s_suppressed), a1, a2);
+  return bm_has_any_store(s_suppressed, a1, a2);
 }
 
-void DRD_(start_tracing_address_range)(const Addr a1, const Addr a2)
+void drd_start_tracing_address_range(const Addr a1, const Addr a2)
 {
   tl_assert(a1 < a2);
 
-  DRD_(bm_access_range_load)(DRD_(s_suppressed), a1, a2);
-  if (! DRD_(g_any_address_traced))
+  bm_access_range_load(s_suppressed, a1, a2);
+  if (! g_any_address_traced)
   {
-    DRD_(g_any_address_traced) = True;
+    g_any_address_traced = True;
   }
 }
 
-void DRD_(stop_tracing_address_range)(const Addr a1, const Addr a2)
+void drd_stop_tracing_address_range(const Addr a1, const Addr a2)
 {
   tl_assert(a1 < a2);
 
-  DRD_(bm_clear_load)(DRD_(s_suppressed), a1, a2);
-  if (DRD_(g_any_address_traced))
+  bm_clear_load(s_suppressed, a1, a2);
+  if (g_any_address_traced)
   {
-    DRD_(g_any_address_traced)
-      = DRD_(bm_has_any_load)(DRD_(s_suppressed), 0, ~(Addr)0);
+    g_any_address_traced = bm_has_any_load(s_suppressed, 0, ~(Addr)0);
   }
 }
 
-Bool DRD_(is_any_traced)(const Addr a1, const Addr a2)
+Bool drd_is_any_traced(const Addr a1, const Addr a2)
 {
-  return DRD_(bm_has_any_load)(DRD_(s_suppressed), a1, a2);
+  return bm_has_any_load(s_suppressed, a1, a2);
 }
 
-void DRD_(suppression_stop_using_mem)(const Addr a1, const Addr a2)
+void drd_suppression_stop_using_mem(const Addr a1, const Addr a2)
 {
-  if (DRD_(s_trace_suppression))
+  if (s_trace_suppression)
   {
     Addr b;
     for (b = a1; b < a2; b++)
     {
-      if (DRD_(bm_has_1)(DRD_(s_suppressed), b, eStore))
+      if (bm_has_1(s_suppressed, b, eStore))
       {
         VG_(message)(Vg_DebugMsg,
                      "stop_using_mem(0x%lx, %ld) finish suppression of 0x%lx",
@@ -153,5 +149,5 @@ void DRD_(suppression_stop_using_mem)(const Addr a1, const Addr a2)
   }
   tl_assert(a1);
   tl_assert(a1 < a2);
-  DRD_(bm_clear)(DRD_(s_suppressed), a1, a2);
+  bm_clear(s_suppressed, a1, a2);
 }

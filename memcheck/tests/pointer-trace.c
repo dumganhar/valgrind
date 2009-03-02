@@ -1,6 +1,5 @@
 /* 
-   Make sure that leak-check's pointer tracing avoids traps, i.e. tricky
-   memory areas where it could crash if not careful.
+   Make sure that leak-check's pointer tracing avoids traps
  */
 
 #include <stdio.h>
@@ -46,16 +45,14 @@ int main()
 	}
 
 	ptrs = malloc(nptrs * sizeof(char *));
-	for (i = 0; i < nptrs; i++)
+	for(i = 0; i < nptrs; i++)
 		ptrs[i] = (char *)((long)i << stepbits);
 
 	/* lay some traps */
-        /* non-RWX memory, and MAP_NORESERVE if present */
 	map = mmap(0, stepsize * 2, PROT_NONE, MAP_PRIVATE|MAP_NORESERVE|MAP_ANONYMOUS, -1, 0);
 	if (map == (char *)-1)
 		perror("trap 1 failed");
 
-        /* write-only memory, and MAP_NORESERVE if supported */
 	map = mmap(0, stepsize * 2, PROT_WRITE, MAP_PRIVATE|MAP_NORESERVE|MAP_ANONYMOUS, -1, 0);
 	if (map == (char *)-1)
 		perror("trap 2 failed");
@@ -63,12 +60,12 @@ int main()
 	/* non-zero mmap of a zero-length file -> SIGBUS */
 	fd = open("./pointer-trace-test-file", O_RDWR | O_CREAT | O_EXCL, 0600);
 	unlink("./pointer-trace-test-file");
+
 	map = mmap(0, stepsize * 2, PROT_WRITE|PROT_READ, MAP_PRIVATE, fd, 0);
 	if (map == (char *)-1)
 		perror("trap 3 failed");
 	//printf("trap 3 = %p-%p\n", map, map+stepsize*2);
 
-        /* unmapped memory that's marked as defined */
 	map = mmap(0, 256*1024, PROT_NONE, MAP_PRIVATE|MAP_NORESERVE|MAP_ANONYMOUS, -1, 0);
 	if (map == (char *)-1)
 		perror("trap 4 failed");
@@ -79,11 +76,7 @@ int main()
 
 	VALGRIND_DO_LEAK_CHECK;
 
-	free(ptrs);
-
-        // We deliberately make a leak, it'll be obvious if something went
-        // wrong because the message won't be printed.
-        ptrs = malloc(1000);
+	ptrs = 0;
 
 	return 0;
 }

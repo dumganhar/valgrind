@@ -1,22 +1,22 @@
 include $(top_srcdir)/Makefile.tool.am
 
 noinst_PROGRAMS =
-if VGCONF_PLATFORMS_INCLUDE_X86_LINUX
+if VGP_X86_LINUX
   noinst_PROGRAMS += drd-x86-linux   vgpreload_drd-x86-linux.so
 endif
-if VGCONF_PLATFORMS_INCLUDE_AMD64_LINUX
+if VGP_AMD64_LINUX
   noinst_PROGRAMS += drd-amd64-linux vgpreload_drd-amd64-linux.so
 endif
-if VGCONF_PLATFORMS_INCLUDE_PPC32_LINUX
+if VGP_PPC32_LINUX
   noinst_PROGRAMS += drd-ppc32-linux vgpreload_drd-ppc32-linux.so
 endif
-if VGCONF_PLATFORMS_INCLUDE_PPC64_LINUX
+if VGP_PPC64_LINUX
   noinst_PROGRAMS += drd-ppc64-linux vgpreload_drd-ppc64-linux.so
 endif
-if VGCONF_PLATFORMS_INCLUDE_PPC32_AIX5
+if VGP_PPC32_AIX5
   noinst_PROGRAMS += drd-ppc32-aix5  vgpreload_drd-ppc32-aix5.so
 endif
-if VGCONF_PLATFORMS_INCLUDE_PPC64_AIX5
+if VGP_PPC64_AIX5
   noinst_PROGRAMS += drd-ppc64-aix5  vgpreload_drd-ppc64-aix5.so
 endif
 
@@ -92,13 +92,12 @@ vgpreload_drd_ppc64_aix5_so_LDFLAGS      = $(PRELOAD_LDFLAGS_PPC64_AIX5)\
                                         $(LIBREPLACEMALLOC_LDFLAGS_PPC64_AIX5)
 
 
-DRD_SOURCES =           \
+DRD_SOURCES =    \
   drd_barrier.c         \
   drd_clientobj.c       \
   drd_clientreq.c       \
   drd_cond.c            \
   drd_error.c           \
-  drd_load_store.c      \
   drd_main.c            \
   drd_malloc_wrappers.c \
   drd_mutex.c           \
@@ -112,14 +111,12 @@ drdinclude_HEADERS = drd.h
 
 noinst_HEADERS =        \
   drd_barrier.h         \
-  drd_basics.h          \
   drd_bitmap.c          \
   drd_bitmap.h          \
   drd_clientobj.h       \
   drd_clientreq.h       \
   drd_cond.h            \
   drd_error.h           \
-  drd_load_store.h      \
   drd_malloc_wrappers.h \
   drd_mutex.h           \
   drd_rwlock.h          \
@@ -130,6 +127,7 @@ noinst_HEADERS =        \
   drd_thread.c          \
   drd_thread.h          \
   drd_thread_bitmap.h   \
+  drd_track.h           \
   drd_vc.c              \
   drd_vc.h              \
   pub_drd_bitmap.h

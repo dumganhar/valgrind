@@ -183,7 +183,7 @@ extern Bool  VG_(OSetWord_Next)         ( OSet* os, /*OUT*/UWord* val );
 //   a deallocation function (such as VG_(free)()) directly will likely
 //   lead to assertions in Valgrind's allocator.
 
-extern OSet* VG_(OSetGen_Create)    ( PtrdiffT keyOff, OSetCmp_t cmp,
+extern OSet* VG_(OSetGen_Create)    ( OffT keyOff, OSetCmp_t cmp,
                                       OSetAlloc_t alloc, HChar* ec,
                                       OSetFree_t free );
 extern void  VG_(OSetGen_Destroy)   ( OSet* os );
@@ -250,7 +250,7 @@ extern void* VG_(OSetGen_Next)         ( OSet* os );
 // produced VG_(OSetGen_Next) is the smallest key in the map 
 // >= start_at.  Naturally ">=" is defined by the comparison 
 // function supplied to VG_(OSetGen_Create).
-extern void VG_(OSetGen_ResetIterAt) ( OSet* oset, const void* key );
+extern void VG_(OSetGen_ResetIterAt) ( OSet* oset, void* key );
 
 #endif   // __PUB_TOOL_OSET_H
 

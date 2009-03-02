@@ -59,7 +59,7 @@ server (void)
 
    memset(&addr, 0, sizeof(addr));
    addr.sun_family = AF_UNIX;
-   sprintf(addr.sun_path, "%s", sock);
+   sprintf(addr.sun_path, sock);
 
    unlink(addr.sun_path);
    if(bind(s, (struct sockaddr *)&addr, sizeof(addr)) == -1) {
@@ -135,7 +135,7 @@ client (void)
    }
 
    addr.sun_family = AF_UNIX;
-   sprintf(addr.sun_path, "%s", sock);
+   sprintf(addr.sun_path, sock);
 
    do {
      count++;

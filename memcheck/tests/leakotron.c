@@ -2,7 +2,6 @@
 #include <stdlib.h>
 #include <assert.h>
 #include "../memcheck.h"
-#include "leak.h"
 
 /* 
    Incompetent memory management
@@ -11,7 +10,7 @@
    structure with refcounting.
  */
 
-static long bytes, blocks;
+static int bytes, blocks;
 
 struct node {
 	struct node *l, *r;
@@ -96,49 +95,63 @@ static struct node *mk()
 int main()
 {
 	int i;
-        long total;
-        DECLARE_LEAK_COUNTERS;
+	long base_definite, base_dubious, base_reachable, base_suppressed;
+	long definite, dubious, reachable, suppressed;
+        int total;
 
         /* we require these longs to have same size as a machine word */
         assert(sizeof(long) == sizeof(void*));
 
 	/* get a baseline in case the runtime allocated some memory */
-        GET_INITIAL_LEAK_COUNTS;
+	VALGRIND_DO_LEAK_CHECK;
+	base_definite = base_dubious = base_reachable = base_suppressed = 0;
+	VALGRIND_COUNT_LEAKS(base_definite, base_dubious, 
+			     base_reachable, base_suppressed);
 
-	for (i = 0; i < ITER; i++) {
+	for(i = 0; i < ITER; i++) {
 		mk();
 
 		if ((i % (ITER/10)) == 0) {
 			if (0)
-				printf("%ld living blocks, %ld bytes\n",
+				printf("%d living blocks, %d bytes\n",
 				       blocks, bytes);
-			//VALGRIND_DO_LEAK_CHECK;
+			VALGRIND_DO_LEAK_CHECK;
 		}
 	}
 	
 	/* "free all memory" */
-	for (i = 0; i < N; i++)
+	for(i = 0; i < N; i++)
 		assign(&nodes[i], NULL);
 
 
 	if (0)
-		printf("FINISHED: %ld living blocks, %ld bytes\n",
+		printf("FINISHED: %d living blocks, %d bytes\n",
 		       blocks, bytes);
 
-        GET_FINAL_LEAK_COUNTS;
+	VALGRIND_DO_LEAK_CHECK;
 
-	total = L_bytes + D_bytes + R_bytes + S_bytes;
+	/* Shouldn't be necessary, but COUNT_LEAKS doesn't define its
+	   result values */
+	definite = dubious = reachable = suppressed = 0;
+	VALGRIND_COUNT_LEAKS(definite, dubious, reachable, suppressed);
 
-        if (0) {
-		PRINT_LEAK_COUNTS(stderr);
-        }
+	definite   -= base_definite;
+	dubious    -= base_dubious;
+	reachable  -= base_reachable;
+	suppressed -= base_suppressed;
 
-	if (R_bytes != 0)
+	total = definite+dubious+reachable+suppressed;
+
+	if (0)
+		printf("leaks: definite %d, dubious %d, reachable %d, suppressed %d = %d\n",
+		       (int)definite, (int)dubious, (int)reachable, (int)suppressed, total);
+
+	if (reachable != 0)
 		printf("FAILED: I freed everything, "
-		       "but there's still %ld bytes (in %ld blocks) reachable\n", 
-		       R_bytes, R_blocks);
+		       "but there's still %d bytes reachable\n", 
+		       (int)reachable);
 	else if (total != bytes)
-		printf("FAILED: I count %ld bytes, leakcheck says %ld\n",
+		printf("FAILED: I count %d bytes, leakcheck says %d\n",
 		       bytes, total);
 	else
 		printf("PASS\n");

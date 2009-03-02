@@ -1,7 +1,8 @@
 /*
-  This file is part of drd, a thread error detector.
+  This file is part of drd, a data race detector.
 
-  Copyright (C) 2006-2009 Bart Van Assche <bart.vanassche@gmail.com>.
+  Copyright (C) 2006-2008 Bart Van Assche
+  bart.vanassche@gmail.com
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -80,7 +81,7 @@ typedef
 struct {                      // Used by:
    AddrKind    akind;         //   ALL
    SizeT       size;          //   ALL
-   PtrdiffT    rwoffset;      //   ALL
+   OffT        rwoffset;      //   ALL
    ExeContext* lastchange;    //   Mallocd
    DrdThreadId stack_tid;     //   Stack
    DebugInfo*  debuginfo;     //   Segment
@@ -128,9 +129,7 @@ typedef struct {
 } SemaphoreErrInfo;
 
 typedef struct {
-   Addr        barrier;
-   DrdThreadId other_tid;
-   ExeContext* other_context;
+   Addr barrier;
 } BarrierErrInfo;
 
 typedef struct {
@@ -148,8 +147,8 @@ typedef struct {
 } GenericErrInfo;
 
 
-void DRD_(set_show_conflicting_segments)(const Bool scs);
-void DRD_(register_error_handlers)(void);
+void set_show_conflicting_segments(const Bool scs);
+void drd_register_error_handlers(void);
 
 
 #endif /* __DRD_ERROR_H */

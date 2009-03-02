@@ -220,6 +220,8 @@ Number of snapshots: 50
       VG_(message)(Vg_DebugMsg, "Massif: " format, ##args); \
    }
 
+
+
 //------------------------------------------------------------//
 //--- Statistics                                           ---//
 //------------------------------------------------------------//
@@ -356,47 +358,48 @@ static Bool clo_heap            = True;
    // a UInt, but this caused problems on 64-bit machines when it was
    // multiplied by a small negative number and then promoted to a
    // word-sized type -- it ended up with a value of 4.2 billion.  Sigh.
-static SSizeT clo_heap_admin      = 8;
+static SizeT  clo_heap_admin      = 8;
 static Bool   clo_stacks          = False;
-static Int    clo_depth           = 30;
+static UInt   clo_depth           = 30;
 static double clo_threshold       = 1.0;  // percentage
 static double clo_peak_inaccuracy = 1.0;  // percentage
-static Int    clo_time_unit       = TimeI;
-static Int    clo_detailed_freq   = 10;
-static Int    clo_max_snapshots   = 100;
+static UInt   clo_time_unit       = TimeI;
+static UInt   clo_detailed_freq   = 10;
+static UInt   clo_max_snapshots   = 100;
 static Char*  clo_massif_out_file = "massif.out.%p";
 
 static XArray* args_for_massif;
 
 static Bool ms_process_cmd_line_option(Char* arg)
 {
-   Char* tmp_str;
-
    // Remember the arg for later use.
    VG_(addToXA)(args_for_massif, &arg);
 
-        if VG_BOOL_CLO(arg, "--heap",   clo_heap)   {}
-   else if VG_BOOL_CLO(arg, "--stacks", clo_stacks) {}
+        VG_BOOL_CLO(arg, "--heap",   clo_heap)
+   else VG_BOOL_CLO(arg, "--stacks", clo_stacks)
 
-   else if VG_BINT_CLO(arg, "--heap-admin", clo_heap_admin, 0, 1024) {}
-   else if VG_BINT_CLO(arg, "--depth",      clo_depth, 1, MAX_DEPTH) {}
+   else VG_NUM_CLO(arg, "--heap-admin", clo_heap_admin)
+   else VG_NUM_CLO(arg, "--depth",      clo_depth)
 
-   else if VG_DBL_CLO(arg, "--threshold",  clo_threshold) {}
+   else VG_DBL_CLO(arg, "--threshold",  clo_threshold)
 
-   else if VG_DBL_CLO(arg, "--peak-inaccuracy", clo_peak_inaccuracy) {}
+   else VG_DBL_CLO(arg, "--peak-inaccuracy", clo_peak_inaccuracy)
 
-   else if VG_BINT_CLO(arg, "--detailed-freq", clo_detailed_freq, 1, 10000) {}
-   else if VG_BINT_CLO(arg, "--max-snapshots", clo_max_snapshots, 10, 1000) {}
+   else VG_NUM_CLO(arg, "--detailed-freq", clo_detailed_freq)
+   else VG_NUM_CLO(arg, "--max-snapshots", clo_max_snapshots)
 
-   else if VG_XACT_CLO(arg, "--time-unit=i",  clo_time_unit, TimeI)  {}
-   else if VG_XACT_CLO(arg, "--time-unit=ms", clo_time_unit, TimeMS) {}
-   else if VG_XACT_CLO(arg, "--time-unit=B",  clo_time_unit, TimeB)  {}
+   else if (VG_CLO_STREQ(arg, "--time-unit=i"))  clo_time_unit = TimeI;
+   else if (VG_CLO_STREQ(arg, "--time-unit=ms")) clo_time_unit = TimeMS;
+   else if (VG_CLO_STREQ(arg, "--time-unit=B"))  clo_time_unit = TimeB;
 
-   else if VG_STR_CLO(arg, "--alloc-fn", tmp_str) {
-      VG_(addToXA)(alloc_fns, &tmp_str);
+   else if (VG_CLO_STREQN(11, arg, "--alloc-fn=")) {
+      Char* alloc_fn = &arg[11];
+      VG_(addToXA)(alloc_fns, &alloc_fn);
    }
 
-   else if VG_STR_CLO(arg, "--massif-out-file", clo_massif_out_file) {}
+   else if (VG_CLO_STREQN(18, arg, "--massif-out-file=")) {
+      clo_massif_out_file = &arg[18];
+   }
 
    else
       return VG_(replacement_malloc_process_cmd_line_option)(arg);
@@ -540,7 +543,7 @@ static void* perm_malloc(SizeT n_bytes)
 
    if (hp + n_bytes > hp_lim) {
       hp = (Addr)VG_(am_shadow_alloc)(SUPERBLOCK_SIZE);
-      if (0 == hp)
+      if (hp == 0)
          VG_(out_of_memory_NORETURN)( "massif:perm_malloc",
                                       SUPERBLOCK_SIZE);
       hp_lim = hp + SUPERBLOCK_SIZE - 1;
@@ -579,7 +582,7 @@ static void add_child_xpt(XPt* parent, XPt* child)
    // Expand 'children' if necessary.
    tl_assert(parent->n_children <= parent->max_children);
    if (parent->n_children == parent->max_children) {
-      if (0 == parent->max_children) {
+      if (parent->max_children == 0) {
          parent->max_children = 4;
          parent->children = VG_(malloc)( "ms.main.acx.1",
                                          parent->max_children * sizeof(XPt*) );
@@ -633,7 +636,7 @@ static SXPt* dup_XTree(XPt* xpt, SizeT total_szB)
    //
    // Nb: We do this once now, rather than once per child, because if we do
    // that the cost of all the divisions adds up to something significant.
-   if (0 == total_szB && 0 != clo_threshold) {
+   if (total_szB == 0 && clo_threshold != 0) {
       sig_child_threshold_szB = 1;
    } else {
       sig_child_threshold_szB = (SizeT)((total_szB * clo_threshold) / 100);
@@ -1259,7 +1262,7 @@ static Time get_time(void)
 // snapshot, or what kind of snapshot, are made elsewhere.
 static void
 take_snapshot(Snapshot* snapshot, SnapshotKind kind, Time time,
-              Bool is_detailed)
+              Bool is_detailed, Char* what)
 {
    tl_assert(!is_snapshot_in_use(snapshot));
    tl_assert(have_started_executing_code);
@@ -1345,7 +1348,7 @@ maybe_take_snapshot(SnapshotKind kind, Char* what)
 
    // Take the snapshot.
    snapshot = & snapshots[next_snapshot_i];
-   take_snapshot(snapshot, kind, time, is_detailed);
+   take_snapshot(snapshot, kind, time, is_detailed, what);
 
    // Record if it was detailed.
    if (is_detailed) {
@@ -1379,7 +1382,7 @@ maybe_take_snapshot(SnapshotKind kind, Char* what)
    if (n_skipped_snapshots_since_last_snapshot > 0) {
       VERB(2, "  (skipped %d snapshot%s)",
          n_skipped_snapshots_since_last_snapshot,
-         ( 1 == n_skipped_snapshots_since_last_snapshot ? "" : "s") );
+         ( n_skipped_snapshots_since_last_snapshot == 1 ? "" : "s") );
    }
    VERB_snapshot(2, what, next_snapshot_i);
    n_skipped_snapshots_since_last_snapshot = 0;
@@ -1462,7 +1465,7 @@ void* new_block ( ThreadId tid, void* p, SizeT req_szB, SizeT req_alignB,
    Bool is_custom_alloc = (NULL != p);
    SizeT actual_szB, slop_szB;
 
-   if ((SSizeT)req_szB < 0) return NULL;
+   if (req_szB < 0) return NULL;
 
    // Allocate and zero if necessary
    if (!p) {
@@ -1664,7 +1667,7 @@ static void *ms_memalign ( ThreadId tid, SizeT alignB, SizeT szB )
    return new_block( tid, NULL, szB, alignB, False );
 }
 
-static void ms_free ( ThreadId tid __attribute__((unused)), void* p )
+static void ms_free ( ThreadId tid, void* p )
 {
    die_block( p, /*custom_free*/False );
 }
@@ -1684,12 +1687,6 @@ static void* ms_realloc ( ThreadId tid, void* p_old, SizeT new_szB )
    return renew_block(tid, p_old, new_szB);
 }
 
-static SizeT ms_malloc_usable_size ( ThreadId tid, void* p )
-{                                                            
-   HP_Chunk* hc = VG_(HT_lookup)( malloc_list, (UWord)p );
-
-   return ( hc ? hc->req_szB + hc->slop_szB : 0 );
-}                                                            
 
 //------------------------------------------------------------//
 //--- Stacks                                               ---//
@@ -1706,7 +1703,7 @@ static void update_stack_stats(SSizeT stack_szB_delta)
    update_alloc_stats(stack_szB_delta);
 }
 
-static INLINE void new_mem_stack_2(SizeT len, Char* what)
+static INLINE void new_mem_stack_2(Addr a, SizeT len, Char* what)
 {
    if (have_started_executing_code) {
       VERB(3, "<<< new_mem_stack (%ld)", len);
@@ -1717,7 +1714,7 @@ static INLINE void new_mem_stack_2(SizeT len, Char* what)
    }
 }
 
-static INLINE void die_mem_stack_2(SizeT len, Char* what)
+static INLINE void die_mem_stack_2(Addr a, SizeT len, Char* what)
 {
    if (have_started_executing_code) {
       VERB(3, "<<< die_mem_stack (%ld)", -len);
@@ -1731,22 +1728,22 @@ static INLINE void die_mem_stack_2(SizeT len, Char* what)
 
 static void new_mem_stack(Addr a, SizeT len)
 {
-   new_mem_stack_2(len, "stk-new");
+   new_mem_stack_2(a, len, "stk-new");
 }
 
 static void die_mem_stack(Addr a, SizeT len)
 {
-   die_mem_stack_2(len, "stk-die");
+   die_mem_stack_2(a, len, "stk-die");
 }
 
 static void new_mem_stack_signal(Addr a, SizeT len, ThreadId tid)
 {
-   new_mem_stack_2(len, "sig-new");
+   new_mem_stack_2(a, len, "sig-new");
 }
 
 static void die_mem_stack_signal(Addr a, SizeT len)
 {
-   die_mem_stack_2(len, "sig-die");
+   die_mem_stack_2(a, len, "sig-die");
 }
 
 
@@ -1883,6 +1880,18 @@ Char FP_buf[BUF_LEN];
    VG_(write)(fd, (void*)FP_buf, VG_(strlen)(FP_buf)); \
 })
 
+// Same as FP, but guarantees a '\n' at the end.  (At one point we were
+// truncating without adding the '\n', which caused bug #155929.)
+#define FPn(format, args...) ({ \
+   VG_(snprintf)(FP_buf, BUF_LEN, format, ##args); \
+   FP_buf[BUF_LEN-5] = '.';   /* "..." at the end make the truncation */ \
+   FP_buf[BUF_LEN-4] = '.';   /*  more obvious */ \
+   FP_buf[BUF_LEN-3] = '.'; \
+   FP_buf[BUF_LEN-2] = '\n';  /* Make sure the last char is a newline. */ \
+   FP_buf[BUF_LEN-1] = '\0';  /* Make sure the string is terminated. */ \
+   VG_(write)(fd, (void*)FP_buf, VG_(strlen)(FP_buf)); \
+})
+
 // Nb: uses a static buffer, each call trashes the last string returned.
 static Char* make_perc(ULong x, ULong y)
 {
@@ -1902,7 +1911,7 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, Char* depth_str,
                             Int depth_str_len,
                             SizeT snapshot_heap_szB, SizeT snapshot_total_szB)
 {
-   Int   i, j, n_insig_children_sxpts;
+   Int   i, n_insig_children_sxpts;
    Char* perc;
    SXPt* pred  = NULL;
    SXPt* child = NULL;
@@ -1922,55 +1931,27 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, Char* depth_str,
       } else {
          // If it's main-or-below-main, we (if appropriate) ignore everything
          // below it by pretending it has no children.
-         if ( ! VG_(clo_show_below_main) ) {
-            Vg_FnNameKind kind = VG_(get_fnname_kind_from_IP)(sxpt->Sig.ip);
-            if (Vg_FnNameMain == kind || Vg_FnNameBelowMain == kind) {
-               sxpt->Sig.n_children = 0;
-            }
+         // XXX: get this properly.  Also, don't hard-code "(below main)"
+         //      here -- look at the "(below main)"/"__libc_start_main" mess
+         //      (m_stacktrace.c and m_demangle.c).
+         // [Nb: Josef wants --show-below-main to work for his fn entry/exit
+         //      tracing]
+         Bool should_hide_below_main = /*!VG_(clo_show_below_main)*/True;
+         if (should_hide_below_main &&
+             VG_(get_fnname)(sxpt->Sig.ip, ip_desc, BUF_LEN) &&
+             (VG_STREQ(ip_desc, "main") || VG_STREQ(ip_desc, "(below main)")))
+         {
+            sxpt->Sig.n_children = 0;
          }
-
          // We need the -1 to get the line number right, But I'm not sure why.
          ip_desc = VG_(describe_IP)(sxpt->Sig.ip-1, ip_desc, BUF_LEN);
       }
       perc = make_perc(sxpt->szB, snapshot_total_szB);
-      
-      // Do the non-ip_desc part first...
-      FP("%sn%d: %lu ", depth_str, sxpt->Sig.n_children, sxpt->szB);
-
-      // For ip_descs beginning with "0xABCD...:" addresses, we first
-      // measure the length of the "0xabcd: " address at the start of the
-      // ip_desc.
-      j = 0;
-      if ('0' == ip_desc[0] && 'x' == ip_desc[1]) {
-         j = 2;
-         while (True) {
-            if (ip_desc[j]) {
-               if (':' == ip_desc[j]) break;
-               j++;
-            } else {
-               tl_assert2(0, "ip_desc has unexpected form: %s\n", ip_desc);
-            }
-         }
-      }
-      // Nb: We treat this specially (ie. we don't use FP) so that if the
-      // ip_desc is too long (eg. due to a long C++ function name), it'll
-      // get truncated, but the '\n' is still there so its a valid file.
-      // (At one point we were truncating without adding the '\n', which
-      // caused bug #155929.)
-      //
-      // Also, we account for the length of the address in ip_desc when
-      // truncating.  (The longest address we could have is 18 chars:  "0x"
-      // plus 16 address digits.)  This ensures that the truncated function
-      // name always has the same length, which makes truncation
-      // deterministic and thus makes testing easier.
-      tl_assert(j <= 18);
-      VG_(snprintf)(FP_buf, BUF_LEN, "%s\n", ip_desc);
-      FP_buf[BUF_LEN-18+j-5] = '.';    // "..." at the end make the
-      FP_buf[BUF_LEN-18+j-4] = '.';    //   truncation more obvious.
-      FP_buf[BUF_LEN-18+j-3] = '.';
-      FP_buf[BUF_LEN-18+j-2] = '\n';   // The last char is '\n'.
-      FP_buf[BUF_LEN-18+j-1] = '\0';   // The string is terminated.
-      VG_(write)(fd, (void*)FP_buf, VG_(strlen)(FP_buf));
+      // Nb: we deliberately use 'FPn', not 'FP'.  So if the ip_desc is
+      // too long (eg. due to a long C++ function name), it'll get
+      // truncated, but the '\n' is still there so its a valid file.
+      FPn("%sn%d: %lu %s\n",     
+         depth_str, sxpt->Sig.n_children, sxpt->szB, ip_desc);
 
       // Indent.
       tl_assert(depth+1 < depth_str_len-1);    // -1 for end NUL char
@@ -2011,7 +1992,7 @@ static void pp_snapshot_SXPt(Int fd, SXPt* sxpt, Int depth, Char* depth_str,
       break;
 
     case InsigSXPt: {
-      Char* s = ( 1 == sxpt->Insig.n_xpts ? "," : "s, all" );
+      Char* s = ( sxpt->Insig.n_xpts == 1 ? "," : "s, all" );
       perc = make_perc(sxpt->szB, snapshot_total_szB);
       FP("%sn0: %lu in %d place%s below massif's threshold (%s)\n",
          depth_str, sxpt->szB, sxpt->Insig.n_xpts, s,
@@ -2163,9 +2144,25 @@ static void ms_post_clo_init(void)
    Int i;
 
    // Check options.
+   if (clo_heap_admin < 0 || clo_heap_admin > 1024) {
+      VG_(message)(Vg_UserMsg, "--heap-admin must be between 0 and 1024");
+      VG_(err_bad_option)("--heap-admin");
+   }
+   if (clo_depth < 1 || clo_depth > MAX_DEPTH) {
+      VG_(message)(Vg_UserMsg, "--depth must be between 1 and %d", MAX_DEPTH);
+      VG_(err_bad_option)("--depth");
+   }
    if (clo_threshold < 0 || clo_threshold > 100) {
       VG_(message)(Vg_UserMsg, "--threshold must be between 0.0 and 100.0");
       VG_(err_bad_option)("--threshold");
+   }
+   if (clo_detailed_freq < 1 || clo_detailed_freq > 10000) {
+      VG_(message)(Vg_UserMsg, "--detailed-freq must be between 1 and 10000");
+      VG_(err_bad_option)("--detailed-freq");
+   }
+   if (clo_max_snapshots < 10 || clo_max_snapshots > 1000) {
+      VG_(message)(Vg_UserMsg, "--max-snapshots must be between 10 and 1000");
+      VG_(err_bad_option)("--max-snapshots");
    }
 
    // If we have --heap=no, set --heap-admin to zero, just to make sure we
@@ -2233,7 +2230,6 @@ static void ms_pre_clo_init(void)
                                    ms___builtin_delete,
                                    ms___builtin_vec_delete,
                                    ms_realloc,
-                                   ms_malloc_usable_size,
                                    0 );
 
    // HP_Chunks

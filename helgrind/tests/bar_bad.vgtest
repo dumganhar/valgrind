@@ -1,3 +1,2 @@
-prereq: test -e bar_bad
 prog: bar_bad
 vgopts: -q

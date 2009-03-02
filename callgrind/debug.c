@@ -112,7 +112,7 @@ void CLG_(print_execstate)(int s, exec_state* es)
 }
 
 
-void CLG_(print_bbcc)(int s, BBCC* bbcc)
+void CLG_(print_bbcc)(int s, BBCC* bbcc, Bool jumpaddr)
 {
   BB* bb;
 
@@ -129,9 +129,16 @@ void CLG_(print_bbcc)(int s, BBCC* bbcc)
   bb = bbcc->bb;
   CLG_ASSERT(bb!=0);
 
-  VG_(printf)("%s +%#lx=%#lx, ",
+#if 0 
+  if (jumpaddr)
+    VG_(printf)("%s +%p=%p, ",
 	      bb->obj->name + bb->obj->last_slash_pos,
-	      bb->offset, bb_addr(bb));
+	      bb->jmp_offset, bb_jmpaddr(bb));
+  else
+#endif
+    VG_(printf)("%s +%#lx=%#lx, ",
+		bb->obj->name + bb->obj->last_slash_pos,
+		bb->offset, bb_addr(bb));
   CLG_(print_cxt)(s+8, bbcc->cxt, bbcc->rec_index);
 }
 
@@ -236,10 +243,10 @@ void CLG_(print_jcc)(int s, jCC* jcc)
 	return;
     }
     VG_(printf)("JCC %p from ", jcc);
-    CLG_(print_bbcc)(s+9, jcc->from);
+    CLG_(print_bbcc)(s+9, jcc->from, True);
     print_indent(s+4);    
     VG_(printf)("to   ");
-    CLG_(print_bbcc)(s+9, jcc->to);
+    CLG_(print_bbcc)(s+9, jcc->to, False);
     print_indent(s+4);
     VG_(printf)("Calls %llu\n", jcc->call_counter);
     print_indent(s+4);
@@ -327,7 +334,7 @@ void CLG_(print_bbcc_cost)(int s, BBCC* bbcc)
   bb = bbcc->bb;
   CLG_ASSERT(bb!=0);
     
-  CLG_(print_bbcc)(s, bbcc);
+  CLG_(print_bbcc)(s, bbcc, False);
 
   ecounter = bbcc->ecounter_sum;
 
@@ -433,7 +440,7 @@ void* CLG_(malloc)(HChar* cc, UWord s, char* f)
 void CLG_(print_bbno)(void) {}
 void CLG_(print_context)(void) {}
 void CLG_(print_jcc)(int s, jCC* jcc) {}
-void CLG_(print_bbcc)(int s, BBCC* bbcc) {}
+void CLG_(print_bbcc)(int s, BBCC* bbcc, Bool b) {}
 void CLG_(print_bbcc_fn)(BBCC* bbcc) {}
 void CLG_(print_cost)(int s, EventSet* es, ULong* cost) {}
 void CLG_(print_bb)(int s, BB* bb) {}

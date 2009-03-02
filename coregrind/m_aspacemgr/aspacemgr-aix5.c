@@ -162,7 +162,7 @@ typedef
       Bool   fromP;     // AnonC, AnonV only: originated from PreAlloc?
       UChar* fname;     // MText, FileV only: filename
       UChar* mname;     // MText only: member name if present
-      Off64T offset;    // FileV only: file offset
+      ULong  offset;    // FileV only: file offset
    }
    AixSegment;
 

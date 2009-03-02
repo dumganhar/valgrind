@@ -80,7 +80,7 @@ typedef enum { N_UNDEF = 0,	/* undefined symbol, new stringtab  */
 /* Read stabs-format debug info.  This is all rather horrible because
    stabs is a underspecified, kludgy hack.
 */
-void ML_(read_debuginfo_stabs) ( DebugInfo* di,
+void ML_(read_debuginfo_stabs) ( DebugInfo* di,  OffT debug_offset,
                                  UChar* stabC,   Int stab_sz, 
                                  UChar* stabstr, Int stabstr_sz )
 {
@@ -336,7 +336,7 @@ void ML_(read_debuginfo_stabs) ( DebugInfo* di,
                line.first = True;
 
                /* line ends at start of next function */
-               addr = di->text_bias + st->n_value;
+               addr = debug_offset + st->n_value;
 
                func.start = addr;
             }

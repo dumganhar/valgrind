@@ -371,7 +371,8 @@ demangle_template (struct work_stuff *work, const char **, string *,
                    string *, int, int);
 
 static int
-arm_pt (const char *, int, const char **, const char **);
+arm_pt (struct work_stuff *, const char *, int, const char **,
+        const char **);
 
 static int
 demangle_class_name (struct work_stuff *, const char **, string *);
@@ -2157,7 +2158,7 @@ demangle_template (struct work_stuff *work, const char **mangled,
 }
 
 static int
-arm_pt (const char *mangled,
+arm_pt (struct work_stuff *work, const char *mangled,
         int n, const char **anchor, const char **args)
 {
   /* Check if ARM template with "__pt__" in it ("parameterized type") */
@@ -2293,7 +2294,7 @@ demangle_arm_hp_template (struct work_stuff *work, const char **mangled,
       return;
     }
   /* ARM template? (Also handles HP cfront extensions) */
-  else if (arm_pt (*mangled, n, &p, &args))
+  else if (arm_pt (work, *mangled, n, &p, &args))
     {
       int hold_options;
       string type_str;

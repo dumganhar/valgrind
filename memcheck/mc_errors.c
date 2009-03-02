@@ -98,15 +98,15 @@ struct _AddrInfo {
          BlockKind   block_kind;
          Char*       block_desc;    // "block", "mempool" or user-defined
          SizeT       block_szB;
-         PtrdiffT    rwoffset;
+         OffT        rwoffset;
          ExeContext* lastchange;
       } Block;
 
-      // In a global .data symbol.  This holds the first 127 chars of
-      // the variable's name (zero terminated), plus a (memory) offset.
+      // In a global .data symbol.  This holds the first 63 chars of
+      // the variable's (zero terminated), plus an offset.
       struct {
-         Char     name[128];
-         PtrdiffT offset;
+         Char name[128];
+         OffT offset;
       } DataSym;
 
       // Is described by Dwarf debug info.  Arbitrary strings.  Must
@@ -286,10 +286,10 @@ static void mc_pp_AddrInfo ( Addr a, AddrInfo* ai, Bool maybe_gcc )
          break;
 
       case Addr_Block: {
-         SizeT    block_szB = ai->Addr.Block.block_szB;
-         PtrdiffT rwoffset  = ai->Addr.Block.rwoffset;
-         SizeT    delta;
-         const    Char* relative;
+         SizeT block_szB  = ai->Addr.Block.block_szB;
+         OffT  rwoffset   = ai->Addr.Block.rwoffset;
+         SizeT delta;
+         const Char* relative;
 
          if (rwoffset < 0) {
             delta    = (SizeT)(-rwoffset);
@@ -715,8 +715,9 @@ void MC_(record_cond_error) ( ThreadId tid, UInt otag )
 
 /* --- Called from non-generated code --- */
 
-/* This is for memory errors in signal-related memory. */
-void MC_(record_core_mem_error) ( ThreadId tid, Char* msg )
+/* This is for memory errors in pthread functions, as opposed to pthread API
+   errors which are found by the core. */
+void MC_(record_core_mem_error) ( ThreadId tid, Bool isAddrErr, Char* msg )
 {
    VG_(maybe_record_error)( tid, Err_CoreMem, /*addr*/0, msg, /*extra*/NULL );
 }

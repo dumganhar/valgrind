@@ -703,10 +703,10 @@ static void copy_UWord_into_XA ( XArray* /* of UChar */ xa,
    VG_(addBytesToXA)( xa, buf, VG_(strlen)(buf));
 }
 
-XArray* /*UChar*/ ML_(describe_type)( /*OUT*/PtrdiffT* residual_offset,
+XArray* /*UChar*/ ML_(describe_type)( /*OUT*/OffT* residual_offset,
                                       XArray* /* of TyEnt */ tyents,
                                       UWord ty_cuOff, 
-                                      PtrdiffT offset )
+                                      OffT offset )
 {
    TyEnt*  ty;
    XArray* xa = VG_(newXA)( ML_(dinfo_zalloc), "di.tytypes.dt.1",
@@ -738,7 +738,7 @@ XArray* /*UChar*/ ML_(describe_type)( /*OUT*/PtrdiffT* residual_offset,
             XArray*    fieldRs;
             UWord      fieldR;
             TyEnt*     field = NULL;
-            PtrdiffT   offMin = 0, offMax1 = 0;
+            OffT       offMin = 0, offMax1 = 0;
             if (!ty->Te.TyStOrUn.isStruct) goto done;
             fieldRs = ty->Te.TyStOrUn.fieldRs;
             if ((!fieldRs) || VG_(sizeXA)(fieldRs) == 0) goto done;
@@ -772,7 +772,7 @@ XArray* /*UChar*/ ML_(describe_type)( /*OUT*/PtrdiffT* residual_offset,
                if (mul.b != True)
                   goto done; /* size of field is unknown (?!) */
                offMin  = res.word;
-               offMax1 = offMin + (PtrdiffT)mul.ul;
+               offMax1 = offMin + (OffT)mul.ul;
                if (offMin == offMax1)
                   continue;
                vg_assert(offMin < offMax1);

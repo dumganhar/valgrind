@@ -97,6 +97,28 @@ Bool is_overlap ( void* dst, const void* src, SizeT dstlen, SizeT srclen )
 			      s, src, dst, len, 0); \
 }
 
+/* --------- Some handy Z-encoded names. --------- */
+
+/* --- Soname of the standard C library. --- */
+
+#if defined(VGO_linux)
+#  define  m_libc_soname     libcZdsoZa              // libc.so*
+#elif defined(VGP_ppc32_aix5)
+   /* AIX has both /usr/lib/libc.a and /usr/lib/libc_r.a. */
+#  define  m_libc_soname     libcZaZdaZLshrZdoZR     // libc*.a(shr.o)
+#elif defined(VGP_ppc64_aix5)
+#  define  m_libc_soname     libcZaZdaZLshrZu64ZdoZR // libc*.a(shr_64.o)
+#else
+#  error "Unknown platform"
+#endif
+
+/* --- Sonames for Linux ELF linkers. --- */
+
+#define  m_ld_linux_so_2         ldZhlinuxZdsoZd2           // ld-linux.so.2
+#define  m_ld_linux_x86_64_so_2  ldZhlinuxZhx86Zh64ZdsoZd2  // ld-linux-x86-64.so.2
+#define  m_ld64_so_1             ld64ZdsoZd1                // ld64.so.1
+#define  m_ld_so_1               ldZdsoZd1                  // ld.so.1
+
 
 #define STRRCHR(soname, fnname) \
    char* VG_REPLACE_FUNCTION_ZU(soname,fnname)( const char* s, int c ); \
@@ -113,9 +135,9 @@ Bool is_overlap ( void* dst, const void* src, SizeT dstlen, SizeT srclen )
    }
 
 // Apparently rindex() is the same thing as strrchr()
-STRRCHR(VG_Z_LIBC_SONAME,   strrchr)
-STRRCHR(VG_Z_LIBC_SONAME,   rindex)
-STRRCHR(VG_Z_LD_LINUX_SO_2, rindex)
+STRRCHR(m_libc_soname,   strrchr)
+STRRCHR(m_libc_soname,   rindex)
+STRRCHR(m_ld_linux_so_2, rindex)
    
 
 #define STRCHR(soname, fnname) \
@@ -132,12 +154,12 @@ STRRCHR(VG_Z_LD_LINUX_SO_2, rindex)
    }
 
 // Apparently index() is the same thing as strchr()
-STRCHR(VG_Z_LIBC_SONAME,          strchr)
-STRCHR(VG_Z_LD_LINUX_SO_2,        strchr)
-STRCHR(VG_Z_LD_LINUX_X86_64_SO_2, strchr)
-STRCHR(VG_Z_LIBC_SONAME,          index)
-STRCHR(VG_Z_LD_LINUX_SO_2,        index)
-STRCHR(VG_Z_LD_LINUX_X86_64_SO_2, index)
+STRCHR(m_libc_soname,          strchr)
+STRCHR(m_ld_linux_so_2,        strchr)
+STRCHR(m_ld_linux_x86_64_so_2, strchr)
+STRCHR(m_libc_soname,          index)
+STRCHR(m_ld_linux_so_2,        index)
+STRCHR(m_ld_linux_x86_64_so_2, index)
 
 
 #define STRCAT(soname, fnname) \
@@ -161,7 +183,7 @@ STRCHR(VG_Z_LD_LINUX_X86_64_SO_2, index)
       return dst_orig; \
    }
 
-STRCAT(VG_Z_LIBC_SONAME, strcat)
+STRCAT(m_libc_soname, strcat)
 
 
 #define STRNCAT(soname, fnname) \
@@ -189,7 +211,7 @@ STRCAT(VG_Z_LIBC_SONAME, strcat)
       return dst_orig; \
    }
 
-STRNCAT(VG_Z_LIBC_SONAME, strncat)
+STRNCAT(m_libc_soname, strncat)
 
 
 #define STRNLEN(soname, fnname) \
@@ -201,7 +223,7 @@ STRNCAT(VG_Z_LIBC_SONAME, strncat)
       return i; \
    }
 
-STRNLEN(VG_Z_LIBC_SONAME, strnlen)
+STRNLEN(m_libc_soname, strnlen)
    
 
 // Note that this replacement often doesn't get used because gcc inlines
@@ -217,9 +239,9 @@ STRNLEN(VG_Z_LIBC_SONAME, strnlen)
       return i; \
    }
 
-STRLEN(VG_Z_LIBC_SONAME,       strlen)
-STRLEN(VG_Z_LD_LINUX_SO_2,        strlen)
-STRLEN(VG_Z_LD_LINUX_X86_64_SO_2, strlen)
+STRLEN(m_libc_soname,          strlen)
+STRLEN(m_ld_linux_so_2,        strlen)
+STRLEN(m_ld_linux_x86_64_so_2, strlen)
 
 
 #define STRCPY(soname, fnname) \
@@ -243,7 +265,7 @@ STRLEN(VG_Z_LD_LINUX_X86_64_SO_2, strlen)
       return dst_orig; \
    }
 
-STRCPY(VG_Z_LIBC_SONAME, strcpy)
+STRCPY(m_libc_soname, strcpy)
 
 
 #define STRNCPY(soname, fnname) \
@@ -266,7 +288,7 @@ STRCPY(VG_Z_LIBC_SONAME, strcpy)
       return dst_orig; \
    }
 
-STRNCPY(VG_Z_LIBC_SONAME, strncpy)
+STRNCPY(m_libc_soname, strncpy)
 
 
 #define STRNCMP(soname, fnname) \
@@ -289,7 +311,7 @@ STRNCPY(VG_Z_LIBC_SONAME, strncpy)
       } \
    }
 
-STRNCMP(VG_Z_LIBC_SONAME, strncmp)
+STRNCMP(m_libc_soname, strncmp)
 
 
 #define STRCMP(soname, fnname) \
@@ -312,9 +334,9 @@ STRNCMP(VG_Z_LIBC_SONAME, strncmp)
       return 0; \
    }
 
-STRCMP(VG_Z_LIBC_SONAME,          strcmp)
-STRCMP(VG_Z_LD_LINUX_X86_64_SO_2, strcmp)
-STRCMP(VG_Z_LD64_SO_1,            strcmp)
+STRCMP(m_libc_soname,          strcmp)
+STRCMP(m_ld_linux_x86_64_so_2, strcmp)
+STRCMP(m_ld64_so_1,            strcmp)
 
 
 #define MEMCHR(soname, fnname) \
@@ -329,7 +351,7 @@ STRCMP(VG_Z_LD64_SO_1,            strcmp)
       return NULL; \
    }
 
-MEMCHR(VG_Z_LIBC_SONAME, memchr)
+MEMCHR(m_libc_soname, memchr)
 
 
 #define MEMCPY(soname, fnname) \
@@ -377,9 +399,9 @@ MEMCHR(VG_Z_LIBC_SONAME, memchr)
       return dst; \
    }
 
-MEMCPY(VG_Z_LIBC_SONAME, memcpy)
-MEMCPY(VG_Z_LD_SO_1,     memcpy) /* ld.so.1 */
-MEMCPY(VG_Z_LD64_SO_1,   memcpy) /* ld64.so.1 */
+MEMCPY(m_libc_soname, memcpy)
+MEMCPY(m_ld_so_1,     memcpy) /* ld.so.1 */
+MEMCPY(m_ld64_so_1,   memcpy) /* ld64.so.1 */
 /* icc9 blats these around all over the place.  Not only in the main
    executable but various .so's.  They are highly tuned and read
    memory beyond the source boundary (although work correctly and
@@ -416,9 +438,9 @@ MEMCPY(NONE, _intel_fast_memcpy)
       return 0; \
    }
 
-MEMCMP(VG_Z_LIBC_SONAME, memcmp)
-MEMCMP(VG_Z_LIBC_SONAME, bcmp)
-MEMCMP(VG_Z_LD_SO_1,     bcmp)
+MEMCMP(m_libc_soname, memcmp)
+MEMCMP(m_libc_soname, bcmp)
+MEMCMP(m_ld_so_1, bcmp)
 
 
 /* Copy SRC to DEST, returning the address of the terminating '\0' in
@@ -444,9 +466,9 @@ MEMCMP(VG_Z_LD_SO_1,     bcmp)
       return dst; \
    }
 
-STPCPY(VG_Z_LIBC_SONAME,          stpcpy)
-STPCPY(VG_Z_LD_LINUX_SO_2,        stpcpy)
-STPCPY(VG_Z_LD_LINUX_X86_64_SO_2, stpcpy)
+STPCPY(m_libc_soname,         stpcpy)
+STPCPY(m_ld_linux_so_2,        stpcpy)
+STPCPY(m_ld_linux_x86_64_so_2, stpcpy)
    
 
 #define MEMSET(soname, fnname) \
@@ -468,7 +490,7 @@ STPCPY(VG_Z_LD_LINUX_X86_64_SO_2, stpcpy)
       return s; \
    }
 
-MEMSET(VG_Z_LIBC_SONAME, memset)
+MEMSET(m_libc_soname, memset)
 
 
 #define MEMMOVE(soname, fnname) \
@@ -492,7 +514,7 @@ MEMSET(VG_Z_LIBC_SONAME, memset)
       return dst; \
    }
 
-MEMMOVE(VG_Z_LIBC_SONAME, memmove)
+MEMMOVE(m_libc_soname, memmove)
 
 
 /* glibc 2.5 variant of memmove which checks the dest is big enough.
@@ -528,7 +550,7 @@ MEMMOVE(VG_Z_LIBC_SONAME, memmove)
      return NULL; \
    }
 
-GLIBC25___MEMMOVE_CHK(VG_Z_LIBC_SONAME, __memmove_chk)
+GLIBC25___MEMMOVE_CHK(m_libc_soname, __memmove_chk)
 
 
 /* Find the first occurrence of C in S or the final NUL byte.  */
@@ -545,7 +567,7 @@ GLIBC25___MEMMOVE_CHK(VG_Z_LIBC_SONAME, __memmove_chk)
       } \
    }
 
-GLIBC232_STRCHRNUL(VG_Z_LIBC_SONAME, strchrnul)
+GLIBC232_STRCHRNUL(m_libc_soname, strchrnul)
 
 
 /* Find the first occurrence of C in S.  */
@@ -561,7 +583,7 @@ GLIBC232_STRCHRNUL(VG_Z_LIBC_SONAME, strchrnul)
       } \
    }
 
-GLIBC232_RAWMEMCHR(VG_Z_LIBC_SONAME, rawmemchr)
+GLIBC232_RAWMEMCHR(m_libc_soname, rawmemchr)
 
 
 /* glibc variant of strcpy that checks the dest is big enough.
@@ -589,7 +611,7 @@ GLIBC232_RAWMEMCHR(VG_Z_LIBC_SONAME, rawmemchr)
      return NULL; \
    }
 
-GLIBC25___STRCPY_CHK(VG_Z_LIBC_SONAME, __strcpy_chk)
+GLIBC25___STRCPY_CHK(m_libc_soname, __strcpy_chk)
 
 
 /* glibc variant of stpcpy that checks the dest is big enough.
@@ -616,7 +638,7 @@ GLIBC25___STRCPY_CHK(VG_Z_LIBC_SONAME, __strcpy_chk)
      return NULL; \
    }
 
-GLIBC25___STPCPY_CHK(VG_Z_LIBC_SONAME, __stpcpy_chk)
+GLIBC25___STPCPY_CHK(m_libc_soname, __stpcpy_chk)
 
 
 /* mempcpy */
@@ -652,8 +674,8 @@ GLIBC25___STPCPY_CHK(VG_Z_LIBC_SONAME, __stpcpy_chk)
       return (void*)( ((char*)dst) + len_saved ); \
    }
 
-GLIBC25_MEMPCPY(VG_Z_LIBC_SONAME, mempcpy)
-GLIBC25_MEMPCPY(VG_Z_LD_SO_1,     mempcpy) /* ld.so.1 */
+GLIBC25_MEMPCPY(m_libc_soname, mempcpy)
+GLIBC25_MEMPCPY(m_ld_so_1,     mempcpy) /* ld.so.1 */
 
 
 #define GLIBC26___MEMCPY_CHK(soname, fnname) \
@@ -697,7 +719,7 @@ GLIBC25_MEMPCPY(VG_Z_LD_SO_1,     mempcpy) /* ld.so.1 */
      return NULL; \
    }
 
-GLIBC26___MEMCPY_CHK(VG_Z_LIBC_SONAME, __memcpy_chk)
+GLIBC26___MEMCPY_CHK(m_libc_soname, __memcpy_chk)
 
 
 /*------------------------------------------------------------*/
@@ -707,8 +729,8 @@ GLIBC26___MEMCPY_CHK(VG_Z_LIBC_SONAME, __memcpy_chk)
 #if defined(VGO_linux)
 
 /* putenv */
-int VG_WRAP_FUNCTION_ZU(VG_Z_LIBC_SONAME, putenv) (char* string);
-int VG_WRAP_FUNCTION_ZU(VG_Z_LIBC_SONAME, putenv) (char* string)
+int VG_WRAP_FUNCTION_ZU(m_libc_soname, putenv) (char* string);
+int VG_WRAP_FUNCTION_ZU(m_libc_soname, putenv) (char* string)
 {
     OrigFn fn;
     Word result;
@@ -724,8 +746,8 @@ int VG_WRAP_FUNCTION_ZU(VG_Z_LIBC_SONAME, putenv) (char* string)
 }
 
 /* unsetenv */
-int VG_WRAP_FUNCTION_ZU(VG_Z_LIBC_SONAME, unsetenv) (const char* name);
-int VG_WRAP_FUNCTION_ZU(VG_Z_LIBC_SONAME, unsetenv) (const char* name)
+int VG_WRAP_FUNCTION_ZU(m_libc_soname, unsetenv) (const char* name);
+int VG_WRAP_FUNCTION_ZU(m_libc_soname, unsetenv) (const char* name)
 {
     OrigFn fn;
     Word result;
@@ -741,9 +763,9 @@ int VG_WRAP_FUNCTION_ZU(VG_Z_LIBC_SONAME, unsetenv) (const char* name)
 }
 
 /* setenv */
-int VG_WRAP_FUNCTION_ZU(VG_Z_LIBC_SONAME, setenv)
+int VG_WRAP_FUNCTION_ZU(m_libc_soname, setenv)
     (const char* name, const char* value, int overwrite);
-int VG_WRAP_FUNCTION_ZU(VG_Z_LIBC_SONAME, setenv)
+int VG_WRAP_FUNCTION_ZU(m_libc_soname, setenv)
     (const char* name, const char* value, int overwrite)
 {
     OrigFn fn;

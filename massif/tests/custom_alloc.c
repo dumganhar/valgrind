@@ -57,16 +57,16 @@ static void custom_free(void* p)
 
 int main(void)
 {
-   int* a = custom_alloc(400);   // All sizes are divisible by 16 -- no slop.
+   int* a = custom_alloc(100);
    custom_free(a);
 
-   a = custom_alloc(800);
+   a = custom_alloc(200);
    custom_free(a);
 
-   a = malloc(400);
+   a = malloc(100);
    free(a);
 
-   a = malloc(800);
+   a = malloc(200);
    free(a);
 
    return 0;

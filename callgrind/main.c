@@ -389,10 +389,10 @@ void CLG_(collectBlockInfo)(IRSB* bbIn,
 }
 
 static
-void collectStatementInfo(IRTypeEnv* tyenv, IRStmt* st,
+void collectStatementInfo(IRTypeEnv* tyenv, IRSB* bbOut, IRStmt* st,
 			  Addr* instrAddr, UInt* instrLen,
 			  IRExpr** loadAddrExpr, IRExpr** storeAddrExpr,
-			  UInt* dataSize)
+			  UInt* dataSize, IRType hWordTy)
 {
    CLG_ASSERT(isFlatIRStmt(st));
 
@@ -602,8 +602,8 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
 	  i++;
 	  stnext = ( i < bbIn->stmts_used ? bbIn->stmts[i] : NULL );
 	  beforeIBoundary = !stnext || (Ist_IMark == stnext->tag);
-	  collectStatementInfo(bbIn->tyenv, st, &instrAddr, &instrLen,
-			       &loadAddrExpr, &storeAddrExpr, &dataSize);
+	  collectStatementInfo(bbIn->tyenv, bbOut, st, &instrAddr, &instrLen,
+			       &loadAddrExpr, &storeAddrExpr, &dataSize, hWordTy);
 
 	  // instrument a simulator call before conditional jumps
 	  if (st->tag == Ist_Exit) {

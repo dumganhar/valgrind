@@ -207,7 +207,7 @@ Bool get_elf_symbol_info (
         Char*      sym_name,   /* name */
         Addr       sym_svma,   /* address as stated in the object file */
         UChar*     opd_img,    /* oimage of .opd sec (ppc64-linux only) */
-        PtrdiffT   opd_bias,   /* for biasing AVMAs found in .opd */
+        OffT       opd_bias,   /* for biasing AVMAs found in .opd */
         /* OUTPUTS */
         Char** sym_name_out,   /* name we should record */
         Addr*  sym_avma_out,   /* addr we should record */
@@ -1046,12 +1046,12 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
    UChar*      shdr_strtab_img = NULL;
 
    /* SVMAs covered by rx and rw segments and corresponding bias. */
-   Addr     rx_svma_base = 0;
-   Addr     rx_svma_limit = 0;
-   PtrdiffT rx_bias = 0;
-   Addr     rw_svma_base = 0;
-   Addr     rw_svma_limit = 0;
-   PtrdiffT rw_bias = 0;
+   Addr rx_svma_base = 0;
+   Addr rx_svma_limit = 0;
+   OffT rx_bias = 0;
+   Addr rw_svma_base = 0;
+   Addr rw_svma_limit = 0;
+   OffT rw_bias = 0;
 
    vg_assert(di);
    vg_assert(di->have_rx_map == True);
@@ -1896,7 +1896,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
          we ignore it. */
 #     if !defined(VGP_amd64_linux)
       if (stab_img && stabstr_img) {
-         ML_(read_debuginfo_stabs) ( di, stab_img, stab_sz, 
+         ML_(read_debuginfo_stabs) ( di, di->text_bias, stab_img, stab_sz, 
                                          stabstr_img, stabstr_sz );
       }
 #     endif

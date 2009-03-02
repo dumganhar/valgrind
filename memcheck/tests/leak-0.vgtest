@@ -1,2 +1,2 @@
 prog: leak-0
-vgopts: -q
+stderr_filter: filter_leak_check_size

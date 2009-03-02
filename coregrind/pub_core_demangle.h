@@ -36,11 +36,10 @@
 // Z-encoded names.
 //--------------------------------------------------------------------
 
-/* This is the main, standard demangler entry point.  It does two things:
- * (1) undoes Z-encoding, if "do_z_demangle" is True;
- * (2) undoes C++ demangling, if 'do_cxx_demangle' is True.  */
+/* This is the main, standard demangler entry point. */
+
 extern 
-void VG_(demangle) ( Bool do_cxx_demangling, Bool do_z_demangling,
+void VG_(demangle) ( Bool do_cxx_demangle,
                      Char* orig, Char* result, Int result_size );
 
 /* Demangle a Z-encoded name as described in pub_tool_redir.h. 

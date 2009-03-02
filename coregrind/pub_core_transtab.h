@@ -83,7 +83,8 @@ extern
 void VG_(add_to_unredir_transtab)( VexGuestExtents* vge,
                                    Addr64           entry,
                                    AddrH            code,
-                                   UInt             code_len );
+                                   UInt             code_len,
+                                   Bool             is_self_checking );
 extern 
 Bool VG_(search_unredir_transtab) ( /*OUT*/AddrH* result,
                                     Addr64        guest_addr );
