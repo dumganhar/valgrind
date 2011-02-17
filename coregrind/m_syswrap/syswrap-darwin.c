@@ -2749,13 +2749,7 @@ PRE(posix_spawn)
    }
 
    // Decide whether or not we want to follow along
-   { // Make 'child_argv' be a pointer to the child's arg vector
-     // (skipping the exe name)
-     HChar** child_argv = (HChar**)ARG4;
-     if (child_argv && child_argv[0] == NULL)
-        child_argv = NULL;
-     trace_this_child = VG_(should_we_trace_this_child)( (HChar*)ARG2, child_argv );
-   }
+   trace_this_child = VG_(should_we_trace_this_child)( (HChar*)ARG2 );
 
    // Do the important checks:  it is a file, is executable, permissions are
    // ok, etc.  We allow setuid executables to run only in the case when

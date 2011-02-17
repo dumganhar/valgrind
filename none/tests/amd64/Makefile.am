@@ -20,6 +20,8 @@ endif
 # to avoid packaging screwups if 'make dist' is run on a machine
 # which failed the BUILD_SSE3_TESTS test in configure.in.
 
+## FIXME: move lzcnt64 to SSE4 conditionalisation, when that happens.
+
 EXTRA_DIST = \
 	amd64locked.vgtest amd64locked.stdout.exp amd64locked.stderr.exp \
 	bug127521-64.vgtest bug127521-64.stdout.exp bug127521-64.stderr.exp \
@@ -31,7 +33,6 @@ EXTRA_DIST = \
 	bug156404-amd64.vgtest bug156404-amd64.stdout.exp \
 	bug156404-amd64.stderr.exp \
 	clc.vgtest clc.stdout.exp clc.stderr.exp \
-	crc32.vgtest crc32.stdout.exp crc32.stderr.exp \
 	cmpxchg.vgtest cmpxchg.stdout.exp cmpxchg.stderr.exp \
 	faultstatus.disabled faultstatus.stderr.exp \
 	fcmovnu.vgtest fcmovnu.stderr.exp fcmovnu.stdout.exp \
@@ -43,14 +44,9 @@ EXTRA_DIST = \
 	insn_ssse3.stdout.exp insn_ssse3.stderr.exp insn_ssse3.vgtest \
 	jrcxz.stderr.exp jrcxz.stdout.exp jrcxz.vgtest \
 	looper.stderr.exp looper.stdout.exp looper.vgtest \
-	loopnel.stderr.exp loopnel.stdout.exp loopnel.vgtest \
 	lzcnt64.stderr.exp lzcnt64.stdout.exp lzcnt64.vgtest \
 	nibz_bennee_mmap.stderr.exp nibz_bennee_mmap.stdout.exp \
 	nibz_bennee_mmap.vgtest \
-	pcmpstr64.stderr.exp pcmpstr64.stdout.exp \
-	pcmpstr64.vgtest \
-	pcmpxstrx64.stderr.exp pcmpxstrx64.stdout.exp \
-	pcmpxstrx64.vgtest \
 	rcl-amd64.vgtest rcl-amd64.stdout.exp rcl-amd64.stderr.exp \
 	redundantRexW.vgtest redundantRexW.stdout.exp \
 	redundantRexW.stderr.exp \
@@ -59,7 +55,7 @@ EXTRA_DIST = \
 	shrld.stderr.exp shrld.stdout.exp shrld.vgtest \
 	ssse3_misaligned.stderr.exp ssse3_misaligned.stdout.exp \
 	ssse3_misaligned.vgtest \
-	sse4-64.stderr.exp sse4-64.stdout.exp sse4-64.vgtest \
+	ssse3_misaligned.c \
 	slahf-amd64.stderr.exp slahf-amd64.stdout.exp \
 	slahf-amd64.vgtest \
 	xadd.stderr.exp xadd.stdout.exp xadd.vgtest
@@ -82,9 +78,6 @@ endif
 if BUILD_LZCNT_TESTS
  check_PROGRAMS += lzcnt64
 endif
-if BUILD_SSE42_TESTS
- check_PROGRAMS += pcmpstr64 pcmpxstrx64 sse4-64 crc32
-endif
 
 # DDD: these need to be made to work on Darwin like the x86/ ones were.
 if ! VGCONF_OS_IS_DARWIN
@@ -95,7 +88,6 @@ if ! VGCONF_OS_IS_DARWIN
 	fcmovnu \
 	fxtract \
 	looper \
-	loopnel \
 	jrcxz \
 	shrld \
 	slahf-amd64

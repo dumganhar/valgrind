@@ -743,12 +743,17 @@ static Bool chase_into_ok ( void* closureV, Addr64 addr64 )
 {
    Addr               addr    = (Addr)addr64;
    NSegment const*    seg     = VG_(am_find_nsegment)(addr);
+   VgCallbackClosure* closure = (VgCallbackClosure*)closureV;
 
    /* Work through a list of possibilities why we might not want to
       allow a chase. */
 
    /* Destination not in a plausible segment? */
    if (!translations_allowable_from_seg(seg))
+      goto dontchase;
+
+   /* Destination requires a self-check? */
+   if (self_check_required(seg, closure->tid))
       goto dontchase;
 
    /* Destination is redirected? */

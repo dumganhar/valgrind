@@ -56,6 +56,7 @@
 
 /* Local variables. */
 
+static Bool s_free_is_write    = False;
 static Bool s_print_stats      = False;
 static Bool s_var_info         = False;
 static Bool s_show_stack_usage = False;
@@ -92,6 +93,7 @@ static Bool DRD_(process_cmd_line_option)(Char* arg)
    if      VG_BOOL_CLO(arg, "--check-stack-var",     check_stack_accesses) {}
    else if VG_BOOL_CLO(arg, "--drd-stats",           s_print_stats) {}
    else if VG_BOOL_CLO(arg, "--first-race-only",     first_race_only) {}
+   else if VG_BOOL_CLO(arg, "--free-is-write",       s_free_is_write) {}
    else if VG_BOOL_CLO(arg,"--report-signal-unlocked",report_signal_unlocked)
    {}
    else if VG_BOOL_CLO(arg, "--segment-merging",     segment_merging) {}
@@ -183,10 +185,11 @@ static void DRD_(print_usage)(void)
 "    --check-stack-var=yes|no  Whether or not to report data races on\n"
 "                              stack variables [no].\n"
 "    --exclusive-threshold=<n> Print an error message if any mutex or\n"
-"                              writer lock is held longer than the specified\n"
-"                              time (in milliseconds) [off].\n"
+"        writer lock is held longer than the specified time (in milliseconds).\n"
 "    --first-race-only=yes|no  Only report the first data race that occurs on\n"
 "                              a memory location instead of all races [no].\n"
+"    --free-is-write=yes|no    Whether to report races between freeing memory\n"
+"                              and subsequent accesses of that memory[no].\n"
 "    --report-signal-unlocked=yes|no Whether to report calls to\n"
 "                              pthread_cond_signal() where the mutex associated\n"
 "                              with the signal via pthread_cond_wait() is not\n"
@@ -199,8 +202,7 @@ static void DRD_(print_usage)(void)
 "    --segment-merging-interval=<n> Perform segment merging every time n new\n"
 "        segments have been created. Default: %d.\n"
 "    --shared-threshold=<n>    Print an error message if a reader lock\n"
-"                              is held longer than the specified time (in\n"
-"                              milliseconds) [off]\n"
+"        is held longer than the specified time (in milliseconds).\n"
 "    --show-confl-seg=yes|no   Show conflicting segments in race reports [yes].\n"
 "    --show-stack-usage=yes|no Print stack usage at thread exit time [no].\n"
 "\n"
@@ -343,10 +345,12 @@ void drd_stop_using_mem(const Addr a1, const SizeT len,
 
    if (!is_stack_mem || DRD_(get_check_stack_accesses)())
    {
-      DRD_(thread_stop_using_mem)(a1, a2, False);
+      DRD_(thread_stop_using_mem)(a1, a2, !is_stack_mem && s_free_is_write);
       DRD_(clientobj_stop_using_mem)(a1, a2);
       DRD_(suppression_stop_using_mem)(a1, a2);
    }
+   if (!is_stack_mem && s_free_is_write)
+      DRD_(trace_store)(a1, len);
 }
 
 static __inline__

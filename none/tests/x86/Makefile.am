@@ -21,7 +21,6 @@ endif
 ## FIXME: move lzcnt32 to SSE4 conditionalisation, when that happens.
 
 EXTRA_DIST = \
-	aad_aam.stdout.exp aad_aam.stderr.exp aad_aam.vgtest \
 	badseg.stderr.exp badseg.stdout.exp badseg.vgtest \
 	bt_everything.stderr.exp bt_everything.stdout.exp bt_everything.vgtest \
 	bt_literal.stderr.exp bt_literal.stdout.exp bt_literal.vgtest \
@@ -62,7 +61,6 @@ EXTRA_DIST = \
 	xadd.stdout.exp xadd.stderr.exp xadd.vgtest
 
 check_PROGRAMS = \
-	aad_aam \
 	badseg \
 	bt_everything \
 	bt_literal \

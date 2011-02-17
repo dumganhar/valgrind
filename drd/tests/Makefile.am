@@ -170,6 +170,8 @@ EXTRA_DIST =                                        \
 	qt4_rwlock.vgtest                           \
 	qt4_semaphore.stderr.exp                    \
 	qt4_semaphore.vgtest                        \
+	read_after_free.stderr.exp		    \
+	read_after_free.vgtest			    \
 	recursive_mutex.stderr.exp-linux            \
 	recursive_mutex.stderr.exp-darwin           \
 	recursive_mutex.vgtest                      \
@@ -252,8 +254,6 @@ EXTRA_DIST =                                        \
 	tc24_nonzero_sem.vgtest                     \
 	thread_name.stderr.exp			    \
 	thread_name.vgtest			    \
-	threaded-fork.stderr.exp		    \
-	threaded-fork.vgtest			    \
 	trylock.stderr.exp                          \
 	trylock.vgtest				    \
 	unit_bitmap.stderr.exp                      \
@@ -296,7 +296,6 @@ check_PROGRAMS =      \
   sem_open            \
   sigalrm             \
   thread_name         \
-  threaded-fork       \
   trylock             \
   unit_bitmap         \
   unit_vc
@@ -312,6 +311,7 @@ check_PROGRAMS +=        \
   annotate_smart_pointer \
   atomic_var             \
   circular_buffer        \
+  read_after_free        \
   tsan_unittest
 endif
 
@@ -329,6 +329,14 @@ endif
 
 if HAVE_PTHREAD_SPINLOCK
 check_PROGRAMS += pth_spinlock
+endif
+
+if HAVE_QTCORE
+check_PROGRAMS += qt4_mutex qt4_rwlock qt4_semaphore
+endif
+
+if HAVE_QTCORE_QATOMICINT
+check_PROGRAMS += qt4_atomic
 endif
 
 
@@ -383,4 +391,24 @@ endif
 
 if HAVE_PTHREAD_BARRIER
 matinv_LDADD                = $(LDADD) -lm
+endif
+
+if HAVE_QTCORE
+qt4_mutex_SOURCES           = qt4_mutex.cpp
+qt4_mutex_CXXFLAGS          = $(AM_CXXFLAGS) $(QTCORE_CFLAGS)
+qt4_mutex_LDADD             = $(LDADD) $(QTCORE_LIBS)
+
+qt4_rwlock_SOURCES          = qt4_rwlock.cpp
+qt4_rwlock_CXXFLAGS         = $(AM_CXXFLAGS) $(QTCORE_CFLAGS)
+qt4_rwlock_LDADD            = $(LDADD) $(QTCORE_LIBS)
+
+qt4_semaphore_SOURCES       = qt4_semaphore.cpp
+qt4_semaphore_CXXFLAGS      = $(AM_CXXFLAGS) $(QTCORE_CFLAGS)
+qt4_semaphore_LDADD         = $(LDADD) $(QTCORE_LIBS)
+endif
+
+if HAVE_QTCORE_QATOMICINT
+qt4_atomic_SOURCES          = qt4_atomic.cpp
+qt4_atomic_CXXFLAGS         = $(AM_CXXFLAGS) $(QTCORE_CFLAGS)
+qt4_atomic_LDADD            = $(LDADD) $(QTCORE_LIBS)
 endif
