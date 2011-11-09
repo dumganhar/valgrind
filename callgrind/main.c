@@ -905,9 +905,10 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
 			VexGuestExtents* vge,
 			IRType gWordTy, IRType hWordTy )
 {
-   Int      i;
+   Int      i, isize;
    IRStmt*  st;
    Addr     origAddr;
+   Addr64   cia; /* address of current insn */
    InstrInfo* curr_inode = NULL;
    ClgState clgs;
    UInt     cJumps = 0;
@@ -943,9 +944,10 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
    st = sbIn->stmts[i];
    CLG_ASSERT(Ist_IMark == st->tag);
 
-   origAddr = (Addr)st->Ist.IMark.addr + (Addr)st->Ist.IMark.delta;
-   CLG_ASSERT(origAddr == st->Ist.IMark.addr 
-                          + st->Ist.IMark.delta);  // XXX: check no overflow
+   origAddr = (Addr)st->Ist.IMark.addr;
+   cia   = st->Ist.IMark.addr;
+   isize = st->Ist.IMark.len;
+   CLG_ASSERT(origAddr == st->Ist.IMark.addr);  // XXX: check no overflow
 
    /* Get BB struct (creating if necessary).
     * JS: The hash table is keyed with orig_addr_noredir -- important!
@@ -975,8 +977,8 @@ IRSB* CLG_(instrument)( VgCallbackClosure* closure,
 	    break;
 
 	 case Ist_IMark: {
-            Addr64 cia   = st->Ist.IMark.addr + st->Ist.IMark.delta;
-            Int    isize = st->Ist.IMark.len;
+            cia   = st->Ist.IMark.addr;
+            isize = st->Ist.IMark.len;
             CLG_ASSERT(clgs.instr_offset == (Addr)cia - origAddr);
 	    // If Vex fails to decode an instruction, the size will be zero.
 	    // Pretend otherwise.

@@ -6,7 +6,6 @@ dist_noinst_SCRIPTS = \
 	gen-mdg \
 	gsl16test \
 	gsl19test \
-	nightly-build-summary \
 	posixtestsuite-1.5.1-diff-results
 
 EXTRA_DIST = \

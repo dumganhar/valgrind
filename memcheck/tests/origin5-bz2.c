@@ -4651,7 +4651,7 @@ void flush_RL ( EState* s )
 
 
 /*---------------------------------------------------*/
-static __attribute__((noinline))
+static
 Bool copy_input_until_stop ( EState* s )
 {
    Bool progress_in = False;
