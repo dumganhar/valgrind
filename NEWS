@@ -1,38 +1,3 @@
-Release 3.9.0 (?? ?????? 201?)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-* ================== PLATFORM CHANGES =================
-
-* ==================== TOOL CHANGES ====================
-
-* ==================== OTHER CHANGES ====================
-
-* ==================== FIXED BUGS ====================
-
-The following bugs have been fixed or resolved.  Note that "n-i-bz"
-stands for "not in bugzilla" -- that is, a bug that was reported to us
-but never got a bugzilla entry.  We encourage you to file bugs in
-bugzilla (https://bugs.kde.org/enter_bug.cgi?product=valgrind) rather
-than mailing the developers (or mailing lists) directly -- bugs that
-are not entered into bugzilla tend to get forgotten about or ignored.
-
-To see details of a given bug, visit
-  https://bugs.kde.org/show_bug.cgi?id=XXXXXX
-where XXXXXX is the bug number as listed below.
-
-v = verified fixed in 3_8_BRANCH
-m = merged into 3_8_BRANCH
-[390] = fixed in trunk (for 3.9.0)
-[381] = fixed in trunk and in 3_8_BRANCH, for 3.8.1
-[382] = fixed in trunk and needs to be made available for 3.8.2 too
-
-252955    [390] Impossible to compile with ccache
-274695    [390] s390x: Support "compare to/from logical" instructions (z196)
-275800    [390] s390x: Add support for the ecag instruction (part 1)
-305948    [390] ppc64: code generation for ShlD64 / ShrD64 asserts
-306054    [390] s390x: Condition code computation for convert-to-int/logical
-
-
 
 Release 3.8.1 (19 September 2012)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -89,7 +54,8 @@ file at the time:
 301902  == 254088
 304754  NEWS blows TeX's little mind
 
-(3.8.1: 19 September 2012, vex rXXXX, valgrind rXXXXX)
+(3.8.1.TEST2: 18 September 2012, vex r2537, valgrind r12994)
+(3.8.1:       18 September 2012, vex r2537, valgrind r12996)
 
 
 

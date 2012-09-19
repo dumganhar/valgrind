@@ -28,7 +28,6 @@ SUBDIRS = \
 	tests \
 	perf \
 	gdbserver_tests \
-	memcheck/tests/vbit-test \
 	auxprogs \
 	mpi \
 	docs

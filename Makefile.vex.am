@@ -17,7 +17,7 @@ EXTRA_DIST = \
 pkginclude_HEADERS = \
 	pub/libvex.h \
 	pub/libvex_basictypes.h \
-	pub/libvex_emnote.h \
+	pub/libvex_emwarn.h \
 	pub/libvex_guest_offsets.h \
 	pub/libvex_guest_x86.h \
 	pub/libvex_guest_amd64.h \
@@ -96,7 +96,6 @@ LIBVEX_SOURCES_COMMON = \
 	priv/main_main.c \
 	priv/main_util.c \
 	priv/ir_defs.c \
-	priv/ir_inject.c \
 	priv/ir_match.c \
 	priv/ir_opt.c \
 	priv/guest_generic_bb_to_IR.c \

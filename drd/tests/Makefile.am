@@ -217,8 +217,6 @@ EXTRA_DIST =                                        \
 	sem_open3.vgtest                            \
 	sem_open_traced.stderr.exp                  \
 	sem_open_traced.vgtest                      \
-	sem_wait.stderr.exp                         \
-	sem_wait.vgtest                             \
 	sigalrm.stderr.exp                          \
 	sigalrm.vgtest                              \
 	sigaltstack.stderr.exp                      \
@@ -330,7 +328,6 @@ check_PROGRAMS =      \
   rwlock_type_checking \
   sem_as_mutex        \
   sem_open            \
-  sem_wait            \
   sigalrm             \
   thread_name         \
   threaded-fork       \
@@ -439,5 +436,3 @@ endif
 
 std_thread_SOURCES          = std_thread.cpp
 std_thread_CXXFLAGS         = $(AM_CXXFLAGS) -std=c++0x
-
-sem_wait_SOURCES            = sem_wait.cpp

@@ -114,7 +114,6 @@ EXTRA_DIST = \
 	leak-pool-4.vgtest leak-pool-4.stderr.exp \
 	leak-pool-5.vgtest leak-pool-5.stderr.exp \
 	leak-tree.vgtest leak-tree.stderr.exp \
-	leak-segv-jmp.vgtest leak-segv-jmp.stderr.exp \
 	long_namespace_xml.vgtest long_namespace_xml.stdout.exp \
 	long_namespace_xml.stderr.exp \
 	long-supps.vgtest long-supps.stderr.exp long-supps.supp \
@@ -260,7 +259,6 @@ check_PROGRAMS = \
 	leak-delta \
 	leak-pool \
 	leak-tree \
-	leak-segv-jmp \
 	long_namespace_xml \
 	long-supps \
 	mallinfo \

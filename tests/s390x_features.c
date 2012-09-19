@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <assert.h>
 #include <ctype.h>     // isspace
 #include <fcntl.h>     // open
 #include <unistd.h>    // lseek
@@ -80,13 +79,12 @@ model_info models[] = {
    { "2066", "z800"   },
    { "2084", "z990"   },
    { "2086", "z890"   },
-   { "2094", "z9-EC"  },
-   { "2096", "z9-BC"  },
-   { "2097", "z10-EC" },
-   { "2098", "z10-BC" },
+   { "2094", "z9-ec"  },
+   { "2096", "z9-bc"  },
+   { "2097", "z10-ec" },
+   { "2098", "z10-bc" },
    { "2817", "z196"   },
    { "2818", "z114"   },
-   { "2827", "zEC12"  },
 };
 
 
@@ -191,11 +189,6 @@ static model_info *get_host(void)
    return model;
 }
 
-
-/* Convenience macro that maps the facility bit number as given in the
-   Principles of Ops "facility indications" section to a bit mask */
-#define FAC_BIT(x)   (1ULL << (63 - (x)))
-
 static int go(char *feature, char *cpu)
 {
    unsigned long long facilities;
@@ -206,27 +199,25 @@ static int go(char *feature, char *cpu)
    facilities = stfle();
 
    if        (strcmp(feature, "s390x-zarch") == 0 ) {
-      match = (facilities & FAC_BIT(1)) && (facilities & FAC_BIT(2));
+     match = (facilities & (1ULL << 62) && (facilities & (1ULL << 61)));
    } else if (strcmp(feature, "s390x-n3") == 0 ) {
-      match = facilities & FAC_BIT(0);
+     match = (facilities & (1ULL << 63));
    } else if (strcmp(feature, "s390x-stfle") == 0 ) {
-      match = facilities & FAC_BIT(7);
+     match = (facilities & (1ULL << 56));
    } else if (strcmp(feature, "s390x-ldisp") == 0 ) {
-      match = (facilities & FAC_BIT(18)) && (facilities & FAC_BIT(19));
+     match = (facilities & (1ULL << 45) && (facilities & (1ULL << 44)));
    } else if (strcmp(feature, "s390x-eimm") == 0 ) {
-      match = facilities & FAC_BIT(21);
+     match = (facilities & (1ULL << 42));
    } else if (strcmp(feature, "s390x-stckf") == 0 ) {
-      match = facilities & FAC_BIT(25);
+     match = (facilities & (1ULL << 38));
    } else if (strcmp(feature, "s390x-genins") == 0 ) {
-      match = facilities & FAC_BIT(34);
+     match = (facilities & (1ULL << 29));
    } else if (strcmp(feature, "s390x-exrl") == 0 ) {
-      match = facilities & FAC_BIT(35);
+     match = (facilities & (1ULL << 28));
    } else if (strcmp(feature, "s390x-etf3") == 0 ) {
-      match = facilities & FAC_BIT(30);
-   } else if (strcmp(feature, "s390x-fpext") == 0 ) {
-      match = facilities & FAC_BIT(37);
+     match = (facilities & (1ULL << (63 - 30)));
    } else {
-      return 2;          // Unrecognised feature.
+     return 2;          // Unrecognised feature.
    }
 
    if (match == 0) return 1;   // facility not provided
@@ -297,28 +288,14 @@ static int go(char *feature, char *cpu)
 //---------------------------------------------------------------------------
 int main(int argc, char **argv)
 {
-   int rc, inverted = 0;
+   int rc;
 
    if (argc < 2 || argc > 3) {
       fprintf( stderr, "usage: s390x_features <feature> [<machine-model>]\n" );
       exit(3);                // Usage error.
    }
 
-   if (argv[1][0] == '!') {
-      assert(argv[2] == NULL);   // not allowed
-      inverted = 1;
-      ++argv[1];
-   }
-
    rc = go(argv[1], argv[2]);
-   
-   if (inverted) {
-      switch (rc) {
-      case 0: rc = 1; break;
-      case 1: rc = 0; break;
-      case 2: rc = 2; break;
-      }
-   }
 
    //   printf("rc = %d\n", rc);
 

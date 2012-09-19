@@ -47,7 +47,6 @@
 
 #if defined(VGO_linux)
 #  include "vki/vki-linux.h"
-#  include "vki/vki-xen.h"
 #elif defined(VGO_darwin)
 #  include "vki/vki-darwin.h"
 #else

@@ -53,7 +53,6 @@ EXTRA_DIST = \
 	looper.stderr.exp looper.stdout.exp looper.vgtest \
 	lzcnt32.stderr.exp lzcnt32.stdout.exp lzcnt32.vgtest \
 	movx.stderr.exp movx.stdout.exp movx.vgtest \
-	movbe.stderr.exp movbe.stdout.exp movbe.vgtest \
 	pushpopseg.stderr.exp pushpopseg.stdout.exp pushpopseg.vgtest \
 	sbbmisc.stderr.exp sbbmisc.stdout.exp sbbmisc.vgtest \
 	shift_ndep.stderr.exp shift_ndep.stdout.exp shift_ndep.vgtest \
@@ -104,9 +103,6 @@ if BUILD_LZCNT_TESTS
 endif
 if !VGCONF_OS_IS_DARWIN
  check_PROGRAMS += cse_fail faultstatus
-endif
-if BUILD_MOVBE_TESTS
- check_PROGRAMS += movbe
 endif
 
 

@@ -1367,22 +1367,22 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
          break;
 
       case VEX_TRC_JMP_EMWARN: {
-         static Int  counts[EmNote_NUMBER];
+         static Int  counts[EmWarn_NUMBER];
          static Bool counts_initted = False;
-         VexEmNote ew;
+         VexEmWarn ew;
          HChar*    what;
          Bool      show;
          Int       q;
          if (!counts_initted) {
             counts_initted = True;
-            for (q = 0; q < EmNote_NUMBER; q++)
+            for (q = 0; q < EmWarn_NUMBER; q++)
                counts[q] = 0;
          }
-         ew   = (VexEmNote)VG_(threads)[tid].arch.vex.guest_EMNOTE;
-         what = (ew < 0 || ew >= EmNote_NUMBER)
+         ew   = (VexEmWarn)VG_(threads)[tid].arch.vex.guest_EMWARN;
+         what = (ew < 0 || ew >= EmWarn_NUMBER)
                    ? "unknown (?!)"
-                   : LibVEX_EmNote_string(ew);
-         show = (ew < 0 || ew >= EmNote_NUMBER)
+                   : LibVEX_EmWarn_string(ew);
+         show = (ew < 0 || ew >= EmWarn_NUMBER)
                    ? True
                    : counts[ew]++ < 3;
          if (show && VG_(clo_show_emwarns) && !VG_(clo_xml)) {
@@ -1395,12 +1395,12 @@ VgSchedReturnCode VG_(scheduler) ( ThreadId tid )
       }
 
       case VEX_TRC_JMP_EMFAIL: {
-         VexEmNote ew;
+         VexEmWarn ew;
          HChar*    what;
-         ew   = (VexEmNote)VG_(threads)[tid].arch.vex.guest_EMNOTE;
-         what = (ew < 0 || ew >= EmNote_NUMBER)
+         ew   = (VexEmWarn)VG_(threads)[tid].arch.vex.guest_EMWARN;
+         what = (ew < 0 || ew >= EmWarn_NUMBER)
                    ? "unknown (?!)"
-                   : LibVEX_EmNote_string(ew);
+                   : LibVEX_EmWarn_string(ew);
          VG_(message)( Vg_UserMsg,
                        "Emulation fatal error -- Valgrind cannot continue:\n");
          VG_(message)( Vg_UserMsg, "  %s\n", what);
@@ -1872,10 +1872,6 @@ void do_client_request ( ThreadId tid )
          } else {
             goto my_default;
          }
-
-      case VG_USERREQ__VEX_INIT_FOR_IRI:
-         LibVEX_InitIRI ( (IRICB *)arg[1] );
-         break;
 
       default:
        my_default:

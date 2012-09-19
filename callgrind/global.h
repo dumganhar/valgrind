@@ -843,8 +843,8 @@ extern ThreadId   CLG_(current_tid);
 #if CLG_ENABLE_DEBUG
 
 #define CLG_DEBUGIF(x) \
-  if (UNLIKELY( (CLG_(clo).verbose >x) && \
-                (CLG_(stat).bb_executions >= CLG_(clo).verbose_start)))
+  if ( (CLG_(clo).verbose >x) && \
+       (CLG_(stat).bb_executions >= CLG_(clo).verbose_start))
 
 #define CLG_DEBUG(x,format,args...)   \
     CLG_DEBUGIF(x) {                  \
@@ -853,7 +853,7 @@ extern ThreadId   CLG_(current_tid);
     }
 
 #define CLG_ASSERT(cond)              \
-    if (UNLIKELY(!(cond))) {          \
+    if (!(cond)) {                    \
       CLG_(print_context)();          \
       CLG_(print_bbno)();	      \
       tl_assert(cond);                \

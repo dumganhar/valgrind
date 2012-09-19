@@ -729,15 +729,6 @@ ULong VG_(di_notify_mmap)( Addr a, Bool allow_SkFileV, Int use_fd )
    if (!filename)
       return 0;
 
-   /*
-    * Cannot read from these magic files:
-    * --20208-- WARNING: Serious error when reading debug info
-    * --20208-- When reading debug info from /proc/xen/privcmd:
-    * --20208-- can't read file to inspect ELF header
-    */
-   if (VG_(strncmp)(filename, "/proc/xen/", 10) == 0)
-      return 0;
-
    if (debug)
       VG_(printf)("di_notify_mmap-2: %s\n", filename);
 
@@ -3795,16 +3786,6 @@ Addr VG_(DebugInfo_get_gotplt_avma)(const DebugInfo* di)
 SizeT VG_(DebugInfo_get_gotplt_size)(const DebugInfo* di)
 {
    return di->gotplt_present ? di->gotplt_size : 0; 
-}
-
-Addr VG_(DebugInfo_get_got_avma)(const DebugInfo* di)
-{
-   return di->got_present ? di->got_avma : 0; 
-}
-
-SizeT VG_(DebugInfo_get_got_size)(const DebugInfo* di)
-{
-   return di->got_present ? di->got_size : 0; 
 }
 
 const UChar* VG_(DebugInfo_get_soname)(const DebugInfo* di)
