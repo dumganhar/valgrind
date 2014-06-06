@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -386,19 +386,6 @@ typedef struct SigQueue {
         (srP)->misc.ARM.r7  = (uc)->uc_mcontext.arm_r7; \
       }
 
-#elif defined(VGP_arm64_linux)
-#  define VG_UCONTEXT_INSTR_PTR(uc)       ((UWord)((uc)->uc_mcontext.pc))
-#  define VG_UCONTEXT_STACK_PTR(uc)       ((UWord)((uc)->uc_mcontext.sp))
-#  define VG_UCONTEXT_SYSCALL_SYSRES(uc)                        \
-      /* Convert the value in uc_mcontext.regs[0] into a SysRes. */ \
-      VG_(mk_SysRes_arm64_linux)( (uc)->uc_mcontext.regs[0] )
-#  define VG_UCONTEXT_TO_UnwindStartRegs(srP, uc)           \
-      { (srP)->r_pc = (uc)->uc_mcontext.pc;                 \
-        (srP)->r_sp = (uc)->uc_mcontext.sp;                 \
-        (srP)->misc.ARM64.x29 = (uc)->uc_mcontext.regs[29]; \
-        (srP)->misc.ARM64.x30 = (uc)->uc_mcontext.regs[30]; \
-      }
-
 #elif defined(VGP_x86_darwin)
 
    static inline Addr VG_UCONTEXT_INSTR_PTR( void* ucV ) {
@@ -548,24 +535,6 @@ typedef struct SigQueue {
         (srP)->misc.MIPS32.r28 = (uc)->uc_mcontext.sc_regs[28]; \
       }
 
-#elif defined(VGP_mips64_linux)
-#  define VG_UCONTEXT_INSTR_PTR(uc)       (((uc)->uc_mcontext.sc_pc))
-#  define VG_UCONTEXT_STACK_PTR(uc)       ((uc)->uc_mcontext.sc_regs[29])
-#  define VG_UCONTEXT_FRAME_PTR(uc)       ((uc)->uc_mcontext.sc_regs[30])
-#  define VG_UCONTEXT_SYSCALL_NUM(uc)     ((uc)->uc_mcontext.sc_regs[2])
-#  define VG_UCONTEXT_SYSCALL_SYSRES(uc)                        \
-      /* Convert the value in uc_mcontext.rax into a SysRes. */ \
-      VG_(mk_SysRes_mips64_linux)((uc)->uc_mcontext.sc_regs[2], \
-                                  (uc)->uc_mcontext.sc_regs[3], \
-                                  (uc)->uc_mcontext.sc_regs[7])
-
-#  define VG_UCONTEXT_TO_UnwindStartRegs(srP, uc)               \
-      { (srP)->r_pc = (uc)->uc_mcontext.sc_pc;                  \
-        (srP)->r_sp = (uc)->uc_mcontext.sc_regs[29];            \
-        (srP)->misc.MIPS64.r30 = (uc)->uc_mcontext.sc_regs[30]; \
-        (srP)->misc.MIPS64.r31 = (uc)->uc_mcontext.sc_regs[31]; \
-        (srP)->misc.MIPS64.r28 = (uc)->uc_mcontext.sc_regs[28]; \
-      }
 
 #else 
 #  error Unknown platform
@@ -875,15 +844,6 @@ extern void my_sigreturn(void);
    "    svc  0x00000000\n" \
    ".previous\n"
 
-#elif defined(VGP_arm64_linux)
-#  define _MY_SIGRETURN(name) \
-   ".text\n" \
-   ".globl my_sigreturn\n" \
-   "my_sigreturn:\n\t" \
-   "    mov  x8, #" #name "\n\t" \
-   "    svc  0x0\n" \
-   ".previous\n"
-
 #elif defined(VGP_x86_darwin)
 #  define _MY_SIGRETURN(name) \
    ".text\n" \
@@ -916,14 +876,6 @@ extern void my_sigreturn(void);
    "	syscall\n" \
    ".previous\n"
 
-#elif defined(VGP_mips64_linux)
-#  define _MY_SIGRETURN(name) \
-   ".text\n" \
-   "my_sigreturn:\n" \
-   "   li $2, " #name "\n" \
-   "   syscall\n" \
-   ".previous\n"
-
 #else
 #  error Unknown platform
 #endif
@@ -953,6 +905,10 @@ static void handle_SCSS_change ( Bool force_update )
          it. */
       if (sig == VKI_SIGKILL || sig == VKI_SIGSTOP)
          continue;
+#     if defined(VGPV_ppc64_linux_bgq)
+      if (sig == VKI_SIGSTKFLT)
+         continue;
+#     endif
 
       if (!force_update) {
          if ((skss_old.skss_per_sig[sig].skss_handler
@@ -989,6 +945,12 @@ static void handle_SCSS_change ( Bool force_update )
                    _VKI_NSIG_WORDS > 1 ? (ULong)ksa.sa_mask.sig[1] : 0,
                    (ULong)ksa.sa_mask.sig[0]);
 
+#     if defined(VGPV_ppc64_linux_bgq)
+      /* BlueGene fails any sigaction with a non-empty block-sigset */
+      VG_(sigemptyset)( &ksa.sa_mask );
+      ksa.sa_flags &= (VKI_SA_RESETHAND | VKI_SA_NODEFER);
+#     endif
+
       res = VG_(sigaction)( sig, &ksa, &ksa_old );
       vg_assert(res == 0);
 
@@ -1001,8 +963,9 @@ static void handle_SCSS_change ( Bool force_update )
                    == skss_old.skss_per_sig[sig].skss_flags);
 #        if !defined(VGP_ppc32_linux) && \
             !defined(VGP_x86_darwin) && !defined(VGP_amd64_darwin) && \
-            !defined(VGP_mips32_linux) && !defined(VGP_mips64_linux)
-         vg_assert(ksa_old.sa_restorer == my_sigreturn);
+            !defined(VGP_mips32_linux)
+         vg_assert(ksa_old.sa_restorer 
+                   == my_sigreturn);
 #        endif
          VG_(sigaddset)( &ksa_old.sa_mask, VKI_SIGKILL );
          VG_(sigaddset)( &ksa_old.sa_mask, VKI_SIGSTOP );
@@ -1381,9 +1344,9 @@ void push_signal_frame ( ThreadId tid, const vki_siginfo_t *siginfo,
 }
 
 
-const HChar *VG_(signame)(Int sigNo)
+const Char *VG_(signame)(Int sigNo)
 {
-   static HChar buf[20];
+   static Char buf[20];
 
    switch(sigNo) {
       case VKI_SIGHUP:    return "SIGHUP";
@@ -1609,7 +1572,7 @@ static void default_action(const vki_siginfo_t *info, ThreadId tid)
 
       /* Be helpful - decode some more details about this fault */
       if (is_signal_from_kernel(tid, sigNo, info->si_code)) {
-	 const HChar *event = NULL;
+	 const Char *event = NULL;
 	 Bool haveaddr = True;
 
 	 switch(sigNo) {
@@ -1728,7 +1691,7 @@ static void default_action(const vki_siginfo_t *info, ThreadId tid)
          VG_(pp_ExeContext)( ec );
       }
       if (sigNo == VKI_SIGSEGV 
-          && is_signal_from_kernel(tid, sigNo, info->si_code)
+          && info && is_signal_from_kernel(tid, sigNo, info->si_code)
           && info->si_code == VKI_SEGV_MAPERR) {
          VG_(umsg)(" If you believe this happened as a result of a stack\n" );
          VG_(umsg)(" overflow in your program's main thread (unlikely but\n");
@@ -1737,8 +1700,8 @@ static void default_action(const vki_siginfo_t *info, ThreadId tid)
          // FIXME: assumes main ThreadId == 1
          if (VG_(is_valid_tid)(1)) {
             VG_(umsg)(
-               " The main thread stack size used in this run was %lu.\n",
-               VG_(threads)[1].client_stack_szB);
+               " The main thread stack size used in this run was %d.\n",
+               (Int)VG_(threads)[1].client_stack_szB);
          }
       }
    }
@@ -1874,9 +1837,8 @@ static void synth_fault_common(ThreadId tid, Addr addr, Int si_code)
    info.si_code = si_code;
    info.VKI_SIGINFO_si_addr = (void*)addr;
 
-   /* Even if gdbserver indicates to ignore the signal, we must deliver it.
-      So ignore the return value of VG_(gdbserver_report_signal). */
-   (void) VG_(gdbserver_report_signal) (VKI_SIGSEGV, tid);
+   /* even if gdbserver indicates to ignore the signal, we will deliver it */
+   VG_(gdbserver_report_signal) (VKI_SIGSEGV, tid);
 
    /* If they're trying to block the signal, force it to be delivered */
    if (VG_(sigismember)(&VG_(threads)[tid].sig_mask, VKI_SIGSEGV))
@@ -1949,6 +1911,25 @@ void VG_(synth_sigbus)(ThreadId tid)
       resume_scheduler(tid);
 }
 
+// Synthesise a SIGFPE.
+void VG_(synth_sigfpe)(ThreadId tid)
+{
+   vki_siginfo_t info;
+
+   vg_assert(VG_(threads)[tid].status == VgTs_Runnable);
+
+   VG_(memset)(&info, 0, sizeof(info));
+   info.si_signo = VKI_SIGFPE;
+   /* Should we fill in any other fields? */
+
+   if (VG_(gdbserver_report_signal) (VKI_SIGFPE, tid)) {
+      resume_scheduler(tid);
+      deliver_signal(tid, &info, NULL);
+   }
+   else
+      resume_scheduler(tid);
+}
+
 // Synthesise a SIGTRAP.
 void VG_(synth_sigtrap)(ThreadId tid)
 {
@@ -1966,6 +1947,27 @@ void VG_(synth_sigtrap)(ThreadId tid)
    VG_(memset)(&uc,   0, sizeof(uc));
    info.si_signo = VKI_SIGTRAP;
    info.si_code = VKI_TRAP_BRKPT; /* tjh: only ever called for a brkpt ins */
+
+#  if defined(VGP_mips32_linux) || defined(VGP_mips64_linux)
+   /* This is for teq on mips. Teq on mips for ins: 0xXXX1f4 
+    * cases VKI_SIGFPE not VKI_SIGTRAP 
+   */
+   // JRS 2012-Jun-06: commented out until we know we need it
+   // This isn't a clean solution; need something that avoids looking
+   // at the guest code.
+   //UInt *ins = (void*)(vgPlain_threads[tid].arch.vex.guest_PC-4);
+   //UInt tcode = (((*ins) >> 6) & ((1 << 10) - 1));
+   //if (tcode == VKI_BRK_OVERFLOW || tcode == VKI_BRK_DIVZERO) {
+   //   if (tcode == VKI_BRK_DIVZERO)
+   //      info.si_code = VKI_FPE_INTDIV;
+   //   else
+   //      info.si_code = VKI_FPE_INTOVF;
+   //   info.si_signo = VKI_SIGFPE;
+   //   info.si_errno = 0;
+   //   info.VKI_SIGINFO_si_addr 
+   //      = (void*)(vgPlain_threads[tid].arch.vex.guest_PC-4);
+   //}
+#  endif
 
 #  if defined(VGP_x86_linux) || defined(VGP_amd64_linux)
    uc.uc_mcontext.trapno = 3;     /* tjh: this is the x86 trap number
@@ -1987,32 +1989,6 @@ void VG_(synth_sigtrap)(ThreadId tid)
    }
    else
       resume_scheduler(tid);
-}
-
-// Synthesise a SIGFPE.
-void VG_(synth_sigfpe)(ThreadId tid, UInt code)
-{
-// Only tested on mips32 and mips64
-#if !defined(VGA_mips32) && !defined(VGA_mips64)
-   vg_assert(0);
-#else
-   vki_siginfo_t info;
-   struct vki_ucontext uc;
-
-   vg_assert(VG_(threads)[tid].status == VgTs_Runnable);
-
-   VG_(memset)(&info, 0, sizeof(info));
-   VG_(memset)(&uc,   0, sizeof(uc));
-   info.si_signo = VKI_SIGFPE;
-   info.si_code = code;
-
-   if (VG_(gdbserver_report_signal) (VKI_SIGFPE, tid)) {
-      resume_scheduler(tid);
-      deliver_signal(tid, &info, &uc);
-   }
-   else
-      resume_scheduler(tid);
-#endif
 }
 
 /* Make a signal pending for a thread, for later delivery.
@@ -2131,9 +2107,25 @@ static
 void async_signalhandler ( Int sigNo,
                            vki_siginfo_t *info, struct vki_ucontext *uc )
 {
+#  if defined(VGPV_ppc64_linux_bgq)
+   /* CNK seems to give us siginfo and ucontext full of junk, so just
+      fake them up with something safe-ish. */
+   vki_siginfo_t bogus_siginfo;
+   struct vki_ucontext bogus_ucontext;
+   VG_(memset)( &bogus_siginfo, 0, sizeof(bogus_siginfo) );
+   VG_(memset)( &bogus_ucontext, 0, sizeof(bogus_ucontext) );
+   info = &bogus_siginfo;
+   info->si_signo = sigNo;
+   uc = &bogus_ucontext;
+#  endif
+
    ThreadId     tid = VG_(lwpid_to_vgtid)(VG_(gettid)());
    ThreadState* tst = VG_(get_ThreadState)(tid);
    SysRes       sres;
+
+   if (VG_(clo_trace_signals))
+      VG_(dmsg)("async signal handler: signal=%d, tid=%d, si_code=%d\n",
+                sigNo, tid, info->si_code);
 
    /* The thread isn't currently running, make it so before going on */
    vg_assert(tst->status == VgTs_WaitSys);
@@ -2230,16 +2222,16 @@ Bool VG_(extend_stack)(Addr addr, UInt maxsize)
 {
    SizeT udelta;
 
-   /* Find the next Segment above addr */
    NSegment const* seg
       = VG_(am_find_nsegment)(addr);
-   NSegment const* seg_next 
-      = seg ? VG_(am_next_nsegment)( seg, True/*fwds*/ )
-            : NULL;
-
    if (seg && seg->kind == SkAnonC)
       /* addr is already mapped.  Nothing to do. */
       return True;
+
+   /* Find the next Segment above addr */
+   NSegment const* seg_next 
+      = seg ? VG_(am_next_nsegment)( (NSegment*)seg, True/*fwds*/ )
+            : NULL;
 
    /* Check that the requested new base is in a shrink-down
       reservation section which abuts an anonymous mapping that
@@ -2257,7 +2249,7 @@ Bool VG_(extend_stack)(Addr addr, UInt maxsize)
                     "extending a stack base 0x%llx down by %lld\n",
                     (ULong)seg_next->start, (ULong)udelta);
    if (! VG_(am_extend_into_adjacent_reservation_client)
-            ( seg_next, -(SSizeT)udelta )) {
+            ( (NSegment*)seg_next, -(SSizeT)udelta )) {
       VG_(debugLog)(1, "signals", "extending a stack base: FAILED\n");
       return False;
    }
@@ -2388,7 +2380,7 @@ static Bool extend_stack_if_appropriate(ThreadId tid, vki_siginfo_t* info)
    fault    = (Addr)info->VKI_SIGINFO_si_addr;
    esp      = VG_(get_SP)(tid);
    seg      = VG_(am_find_nsegment)(fault);
-   seg_next = seg ? VG_(am_next_nsegment)( seg, True/*fwds*/ )
+   seg_next = seg ? VG_(am_next_nsegment)( (NSegment*)seg, True/*fwds*/ )
                   : NULL;
 
    if (VG_(clo_trace_signals)) {
@@ -2509,6 +2501,18 @@ static
 void sync_signalhandler ( Int sigNo,
                           vki_siginfo_t *info, struct vki_ucontext *uc )
 {
+#  if defined(VGPV_ppc64_linux_bgq)
+   /* CNK seems to give us siginfo and ucontext full of junk, so just
+      fake them up with something safe-ish. */
+   vki_siginfo_t bogus_siginfo;
+   struct vki_ucontext bogus_ucontext;
+   VG_(memset)( &bogus_siginfo, 0, sizeof(bogus_siginfo) );
+   VG_(memset)( &bogus_ucontext, 0, sizeof(bogus_ucontext) );
+   info = &bogus_siginfo;
+   info->si_signo = sigNo;
+   uc = &bogus_ucontext;
+#  endif
+
    ThreadId tid = VG_(lwpid_to_vgtid)(VG_(gettid)());
    Bool from_user;
 
@@ -2568,6 +2572,18 @@ void sync_signalhandler ( Int sigNo,
 static void sigvgkill_handler(int signo, vki_siginfo_t *si,
                                          struct vki_ucontext *uc)
 {
+#  if defined(VGPV_ppc64_linux_bgq)
+   /* CNK seems to give us siginfo and ucontext full of junk, so just
+      fake them up with something safe-ish. */
+   vki_siginfo_t bogus_siginfo;
+   struct vki_ucontext bogus_ucontext;
+   VG_(memset)( &bogus_siginfo, 0, sizeof(bogus_siginfo) );
+   VG_(memset)( &bogus_ucontext, 0, sizeof(bogus_ucontext) );
+   si = &bogus_siginfo;
+   si->si_signo = signo;
+   uc = &bogus_ucontext;
+#  endif
+
    ThreadId     tid = VG_(lwpid_to_vgtid)(VG_(gettid)());
    ThreadStatus at_signal = VG_(threads)[tid].status;
 
@@ -2715,6 +2731,11 @@ void VG_(sigstartup_actions) ( void )
       /* apparently we may not even ask about the disposition of these
          signals, let alone change them */
       if (ret != 0 && (i == VKI_SIGKILL || i == VKI_SIGSTOP))
+         continue;
+#     elif defined(VGPV_ppc64_linux_bgq)
+      /* Ditto on BGQ, inclyuding SIGSTKFLT, whatever that is. */
+      if (ret != 0 && (i == VKI_SIGKILL
+                       || i == VKI_SIGSTKFLT || i == VKI_SIGSTOP))
          continue;
 #     endif
 

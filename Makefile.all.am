@@ -58,14 +58,6 @@ install-noinst_PROGRAMS: $(noinst_PROGRAMS)
 	  $(INSTALL_PROGRAM) $$f $(DESTDIR)$(pkglibdir); \
 	done
 
-# This is used by coregrind/Makefile.am and by <tool>/Makefile.am for doing
-# "make uninstall".  It removes $(noinst_PROGRAMS) from $prefix/lib/valgrind/.
-# It needs to be depended on by an 'uninstall-local' rule.
-uninstall-noinst_PROGRAMS:
-	for f in $(noinst_PROGRAMS); do \
-	  rm -f $(DESTDIR)$(pkglibdir)/$$f; \
-	done
-
 # Similar to install-noinst_PROGRAMS.
 # Nb: we don't use $(INSTALL_PROGRAM) here because it doesn't work with
 # directories.  XXX: not sure whether the resulting permissions will be
@@ -74,12 +66,6 @@ install-noinst_DSYMS: build-noinst_DSYMS
 	$(mkinstalldirs) $(DESTDIR)$(pkglibdir); \
 	for f in $(noinst_DSYMS); do \
 	  cp -R $$f.dSYM $(DESTDIR)$(pkglibdir); \
-	done
-
-# Similar to uninstall-noinst_PROGRAMS.
-uninstall-noinst_DSYMS:
-	for f in $(noinst_DSYMS); do \
-	  rm -f $(DESTDIR)$(pkglibdir)/$$f.dSYM; \
 	done
 
 # This needs to be depended on by a 'clean-local' rule.
@@ -131,7 +117,6 @@ AM_CPPFLAGS_@VGCONF_PLATFORM_PRI_CAPS@ = \
 	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
 	-I$(top_srcdir)/VEX/pub \
-	-I$(top_builddir)/VEX/pub \
 	-DVGA_@VGCONF_ARCH_PRI@=1 \
 	-DVGO_@VGCONF_OS@=1 \
 	-DVGP_@VGCONF_ARCH_PRI@_@VGCONF_OS@=1 \
@@ -141,7 +126,6 @@ AM_CPPFLAGS_@VGCONF_PLATFORM_SEC_CAPS@ = \
 	-I$(top_srcdir) \
 	-I$(top_srcdir)/include \
 	-I$(top_srcdir)/VEX/pub \
-	-I$(top_builddir)/VEX/pub \
 	-DVGA_@VGCONF_ARCH_SEC@=1 \
 	-DVGO_@VGCONF_OS@=1 \
 	-DVGP_@VGCONF_ARCH_SEC@_@VGCONF_OS@=1 \
@@ -162,6 +146,10 @@ AM_FLAG_M3264_PPC32_LINUX = @FLAG_M32@
 AM_CFLAGS_PPC32_LINUX     = @FLAG_M32@ $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC32_LINUX  = @FLAG_M32@ -g
 
+if VGCONF_PLATVARIANT_IS_BGQ
+# JRS FIXME: the -I is probably not necessary (for scheduler.c)
+AM_CFLAGS_BASE += -mminimal-toc -I/bgsys/drivers/V1R2M0/ppc64
+endif
 AM_FLAG_M3264_PPC64_LINUX = @FLAG_M64@
 AM_CFLAGS_PPC64_LINUX     = @FLAG_M64@ $(AM_CFLAGS_BASE)
 AM_CCASFLAGS_PPC64_LINUX  = @FLAG_M64@ -g
@@ -171,10 +159,6 @@ AM_CFLAGS_ARM_LINUX       = @FLAG_M32@ @PREFERRED_STACK_BOUNDARY@ \
 			 	$(AM_CFLAGS_BASE) -marm -mcpu=cortex-a8
 AM_CCASFLAGS_ARM_LINUX    = @FLAG_M32@ \
 				-marm -mcpu=cortex-a8 -g
-
-AM_FLAG_M3264_ARM64_LINUX = @FLAG_M64@
-AM_CFLAGS_ARM64_LINUX     = @FLAG_M64@ $(AM_CFLAGS_BASE)
-AM_CCASFLAGS_ARM64_LINUX  = @FLAG_M64@ -g
 
 AM_FLAG_M3264_X86_DARWIN = -arch i386
 AM_CFLAGS_X86_DARWIN     = $(WERROR) -arch i386 $(AM_CFLAGS_BASE) \
@@ -193,12 +177,9 @@ AM_CFLAGS_S390X_LINUX     = @FLAG_M64@ $(AM_CFLAGS_BASE) -fomit-frame-pointer
 AM_CCASFLAGS_S390X_LINUX  = @FLAG_M64@ -g -mzarch -march=z900
 
 AM_FLAG_M3264_MIPS32_LINUX = @FLAG_M32@
-AM_CFLAGS_MIPS32_LINUX     = @FLAG_M32@ $(AM_CFLAGS_BASE) @FLAG_MIPS32@
-AM_CCASFLAGS_MIPS32_LINUX  = @FLAG_M32@ -g @FLAG_MIPS32@
+AM_CFLAGS_MIPS32_LINUX     = @FLAG_M32@ $(AM_CFLAGS_BASE) -mips32
+AM_CCASFLAGS_MIPS32_LINUX  = @FLAG_M32@ -mips32 -g
 
-AM_FLAG_M3264_MIPS64_LINUX = @FLAG_M64@
-AM_CFLAGS_MIPS64_LINUX     = @FLAG_M64@ $(AM_CFLAGS_BASE) @FLAG_MIPS64@
-AM_CCASFLAGS_MIPS64_LINUX  = @FLAG_M64@ -g @FLAG_MIPS64@
 
 # Flags for the primary target.  These must be used to build the
 # regtests and performance tests.  In fact, these must be used to
@@ -233,10 +214,8 @@ PRELOAD_LDFLAGS_AMD64_LINUX  = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M64@
 PRELOAD_LDFLAGS_PPC32_LINUX  = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M32@
 PRELOAD_LDFLAGS_PPC64_LINUX  = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M64@
 PRELOAD_LDFLAGS_ARM_LINUX    = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M32@
-PRELOAD_LDFLAGS_ARM64_LINUX  = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M64@
 PRELOAD_LDFLAGS_X86_DARWIN   = $(PRELOAD_LDFLAGS_COMMON_DARWIN) -arch i386
 PRELOAD_LDFLAGS_AMD64_DARWIN = $(PRELOAD_LDFLAGS_COMMON_DARWIN) -arch x86_64
 PRELOAD_LDFLAGS_S390X_LINUX  = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M64@
 PRELOAD_LDFLAGS_MIPS32_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M32@
-PRELOAD_LDFLAGS_MIPS64_LINUX = $(PRELOAD_LDFLAGS_COMMON_LINUX) @FLAG_M64@
 

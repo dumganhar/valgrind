@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -40,6 +40,26 @@
 #include "pub_core_clientstate.h"
 #include "pub_core_commandline.h" /* self */
 
+/* --- BEGIN --- HARDWIRED_ARGS_FOR_BGQ ----------------------------- */
+/* If you want hardwired args, change the #if 0 to #if 1 and change the
+   args appropriately, remembering to leave a space in between each. */
+#if 0
+# define HARDWIRED_ARGS_FOR_BGQ \
+    "--xml=yes " \
+    "--xml-file=results_%b_%r.mc " \
+    "--xml-user-comment=<rank>%r</rank> " \
+    "--error-limit=no " \
+    "--num-callers=20 " \
+    "--ignore-ranges=0x4000000000000-0x4063000000000" \
+                   ",0x003fdc0000000-0x003fe00000000" \
+                   " " \
+    "--suppressions=/g/g92/seward3/BGQ2014/branch38bgq-2014May21/cnk-baseline.supp " \
+    ""
+#else
+# define HARDWIRED_ARGS_FOR_BGQ NULL
+#endif
+/* --- END ----- HARDWIRED_ARGS_FOR_BGQ ----------------------------- */
+
 
 /* Add a string to an expandable array of strings. */
 
@@ -53,7 +73,7 @@ static void add_string ( XArray* /* of HChar* */xa, HChar* str )
 // Note that we deliberately don't free the malloc'd memory.  See
 // comment at call site.
 
-static HChar* read_dot_valgrindrc ( const HChar* dir )
+static HChar* read_dot_valgrindrc ( HChar* dir )
 {
    Int    n;
    SysRes fd;
@@ -117,11 +137,12 @@ static void add_args_from_string ( HChar* s )
    - contents of ~/.valgrindrc
    - contents of $VALGRIND_OPTS
    - contents of ./.valgrindrc
+   - contents of hwArgs, if any
    - args from the command line
    in the stated order.
 
    VG_(args_for_valgrind_noexecpass) is set to be the number of items
-   in the first three categories.  They are not passed to child invokations
+   in the first four categories.  They are not passed to child invokations
    at exec, whereas the last group is.
 
    If the last group contains --command-line-only=yes, then the 
@@ -148,13 +169,24 @@ static void add_args_from_string ( HChar* s )
       VG_(args_for_valgrind) is made empty.
 
    Finally, tmp_xarray is copied onto the end of VG_(args_for_valgrind).
+
+   Returns a Bool indicating whether or not hardwired args (hwArgs) are
+   present.  That should always be False in non-statically-linked
+   scenario.
 */
 
-void VG_(split_up_argv)( Int argc, HChar** argv )
+Bool VG_(split_up_argv)( Int argc, HChar** argv )
 {
           Int  i;
           Bool augment = True;
    static Bool already_called = False;
+
+   HChar* hwArgs = HARDWIRED_ARGS_FOR_BGQ;
+   if (hwArgs) {
+      // This is never freed.  The strduping is necessary because
+      // hwArgs is subsequently modified.
+      hwArgs = VG_(strdup)("commandline.sua.5", hwArgs);
+   }
 
    XArray* /* of HChar* */ tmp_xarray;
 
@@ -183,23 +215,41 @@ void VG_(split_up_argv)( Int argc, HChar** argv )
    i = 1; /* skip the exe (stage2) name. */
    for (; i < argc; i++) {
       vg_assert(argv[i]);
+      if (hwArgs != NULL) {
+         break;
+      }
       if (0 == VG_(strcmp)(argv[i], "--")) {
          i++;
          break;
       }
       if (0 == VG_(strcmp)(argv[i], "--command-line-only=yes"))
          augment = False;
+#     if !defined(VGPV_ppc64_linux_bgq)
+      /* If we find an arg which doesn't start with '-', assume it is
+         the executable name, so stop copying args for Valgrind at
+         this point.  Except on statically-linked-in scenarios (BGQ),
+         in which case the args for V must be terminated by "--", and
+         the first arg that follows is the first arg for the client. */
       if (argv[i][0] != '-')
-	break;
+         break;
+#     endif
       add_string( tmp_xarray, argv[i] );
    }
 
+   /* Set VG_(args_the_exename).  Different in the
+      statically-linked-in case (BGQ). */
+#  if defined(VGPV_ppc64_linux_bgq)
+   vg_assert(!VG_(args_the_exename));
+   vg_assert(argv[0]);
+   VG_(args_the_exename) = argv[0];
+#  else
    /* Should now be looking at the exe name. */
    if (i < argc) {
       vg_assert(argv[i]);
       VG_(args_the_exename) = argv[i];
       i++;
    }
+#  endif
 
    /* The rest are args for the client. */
    for (; i < argc; i++) {
@@ -231,6 +281,7 @@ void VG_(split_up_argv)( Int argc, HChar** argv )
       if (f1_clo)  add_args_from_string( f1_clo );
       if (env_clo) add_args_from_string( env_clo );
       if (f2_clo)  add_args_from_string( f2_clo );
+      if (hwArgs)  add_args_from_string( hwArgs );
    }
 
    /* .. and record how many extras we got. */
@@ -243,6 +294,8 @@ void VG_(split_up_argv)( Int argc, HChar** argv )
                   * (HChar**)VG_(indexXA)( tmp_xarray, i ) );
 
    VG_(deleteXA)( tmp_xarray );
+
+   return hwArgs != NULL;
 }
 
 /*--------------------------------------------------------------------*/

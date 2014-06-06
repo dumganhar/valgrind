@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -42,11 +42,10 @@
 
 #include "priv_ume.h"
 
-Bool VG_(match_script)(const void *hdr, Int len)
+Bool VG_(match_script)(Char *hdr, Int len)
 {
-   const HChar* script = hdr;
-   const HChar* end    = script + len;
-   const HChar* interp = script + 2;
+   Char* end    = hdr + len;
+   Char* interp = hdr + 2;
 
    // len < 4: need '#', '!', plus at least a '/' and one more char
    if (len < 4) return False;    
@@ -79,13 +78,13 @@ Bool VG_(match_script)(const void *hdr, Int len)
 /* returns: 0 = success, non-0 is failure */
 Int VG_(load_script)(Int fd, const HChar* name, ExeInfo* info)
 {
-   HChar  hdr[4096];
-   Int    len = 4096;
-   Int    eol;
-   HChar* interp;
-   HChar* end;
-   HChar* cp;
-   HChar* arg = NULL;
+   Char  hdr[4096];
+   Int   len = 4096;
+   Int   eol;
+   Char* interp;
+   Char* end;
+   Char* cp;
+   Char* arg = NULL;
    SysRes res;
 
    // Read the first part of the file.
@@ -134,7 +133,7 @@ Int VG_(load_script)(Int fd, const HChar* name, ExeInfo* info)
    }
 
    if (info->argv && info->argv[0] != NULL)
-     info->argv[0] = name;
+      info->argv[0] = (char *)name;
 
    VG_(args_the_exename) = name;
 

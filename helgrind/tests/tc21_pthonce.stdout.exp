@@ -1,4 +1,3 @@
-main: Hello
 welcome: Welcome
 child: Hi, I'm thread 0
 child: Hi, I'm thread 1

@@ -14,7 +14,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2011-2013 Bart Van Assche <bvanassche@acm.org>.
+   Copyright (C) 2011 Bart Van Assche <bvanassche@acm.org>.
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -41,10 +41,10 @@
 #include "pub_core_syscall.h"
 #include "pub_core_vki.h"
 #include "pub_core_vkiscnums.h"    // __NR_futex
-#include "pub_core_libcproc.h"
-#include "pub_core_mallocfree.h"
-#include "pub_core_threadstate.h"
-#include "pub_core_inner.h"
+#include "pub_tool_libcproc.h"
+#include "pub_tool_mallocfree.h"
+#include "pub_tool_threadstate.h"
+#include "pub_tool_inner.h"
 #if defined(ENABLE_INNER_CLIENT_REQUEST)
 #include "helgrind/helgrind.h"
 #endif
@@ -62,13 +62,15 @@ struct sched_lock {
    int owner;
 };
 
-#if 1
-static Bool s_debug;
-#else
-static Bool s_debug = True;
-#endif
+//#if 1
+//static Bool s_debug;
+//#else
+//static Bool s_debug = True;
+//#endif
 
-static const HChar *get_sched_lock_name(void)
+#define s_debug 0
+
+static const Char *get_sched_lock_name(void)
 {
    return "ticket lock";
 }
@@ -82,6 +84,7 @@ static struct sched_lock *create_sched_lock(void)
       // The futex syscall requires that a futex takes four bytes.
       vg_assert(sizeof(p->futex[0]) == 4);
 
+      VG_(memset)(p, 0, sizeof(*p));
       p->head = 0;
       p->tail = 0;
       VG_(memset)((void*)p->futex, 0, sizeof(p->futex));
@@ -120,24 +123,31 @@ static void acquire_sched_lock(struct sched_lock *p)
    volatile unsigned *futex;
    SysRes sres;
 
+__sync_synchronize();
    ticket = __sync_fetch_and_add(&p->tail, 1);
+__sync_synchronize();
    futex = &p->futex[ticket & TL_FUTEX_MASK];
+__sync_synchronize();
    if (s_debug)
       VG_(printf)("[%d/%d] acquire: ticket %d\n", VG_(getpid)(),
                   VG_(gettid)(), ticket);
    for (;;) {
+__sync_synchronize();
       futex_value = *futex;
       __sync_synchronize();
       if (ticket == p->head)
          break;
+__sync_synchronize();
       if (s_debug)
          VG_(printf)("[%d/%d] acquire: ticket %d - waiting until"
                      " futex[%ld] != %d\n", VG_(getpid)(),
                      VG_(gettid)(), ticket, (long)(futex - p->futex),
                      futex_value);
+__sync_synchronize();
       sres = VG_(do_syscall3)(__NR_futex, (UWord)futex,
                               VKI_FUTEX_WAIT | VKI_FUTEX_PRIVATE_FLAG,
                               futex_value);
+__sync_synchronize();
       if (sr_isError(sres) && sres._val != VKI_EAGAIN) {
          VG_(printf)("futex_wait() returned error code %ld\n", sres._val);
          vg_assert(False);
@@ -145,8 +155,11 @@ static void acquire_sched_lock(struct sched_lock *p)
    }
    __sync_synchronize();
    INNER_REQUEST(ANNOTATE_RWLOCK_ACQUIRED(p, /*is_w*/1));
+__sync_synchronize();
    vg_assert(p->owner == 0);
+__sync_synchronize();
    p->owner = VG_(gettid)();
+__sync_synchronize();
 }
 
 /*
@@ -164,17 +177,25 @@ static void release_sched_lock(struct sched_lock *p)
    volatile unsigned *futex;
    SysRes sres;
 
+__sync_synchronize();
    vg_assert(p->owner != 0);
+__sync_synchronize();
    p->owner = 0;
+__sync_synchronize();
    INNER_REQUEST(ANNOTATE_RWLOCK_RELEASED(p, /*is_w*/1));
    wakeup_ticket = __sync_fetch_and_add(&p->head, 1) + 1;
+__sync_synchronize();
    if (p->tail != wakeup_ticket) {
+__sync_synchronize();
       futex = &p->futex[wakeup_ticket & TL_FUTEX_MASK];
+__sync_synchronize();
       futex_value = __sync_fetch_and_add(futex, 1);
+__sync_synchronize();
       if (s_debug)
          VG_(printf)("[%d/%d] release: waking up ticket %d (futex[%ld] = %d)"
                      "\n", VG_(getpid)(), VG_(gettid)(), wakeup_ticket,
                      (long)(futex - p->futex), futex_value);
+__sync_synchronize();
       sres = VG_(do_syscall3)(__NR_futex, (UWord)futex,
                               VKI_FUTEX_WAKE | VKI_FUTEX_PRIVATE_FLAG,
                               0x7fffffff);
@@ -184,6 +205,7 @@ static void release_sched_lock(struct sched_lock *p)
          VG_(printf)("[%d/%d] release: no thread is waiting for ticket %d\n",
                      VG_(getpid)(), VG_(gettid)(), wakeup_ticket);
    }
+__sync_synchronize();
 }
 
 const struct sched_lock_ops ML_(linux_ticket_lock_ops) = {

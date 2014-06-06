@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -30,9 +30,6 @@
 
 #ifndef __PUB_CORE_SCHEDULER_H
 #define __PUB_CORE_SCHEDULER_H
-
-#include "pub_core_basics.h"        // VG_ macro
-#include "pub_core_threadstate.h"   // VgSchedReturnCode
 
 //--------------------------------------------------------------------
 // PURPOSE: This module is the scheduler, which is the main loop
@@ -60,12 +57,12 @@ extern void VG_(nuke_all_threads_except) ( ThreadId me,
    thread state to VgTs_Runnable, and the thread will attempt to take
    the CPU lock.  By the time it returns, tid will be the running
    thread. */
-extern void VG_(acquire_BigLock) ( ThreadId tid, const HChar* who );
+extern void VG_(acquire_BigLock) ( ThreadId tid, HChar* who );
 
 /* Simple version, which simply acquires the lock, but does not mess
    with the guest state in the same way as the non _LL version
    does. */
-extern void VG_(acquire_BigLock_LL) ( const HChar* who );
+extern void VG_(acquire_BigLock_LL) ( HChar* who );
 
 /* Set a thread into a sleeping state.  Before the call, the thread
    must be runnable, and holding the CPU lock.  When this call
@@ -76,10 +73,10 @@ extern void VG_(acquire_BigLock_LL) ( const HChar* who );
    the caller's responsibility to actually block until the thread is
    ready to run again. */
 extern void VG_(release_BigLock) ( ThreadId tid,
-                                   ThreadStatus state, const HChar* who );
+                                   ThreadStatus state, HChar* who );
 
 /* Matching function to acquire_BigLock_LL. */
-extern void VG_(release_BigLock_LL) ( const HChar* who );
+extern void VG_(release_BigLock_LL) ( HChar* who );
 
 /* Whether the specified thread owns the big lock. */
 extern Bool VG_(owns_BigLock_LL) ( ThreadId tid );

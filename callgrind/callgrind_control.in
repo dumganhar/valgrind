@@ -27,7 +27,7 @@
 sub getCallgrindPids {
 
   @pids = ();
-  open LIST, "vgdb $vgdbPrefixOption -l|";
+  open LIST, "vgdb -l|";
   while(<LIST>) {
       if (/^use --pid=(\d+) for \S*?valgrind\s+(.*?)\s*$/) {
 	  $pid = $1;
@@ -78,8 +78,6 @@ sub printHelp {
   print "  -z --zero         Zero all event counters\n";
   print "  -k --kill         Kill\n";
   print "  -i --instr=on|off Switch instrumentation state on/off\n";
-  print "Uncommon options:\n";
-  print "  --vgdb-prefix=<prefix> Only provide this if the same was given to Valgrind\n";
   print "\n";
   exit;
 }
@@ -187,16 +185,6 @@ sub print_events ($)
 # Main
 #
 
-# To find the list of active pids, we need to have
-# the --vgdb-prefix option if given.
-$vgdbPrefixOption = "";
-foreach $arg (@ARGV) {
-    if ($arg =~ /^--vgdb-prefix=.*$/) {
-        $vgdbPrefixOption=$arg;
-    }
-    next;
-}
-
 getCallgrindPids;
 
 $requestEvents = 0;
@@ -204,7 +192,6 @@ $requestDump = 0;
 $switchInstr = 0;
 $headerPrinted = 0;
 $dumpHint = "";
-
 $verbose = 0;
 
 %spids = ();
@@ -218,10 +205,6 @@ foreach $arg (@ARGV) {
     }
     elsif ($arg =~ /^--version$/) {
 	printVersion;
-    }
-    elsif ($arg =~ /^--vgdb-prefix=.*$/) {
-        # handled during the initial parsing.
-        next;
     }
     elsif ($arg =~ /^-v$/) {
 	$verbose++;
@@ -363,7 +346,7 @@ foreach $pid (@pids) {
   } else {
       print "\n";
   }
-  open RESULT, "vgdb $vgdbPrefixOption --pid=$pid $vgdbCommand|";
+  open RESULT, "vgdb --pid=$pid $vgdbCommand|";
 
   @tids = ();
   $ctid = 0;

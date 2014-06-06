@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2005-2013 Apple Inc.
+   Copyright (C) 2005-2012 Apple Inc.
       Greg Parker  gparker@apple.com
 
    This program is free software; you can redistribute it and/or
@@ -31,8 +31,7 @@
 #ifndef __PRIV_SYSWRAP_DARWIN_H
 #define __PRIV_SYSWRAP_DARWIN_H
 
-#include "pub_core_basics.h"         // ThreadId
-#include "priv_types_n_macros.h"     // DECL_TEMPLATE
+/* requires #include "priv_types_n_macros.h" */
 
 // syswrap-darwin.c
 Addr allocstack ( ThreadId tid );

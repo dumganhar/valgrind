@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2007-2013 OpenWorks LLP
+   Copyright (C) 2007-2012 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -31,8 +31,6 @@
 #ifndef __PUB_TOOL_XARRAY_H
 #define __PUB_TOOL_XARRAY_H
 
-#include "pub_tool_basics.h"    // Word
-
 //--------------------------------------------------------------------
 // PURPOSE: Provides a simple but useful structure, which is an array
 // in which elements can be added at the end.  The array is expanded
@@ -48,13 +46,11 @@
 /* It's an abstract type.  Bwaha. */
 typedef  struct _XArray  XArray;
 
-typedef Int (*XACmpFn_t)(const void *, const void *);
-
 /* Create new XArray, using given allocation and free function, and
    for elements of the specified size.  Alloc fn must not fail (that
    is, if it returns it must have succeeded.) */
-extern XArray* VG_(newXA) ( void*(*alloc_fn)(const HChar*,SizeT), 
-                            const HChar* cc,
+extern XArray* VG_(newXA) ( void*(*alloc_fn)(HChar*,SizeT), 
+                            HChar* cc,
                             void(*free_fn)(void*),
                             Word elemSzB );
 
@@ -64,17 +60,17 @@ extern void VG_(deleteXA) ( XArray* );
 /* Set the comparison function for this XArray.  This clears an
    internal 'array is sorted' flag, which means you must call sortXA
    before making further queries with lookupXA. */
-extern void VG_(setCmpFnXA) ( XArray*, XACmpFn_t);
+extern void VG_(setCmpFnXA) ( XArray*, Int (*compar)(void*,void*) );
 
 /* Add an element to an XArray.  Element is copied into the XArray.
    Index at which it was added is returned.  Note this will be
    invalidated if the array is later sortXA'd. */
-extern Word VG_(addToXA) ( XArray*, const void* elem );
+extern Word VG_(addToXA) ( XArray*, void* elem );
 
 /* Add a sequence of bytes to an XArray of bytes.  Asserts if nbytes
    is negative or the array's element size is not 1.  Returns the
    index at which the first byte was added. */
-extern Word VG_(addBytesToXA) ( XArray* xao, const void* bytesV, Word nbytes );
+extern Word VG_(addBytesToXA) ( XArray* xao, void* bytesV, Word nbytes );
 
 /* Sort an XArray using its comparison function, if set; else bomb.
    Probably not a stable sort w.r.t. equal elements module cmpFn. */
@@ -85,7 +81,7 @@ extern void VG_(sortXA) ( XArray* );
    value found.  If any values are found, return True, else return
    False, and don't change *first or *last.  first and/or last may be
    NULL.  Bomb if the array is not sorted. */
-extern Bool VG_(lookupXA) ( XArray*, const void* key, 
+extern Bool VG_(lookupXA) ( XArray*, void* key, 
                             /*OUT*/Word* first, /*OUT*/Word* last );
 
 /* A version of VG_(lookupXA) in which you can specify your own
@@ -96,9 +92,9 @@ extern Bool VG_(lookupXA) ( XArray*, const void* key,
    VG_(lookupXA), which refuses to do anything (asserts) unless the
    array has first been sorted using the same comparison function as
    is being used for the lookup. */
-extern Bool VG_(lookupXA_UNSAFE) ( XArray* xao, const void* key,
+extern Bool VG_(lookupXA_UNSAFE) ( XArray* xao, void* key,
                                    /*OUT*/Word* first, /*OUT*/Word* last,
-                                   XACmpFn_t cmpFn );
+                                   Int(*cmpFn)(void*,void*) );
 
 /* How elements are there in this XArray now? */
 extern Word VG_(sizeXA) ( XArray* );
@@ -106,10 +102,10 @@ extern Word VG_(sizeXA) ( XArray* );
 /* Index into the XArray.  Checks bounds and bombs if the index is
    invalid.  What this returns is the address of the specified element
    in the array, not (of course) the element itself.  Note that the
-   element may get moved by subsequent calls to addToXA / sortXA /
-   insertIndexXA, so you should copy it out immediately and not regard
-   its address as unchanging.  Note also that indexXA will of course
-   not return NULL if it succeeds. */
+   element may get moved by subsequent addToXAs/sortXAs, so you should
+   copy it out immediately and not regard its address as unchanging.
+   Note also that indexXA will of course not return NULL if it
+   succeeds. */
 extern void* VG_(indexXA) ( XArray*, Word );
 
 /* Drop the last n elements of an XArray.  Bombs if there are less
@@ -127,20 +123,13 @@ extern void VG_(dropHeadXA) ( XArray*, Word );
    array. */
 extern void VG_(removeIndexXA)( XArray*, Word );
 
-/* Insert an element into an XArray at the given index.  The existing
-   element at the index and all above it are slid upwards one slot so
-   as to make space.  Element is copied into the XArray.  This is an
-   O(N) operation, when N is the number of elements after the
-   specified element, in the array. */
-extern void VG_(insertIndexXA)( XArray*, Word, const void* elem );
-
 /* Make a new, completely independent copy of the given XArray, using
    the existing allocation function to allocate the new space.
    Returns NULL if the allocation function didn't manage to allocate
    space (but did return NULL rather than merely abort.)  Space for
    the clone (and all additions to it) is billed to 'cc' unless that
    is NULL, in which case the parent's cost-center is used. */
-extern XArray* VG_(cloneXA)( const HChar* cc, XArray* xa );
+extern XArray* VG_(cloneXA)( HChar* cc, XArray* xa );
 
 /* Get the raw array and size so callers can index it really fast.
    This is dangerous in the sense that there's no range or

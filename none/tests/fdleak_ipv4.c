@@ -20,20 +20,20 @@ void server ()
    
    s = DO( socket(PF_INET, SOCK_STREAM, 0) );
 
-   (void) DO( setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(int)) );
+   DO( setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(int)) );
    memset(&addr, 0, sizeof(addr));
    addr.sin_family = AF_INET;
    addr.sin_addr.s_addr = inet_addr("127.0.0.1");
    addr.sin_port = htons(12321);
 
-   (void) DO( bind(s, (struct sockaddr *)&addr, sizeof(addr)) );
+   DO( bind(s, (struct sockaddr *)&addr, sizeof(addr)) );
 
-   (void) DO( listen(s, 5) );
+   DO( listen(s, 5) );
 
    memset(&baddr, 0, sizeof(baddr));
    x = DO( accept(s, (struct sockaddr *)&baddr, &baddrsize) );
 
-   (void) DO( write(x, "hello", 6) );
+   DO( write(x, "hello", 6) );
 }
 
 void client ()
@@ -53,7 +53,7 @@ void client ()
      if (ret == -1) {
        // If the connect() failed, we close the socket and reopen it before
        // trying again.  This isn't necessary on Linux, but it is on Darwin.
-       (void) DO( close(s) );
+       DO( close(s) );
        sleep(1);
      }
    } while (count < 10 && ret == -1);
@@ -63,7 +63,7 @@ void client ()
       exit(1);
    }
 
-   (void) DO( read(s, buf, sizeof(buf)) );
+   DO( read(s, buf, sizeof(buf)) );
 
    printf("%s\n", buf);
 }

@@ -45,9 +45,6 @@ int main(int argc, char** argv)
   /* Join the created thread. */
   pthread_join(tid, 0);
 
-  /* Invoke pthread_cancel() with an invalid thread ID. */
-  pthread_cancel(tid);
-
   fprintf(stderr, "Test finished.\n");
 
   return 0;

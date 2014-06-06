@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -29,7 +29,7 @@
    The GNU General Public License is contained in the file COPYING.
 */
 
-#if defined(VGO_linux)
+#if defined(VGO_linux) && !defined(VGPV_ppc64_linux_bgq)
 
 #include "pub_core_basics.h"
 #include "pub_core_vki.h"
@@ -71,7 +71,7 @@ static void load_client ( /*OUT*/ExeInfo* info,
                           /*OUT*/Addr*    client_ip,
 			  /*OUT*/Addr*    client_toc)
 {
-   const HChar* exe_name;
+   HChar* exe_name;
    Int    ret;
    SysRes res;
 
@@ -126,9 +126,9 @@ static void load_client ( /*OUT*/ExeInfo* info,
 */
 static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
 {
-   const HChar* preload_core    = "vgpreload_core";
-   const HChar* ld_preload      = "LD_PRELOAD=";
-   const HChar* v_launcher      = VALGRIND_LAUNCHER "=";
+   HChar* preload_core    = "vgpreload_core";
+   HChar* ld_preload      = "LD_PRELOAD=";
+   HChar* v_launcher      = VALGRIND_LAUNCHER "=";
    Int    ld_preload_len  = VG_(strlen)( ld_preload );
    Int    v_launcher_len  = VG_(strlen)( v_launcher );
    Bool   ld_preload_done = False;
@@ -251,6 +251,10 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
 /*=== Setting up the client's stack                                ===*/
 /*====================================================================*/
 
+#ifndef AT_DCACHEBSIZE
+#define AT_DCACHEBSIZE		19
+#endif /* AT_DCACHEBSIZE */
+
 #ifndef AT_ICACHEBSIZE
 #define AT_ICACHEBSIZE		20
 #endif /* AT_ICACHEBSIZE */
@@ -284,10 +288,10 @@ static HChar** setup_client_env ( HChar** origenv, const HChar* toolname)
 #endif	/* AT_SECURE */
 
 /* Add a string onto the string table, and return its address */
-static HChar *copy_str(HChar **tab, const HChar *str)
+static char *copy_str(char **tab, const char *str)
 {
-   HChar *cp = *tab;
-   HChar *orig = cp;
+   char *cp = *tab;
+   char *orig = cp;
 
    while(*str)
       *cp++ = *str++;
@@ -378,16 +382,16 @@ struct auxv *find_auxv(UWord* sp)
 
 static 
 Addr setup_client_stack( void*  init_sp,
-                         HChar** orig_envp, 
+                         char** orig_envp, 
                          const ExeInfo* info,
                          UInt** client_auxv,
                          Addr   clstack_end,
                          SizeT  clstack_max_size )
 {
    SysRes res;
-   HChar **cpp;
-   HChar *strtab;		/* string table */
-   HChar *stringbase;
+   char **cpp;
+   char *strtab;		/* string table */
+   char *stringbase;
    Addr *ptr;
    struct auxv *auxv;
    const struct auxv *orig_auxv;
@@ -464,11 +468,11 @@ Addr setup_client_stack( void*  init_sp,
    /* OK, now we know how big the client stack is */
    stacksize =
       sizeof(Word) +                          /* argc */
-      (have_exename ? sizeof(HChar **) : 0) + /* argc[0] == exename */
-      sizeof(HChar **)*argc +                 /* argv */
-      sizeof(HChar **) +                      /* terminal NULL */
-      sizeof(HChar **)*envc +                 /* envp */
-      sizeof(HChar **) +                      /* terminal NULL */
+      (have_exename ? sizeof(char **) : 0) +  /* argc[0] == exename */
+      sizeof(char **)*argc +                  /* argv */
+      sizeof(char **) +	                      /* terminal NULL */
+      sizeof(char **)*envc +                  /* envp */
+      sizeof(char **) +	                      /* terminal NULL */
       auxsize +                               /* auxv */
       VG_ROUNDUP(stringsize, sizeof(Word));   /* strings (aligned) */
 
@@ -479,13 +483,17 @@ Addr setup_client_stack( void*  init_sp,
    client_SP = VG_ROUNDDN(client_SP, 16); /* make stack 16 byte aligned */
 
    /* base of the string table (aligned) */
-   stringbase = strtab = (HChar *)clstack_end 
+   stringbase = strtab = (char *)clstack_end 
                          - VG_ROUNDUP(stringsize, sizeof(int));
 
    clstack_start = VG_PGROUNDDN(client_SP);
 
    /* The max stack size */
    clstack_max_size = VG_PGROUNDUP(clstack_max_size);
+
+   /* Record stack extent -- needed for stack-change code. */
+   VG_(clstk_base) = clstack_start;
+   VG_(clstk_end)  = clstack_end;
 
    if (0)
       VG_(printf)("stringsize=%d auxsize=%d stacksize=%d maxsize=0x%x\n"
@@ -549,7 +557,7 @@ Addr setup_client_stack( void*  init_sp,
         res = VG_(am_mmap_anon_fixed_client)(
                  anon_start -inner_HACK,
                  anon_size +inner_HACK,
-	         info->stack_prot
+	         VKI_PROT_READ|VKI_PROT_WRITE|VKI_PROT_EXEC
 	      );
      }
      if ((!ok) || sr_isError(res)) {
@@ -564,11 +572,6 @@ Addr setup_client_stack( void*  init_sp,
 
      vg_assert(ok);
      vg_assert(!sr_isError(res)); 
-
-     /* Record stack extent -- needed for stack-change code. */
-     VG_(clstk_base) = anon_start -inner_HACK;
-     VG_(clstk_end)  = VG_(clstk_base) + anon_size +inner_HACK -1;
-
    }
 
    /* ==================== create client stack ==================== */
@@ -600,7 +603,7 @@ Addr setup_client_stack( void*  init_sp,
    *ptr++ = 0;
 
    /* --- envp --- */
-   VG_(client_envp) = (HChar **)ptr;
+   VG_(client_envp) = (Char **)ptr;
    for (cpp = orig_envp; cpp && *cpp; ptr++, cpp++)
       *ptr = (Addr)copy_str(&strtab, *cpp);
    *ptr++ = 0;
@@ -640,9 +643,7 @@ Addr setup_client_stack( void*  init_sp,
          case AT_GID:
          case AT_EGID:
          case AT_CLKTCK:
-#        if !defined(VGPV_arm_linux_android) \
-            && !defined(VGPV_x86_linux_android) \
-            && !defined(VGPV_mips32_linux_android)
+#        if !defined(VGPV_arm_linux_android) && !defined(VGPV_x86_linux_android)
          case AT_FPUCW: /* missing on android */
 #        endif
             /* All these are pointerless, so we don't need to do
@@ -664,7 +665,17 @@ Addr setup_client_stack( void*  init_sp,
             break;
 
          case AT_BASE:
-            auxv->u.a_val = info->interp_offset;
+            /* When gdbserver sends the auxv to gdb, the AT_BASE has
+               to be ignored, as otherwise gdb adds this offset
+               to loaded shared libs, causing wrong address
+               relocation e.g. when inserting breaks.
+               However, ignoring AT_BASE makes V crash on Android 4.1.
+               So, keep the AT_BASE on android for now.
+               ??? Need to dig in depth about AT_BASE/GDB interaction */
+#           if !defined(VGPV_arm_linux_android)
+            auxv->a_type = AT_IGNORE;
+#           endif
+            auxv->u.a_val = info->interp_base;
             break;
 
          case AT_PLATFORM:
@@ -697,6 +708,7 @@ Addr setup_client_stack( void*  init_sp,
 #           endif
             break;
 
+         case AT_DCACHEBSIZE:
          case AT_ICACHEBSIZE:
          case AT_UCACHEBSIZE:
 #           if defined(VGP_ppc32_linux)
@@ -704,7 +716,7 @@ Addr setup_client_stack( void*  init_sp,
             if (auxv->u.a_val > 0) {
                VG_(machine_ppc32_set_clszB)( auxv->u.a_val );
                VG_(debugLog)(2, "initimg", 
-                                "PPC32 icache line size %u (type %u)\n", 
+                                "PPC32 cache line size %u (type %u)\n", 
                                 (UInt)auxv->u.a_val, (UInt)auxv->a_type );
             }
 #           elif defined(VGP_ppc64_linux)
@@ -712,7 +724,7 @@ Addr setup_client_stack( void*  init_sp,
             if (auxv->u.a_val > 0) {
                VG_(machine_ppc64_set_clszB)( auxv->u.a_val );
                VG_(debugLog)(2, "initimg", 
-                                "PPC64 icache line size %u (type %u)\n", 
+                                "PPC64 cache line size %u (type %u)\n", 
                                 (UInt)auxv->u.a_val, (UInt)auxv->a_type );
             }
 #           endif
@@ -1040,7 +1052,7 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    arch->vex.guest_GPR2 = iifii.initial_client_TOC;
    arch->vex.guest_CIA  = iifii.initial_client_IP;
 
-#  elif defined(VGP_arm_linux)
+#   elif defined(VGP_arm_linux)
    /* Zero out the initial state, and set up the simulated FPU in a
       sane way. */
    LibVEX_GuestARM_initialise(&arch->vex);
@@ -1056,17 +1068,6 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    // FIXME jrs: what's this for?
    arch->vex.guest_R1 =  iifii.initial_client_SP;
 
-#  elif defined(VGP_arm64_linux)
-   /* Zero out the initial state. */
-   LibVEX_GuestARM64_initialise(&arch->vex);
-
-   /* Zero out the shadow areas. */
-   VG_(memset)(&arch->vex_shadow1, 0, sizeof(VexGuestARM64State));
-   VG_(memset)(&arch->vex_shadow2, 0, sizeof(VexGuestARM64State));
-
-   arch->vex.guest_XSP = iifii.initial_client_SP;
-   arch->vex.guest_PC  = iifii.initial_client_IP;
-
 #  elif defined(VGP_s390x_linux)
    vg_assert(0 == sizeof(VexGuestS390XState) % 16);
 
@@ -1078,9 +1079,9 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    VG_(memset)(&arch->vex_shadow1, 0xFF, sizeof(VexGuestS390XState));
    VG_(memset)(&arch->vex_shadow2, 0x00, sizeof(VexGuestS390XState));
    /* ... except SP, FPC, and IA */
-   arch->vex_shadow1.guest_SP = 0;
-   arch->vex_shadow1.guest_fpc = 0;
-   arch->vex_shadow1.guest_IA = 0;
+   VG_(memset)((UChar *)&arch->vex_shadow1 + VG_O_STACK_PTR, 0x00, 8);
+   VG_(memset)((UChar *)&arch->vex_shadow1 + VG_O_FPC_REG,   0x00, 4);
+   VG_(memset)((UChar *)&arch->vex_shadow1 + VG_O_INSTR_PTR, 0x00, 8);
 
    /* Put essential stuff into the new state. */
    arch->vex.guest_SP = iifii.initial_client_SP;
@@ -1108,20 +1109,6 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
    arch->vex.guest_PC = iifii.initial_client_IP;
    arch->vex.guest_r31 = iifii.initial_client_SP;
 
-#   elif defined(VGP_mips64_linux)
-   vg_assert(0 == sizeof(VexGuestMIPS64State) % 16);
-   /* Zero out the initial state, and set up the simulated FPU in a
-      sane way. */
-   LibVEX_GuestMIPS64_initialise(&arch->vex);
-
-   /* Zero out the shadow areas. */
-   VG_(memset)(&arch->vex_shadow1, 0, sizeof(VexGuestMIPS64State));
-   VG_(memset)(&arch->vex_shadow2, 0, sizeof(VexGuestMIPS64State));
-
-   arch->vex.guest_r29 = iifii.initial_client_SP;
-   arch->vex.guest_PC = iifii.initial_client_IP;
-   arch->vex.guest_r31 = iifii.initial_client_SP;
-
 #  else
 #    error Unknown platform
 #  endif
@@ -1131,7 +1118,7 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo iifii )
              sizeof(VexGuestArchState));
 }
 
-#endif // defined(VGO_linux)
+#endif // defined(VGO_linux) && !defined(VGPV_ppc64_linux_bgq)
 
 /*--------------------------------------------------------------------*/
 /*---                                                              ---*/

@@ -8,7 +8,7 @@
   This file is part of Valgrind, a dynamic binary instrumentation
   framework.
 
-  Copyright (C) 2005-2013 Cerion Armour-Brown <cerion@open-works.co.uk>
+  Copyright (C) 2005-2012 Cerion Armour-Brown <cerion@open-works.co.uk>
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -150,6 +150,7 @@ VG_(disp_run_translations):
         cmpldi  6,0
         beq     .LafterVMX1
 
+#if !defined(VGPV_ppc64_linux_bgq)
         /* VRSAVE save word : 32 bytes */
         mfspr   6,256         /* vrsave reg is spr number 256 */
         stw     6,324(1)
@@ -181,6 +182,7 @@ VG_(disp_run_translations):
         stvx    21,6,1
         li      6,128
         stvx    20,6,1
+#endif
 .LafterVMX1:
 
         /* Local variable space... */
@@ -221,8 +223,10 @@ VG_(disp_run_translations):
         cmpldi  6,0
         beq     .LafterVMX2
 
+#if !defined(VGPV_ppc64_linux_bgq)
         vspltisw 3,0x0  /* generate zero */
         mtvscr  3
+#endif
 .LafterVMX2:
 
         /* make a stack frame for the code we are calling */
@@ -272,6 +276,7 @@ VG_(disp_run_translations):
         cmpldi  11,0    /* Do we have altivec? */
         beq     .LafterVMX8
 
+#if !defined(VGPV_ppc64_linux_bgq)
         /* Check VSCR[NJ] == 1 */
         /* first generate 4x 0x00010000 */
         vspltisw  4,0x1                   /* 4x 0x00000001 */
@@ -283,6 +288,7 @@ VG_(disp_run_translations):
         vspltw    7,7,0x3                 /* flags-word to all lanes */
         vcmpequw. 8,6,7                   /* CR[24] = 1 if v6 == v7 */
         bt        24,.invariant_violation /* branch if all_equal */
+#endif
 
 .LafterVMX8:
 	/* otherwise we're OK */
@@ -298,6 +304,7 @@ VG_(disp_run_translations):
         cmplwi  11,0
         beq     .LafterVMX9
 
+#if !defined(VGPV_ppc64_linux_bgq)
         /* Restore Altivec regs.
            Use r5 as scratch since r6/r7 are live. */
         /* VRSAVE */
@@ -329,6 +336,7 @@ VG_(disp_run_translations):
         lvx     21,5,1
         li      5,128
         lvx     20,5,1
+#endif
 .LafterVMX9:
 
         /* Restore FP regs */

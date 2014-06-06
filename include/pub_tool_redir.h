@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -240,8 +240,11 @@
 
 /* --- Soname of the standard C library. --- */
 
-#if defined(VGO_linux)
+#if defined(VGO_linux) && !defined(VGPV_ppc64_linux_bgq)
 #  define  VG_Z_LIBC_SONAME  libcZdsoZa              // libc.so*
+
+#elif defined(VGPV_ppc64_linux_bgq)
+#  define  VG_Z_LIBC_SONAME  NONE                    // in the main exe
 
 #elif defined(VGO_darwin) && (DARWIN_VERS <= DARWIN_10_6)
 #  define  VG_Z_LIBC_SONAME  libSystemZdZaZddylib    // libSystem.*.dylib

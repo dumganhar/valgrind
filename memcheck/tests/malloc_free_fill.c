@@ -12,7 +12,7 @@ int main ( void )
   int *r, *oldr, *a;
 
 #define TEST(x, exp_x, desc) \
-  (void)VALGRIND_MAKE_MEM_DEFINED(&x, sizeof(int));     \
+  VALGRIND_MAKE_MEM_DEFINED(&x, sizeof(int)); \
   if (x == exp_x) { \
      fprintf(stderr, "PASSED: " desc "\n"); \
   } else { \

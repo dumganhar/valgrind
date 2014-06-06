@@ -249,10 +249,9 @@ main(int argc, char **argv)
 {
     SHA1_CTX ctx;
     unsigned char hash[20];
-    unsigned char abc[] = "abc";
 
     SHA1Init(&ctx);
-    SHA1Update(&ctx, abc, 3);
+    SHA1Update(&ctx, "abc", 3);
     SHA1Final(hash, &ctx);
     return 0;
 }

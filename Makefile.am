@@ -3,18 +3,20 @@ AUTOMAKE_OPTIONS = foreign 1.10 dist-bzip2
 
 include $(top_srcdir)/Makefile.all.am 
 
-TOOLS =		memcheck \
-		cachegrind \
-		callgrind \
-		massif \
-		lackey \
-		none \
-		helgrind \
-		drd
-
-EXP_TOOLS = 	exp-sgcheck \
-		exp-bbv \
-		exp-dhat
+#TOOLS =		memcheck \
+#		cachegrind \
+#		callgrind \
+#		massif \
+#		lackey \
+#		none \
+#		helgrind \
+#		drd
+#
+#EXP_TOOLS = 	exp-sgcheck \
+#		exp-bbv \
+#		exp-dhat
+TOOLS = none lackey memcheck
+EXP_TOOLS =
 
 # Put docs last because building the HTML is slow and we want to get
 # everything else working before we try it.
@@ -25,11 +27,9 @@ SUBDIRS = \
 	. \
 	$(TOOLS) \
 	$(EXP_TOOLS) \
-	shared \
 	tests \
 	perf \
 	gdbserver_tests \
-	memcheck/tests/vbit-test \
 	auxprogs \
 	mpi \
 	docs
@@ -65,20 +65,18 @@ CLEANFILES     = default.supp
 default.supp: $(DEFAULT_SUPP_FILES)
 	echo "# This is a generated file, composed of the following suppression rules:" > default.supp
 	echo "# " $(DEFAULT_SUPP_FILES) >> default.supp
-	cat $^ >> default.supp
+	cat $(DEFAULT_SUPP_FILES) >> default.supp
 
 ## Preprend @PERL@ because tests/vg_regtest isn't executable
-## Ensure make exits with error if PERL fails or post_regtest_checks fails.
+## Ensure make exits with error if PERL fails or check_makefile_consistency fails.
 regtest: check
-	$(top_srcdir)/gdbserver_tests/make_local_links $(GDB)
+	gdbserver_tests/make_local_links $(GDB)
 	if @PERL@ tests/vg_regtest gdbserver_tests $(TOOLS) $(EXP_TOOLS) ; then \
-	   tests/post_regtest_checks $(abs_top_srcdir) gdbserver_tests $(TOOLS) $(EXP_TOOLS); \
+	   tests/check_makefile_consistency gdbserver_tests $(TOOLS) $(EXP_TOOLS); \
 	else \
-	   tests/post_regtest_checks $(abs_top_srcdir) gdbserver_tests $(TOOLS) $(EXP_TOOLS); \
+	   tests/check_makefile_consistency gdbserver_tests $(TOOLS) $(EXP_TOOLS); \
 	   false; \
 	fi
-post-regtest-checks:
-	tests/post_regtest_checks $(abs_top_srcdir) gdbserver_tests $(TOOLS) $(EXP_TOOLS)
 nonexp-regtest: check
 	@PERL@ tests/vg_regtest $(TOOLS)
 exp-regtest: check
@@ -105,7 +103,6 @@ EXTRA_DIST = \
 	README.android \
 	README.android_emulator \
 	README.mips \
-	README.aarch64 \
 	NEWS.old \
 	valgrind.pc.in \
 	valgrind.spec.in \

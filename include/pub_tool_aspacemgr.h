@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,7 +31,6 @@
 #ifndef __PUB_TOOL_ASPACEMGR_H
 #define __PUB_TOOL_ASPACEMGR_H
 
-#include "pub_tool_basics.h"   // VG_ macro
 
 //--------------------------------------------------------------
 // Definition of address-space segments

@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,14 +31,18 @@
 #ifndef __PUB_CORE_COMMANDLINE_H
 #define __PUB_CORE_COMMANDLINE_H
 
-#include "pub_core_basics.h"      // VG_ macro
 
 /* Split up the args presented by the launcher to m_main.main(), and
    park them in VG_(args_for_client), VG_(args_for_valgrind) and
    VG_(args_for_valgrind_extras).  The latter are acquired from
-   $VALGRIND_OPTS, ./.valgrindrc and ~/.valgrindrc. */
+   $VALGRIND_OPTS, ./.valgrindrc and ~/.valgrindrc.
 
-extern void VG_(split_up_argv)( Int argc, HChar** argv );
+   Returns a Bool indicating whether or not hardwired args (hwArgs) are
+   present.  That should always be False in non-statically-linked
+   scenario.
+*/
+
+extern Bool VG_(split_up_argv)( Int argc, HChar** argv );
 
 
 #endif   // __PUB_CORE_COMMANDLINE_H

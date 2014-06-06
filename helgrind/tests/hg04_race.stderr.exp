@@ -3,6 +3,7 @@
 
 Thread #x was created
    ...
+   by 0x........: pthread_create_WRK (hg_intercepts.c:...)
    by 0x........: pthread_create@* (hg_intercepts.c:...)
    by 0x........: main (hg04_race.c:21)
 
@@ -10,6 +11,7 @@ Thread #x was created
 
 Thread #x was created
    ...
+   by 0x........: pthread_create_WRK (hg_intercepts.c:...)
    by 0x........: pthread_create@* (hg_intercepts.c:...)
    by 0x........: main (hg04_race.c:19)
 
@@ -26,8 +28,9 @@ Locks held: none
    at 0x........: th (hg04_race.c:10)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
- Location 0x........ is 0 bytes inside global var "shared"
- declared at hg04_race.c:6
+
+Location 0x........ is 0 bytes inside local var "shared"
+declared at hg04_race.c:6, in frame #x of thread x
 
 ----------------------------------------------------------------
 
@@ -42,8 +45,9 @@ Locks held: none
    at 0x........: th (hg04_race.c:10)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
- Location 0x........ is 0 bytes inside global var "shared"
- declared at hg04_race.c:6
+
+Location 0x........ is 0 bytes inside local var "shared"
+declared at hg04_race.c:6, in frame #x of thread x
 
 
 ERROR SUMMARY: 2 errors from 2 contexts (suppressed: 0 from 0)

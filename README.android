@@ -13,12 +13,6 @@ ARM:
 x86:
   Android 4.0.3 running on android x86 emulator.
 
-mips32:
-  Android 4.1.2 running on android mips emulator.
-  Android 4.2.2 running on android mips emulator.
-  Android 4.3   running on android mips emulator.
-  Android 4.0.4 running on BROADCOM bcm7425
-
 On android-arm, GDBserver might insert breaks at wrong addresses.
 Feedback on this welcome.
 
@@ -32,8 +26,6 @@ http://code.google.com/p/android/issues/detail?id=23203
 For the android emulator, the versions needed and how to
 install them are described in README.android_emulator.
 
-You can get android-ndk-r6 from
-http://dl.google.com/android/ndk/android-ndk-r6-linux-x86.tar.bz2
 Install it somewhere.  Doesn't matter where.  Then do this:
 
 
@@ -78,10 +70,6 @@ export AR=$NDKROOT/toolchains/x86-4.4.3/prebuilt/linux-x86/bin/i686-android-linu
 export LD=$NDKROOT/toolchains/x86-4.4.3/prebuilt/linux-x86/bin/i686-android-linux-ld
 export CC=$NDKROOT/toolchains/x86-4.4.3/prebuilt/linux-x86/bin/i686-android-linux-gcc
 
-# For MIPS32
-export AR=$NDKROOT/toolchains/mipsel-linux-android-4.8/prebuilt/linux-x86_64/bin/mipsel-linux-android-ar
-export LD=$NDKROOT/toolchains/mipsel-linux-android-4.8/prebuilt/linux-x86_64/bin/mipsel-linux-android-ld
-export CC=$NDKROOT/toolchains/mipsel-linux-android-4.8/prebuilt/linux-x86_64/bin/mipsel-linux-android-gcc
 
 # Do configuration stuff.  Don't mess with the --prefix in the
 # configure command below, even if you think it's wrong.
@@ -109,13 +97,6 @@ CPPFLAGS="--sysroot=$NDKROOT/platforms/android-9/arch-x86 -DANDROID_HARDWARE_$HW
    --host=i686-android-linux --target=i686-android-linux \
    --with-tmpdir=/sdcard
 
-# for MIPS32
-CPPFLAGS="--sysroot=$NDKROOT/platforms/android-18/arch-mips -DANDROID_HARDWARE_$HWKIND" \
-   CFLAGS="--sysroot=$NDKROOT/platforms/android-18/arch-mips" \
-   ./configure --prefix=/data/local/Inst \
-   --host=mipsel-linux-android --target=mipsel-linux-android \
-   --with-tmpdir=/sdcard
-
 # At the end of the configure run, a few lines of details
 # are printed.  Make sure that you see these two lines:
 #
@@ -126,10 +107,6 @@ CPPFLAGS="--sysroot=$NDKROOT/platforms/android-18/arch-mips -DANDROID_HARDWARE_$
 # For x86:
 #          Platform variant: android
 #     Primary -DVGPV string: -DVGPV_x86_linux_android=1
-#
-# For mips32:
-#          Platform variant: android
-#     Primary -DVGPV string: -DVGPV_mips32_linux_android=1
 #
 # If you see anything else at this point, something is wrong, and
 # either the build will fail, or will succeed but you'll get something

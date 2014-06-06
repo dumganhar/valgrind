@@ -30,29 +30,21 @@
 # Linux specific complications:
 #
 # - need to support both old GNU ld and gold: use -Ttext= to
-#   set the text segment address if that is all we have. We really
-#   need -Ttext-segment. Otherwise with GNU ld sections or notes
-#   (like the build-id) don't get at the desired address. But older
-#   linkers only know about -Ttext, not -Ttext-segment. So configure
-#   checks for us and sets FLAG_T_TEXT.
+#   set the text segment address.
 #
-# - If all we have is -Ttext, then we need to pass --build-id=none
-#   (that is, -Wl,--build-id=none to gcc) if it accepts it, to ensure
-#   the linker doesn't add a notes section which ends up at the default
-#   load address and so defeats our attempts to keep that address clear
-#   for the client.  However, older linkers don't support this flag,
-#   so it is tested for by configure.in and is shipped to us as part of
+# - need to pass --build-id=none (that is, -Wl,--build-id=none to
+#   gcc) if it accepts it, to ensure the linker doesn't add a
+#   notes section which ends up at the default load address and
+#   so defeats our attempts to keep that address clear for the
+#   client.  However, older linkers don't support this flag, so it
+#   is tested for by configure.in and is shipped to us as part of
 #   argv[2 ..].
+#
 #
 # So: what we actually do:
 # 
 #   pass the specified command to the linker as-is, except, add
-#   "-static" and "-Ttext[-segment]=<argv[1]>" to it.
-#   Previously we did this by adding these options after the first
-#   word of the rest of the arguments, which works in the common case
-#   when it's something like "gcc". But the linker invocation itself
-#   might be multiple words, say if it's "ccache gcc". So we now put
-#   the new options at the end instead.
+#   "-static" and "-Ttext=<argv[1]>" to it.
 #
 
 use warnings;
@@ -63,39 +55,88 @@ die "Not enough arguments"
     if (($#ARGV + 1) < 5);
 
 my $ala = $ARGV[0];
-shift; # Remove $ala from @ARGV
 
 # check for plausible-ish alt load address
 die "Bogus alt-load address"
     if (length($ala) < 3 || index($ala, "0x") != 0);
 
-# For mips32 or mips64 we need to use "--section-start=.reginfo=$ala" or
-# "--section-start=.MIPS.options=$ala" respectively, because "-Ttext=$ala" will
-# not put all the sections to the specificed address ($ala).
-my $x = `cat ../config.log 2>&1 | grep host_cpu= | sed "s/host_cpu='//g"`;
-my $arch = substr($x, 0, index($x, "'"));
+# The cc invokation to do the final link
+my $cc = $ARGV[1];
 
-my $extra_args;
-if (($arch eq 'mips') || ($arch eq 'mipsel')
-    || ($arch eq 'mipsisa32r2el')) {
-   $extra_args = "-static -Wl,--section-start=.reginfo=$ala";
-} elsif (($arch eq 'mips64') || ($arch eq 'mips64el') ||
-         ($arch eq 'mipsisa64el')) {
-   $extra_args = "-static -Wl,--section-start=.MIPS.options=$ala";
-} else {
-   $extra_args = "-static -Wl,@FLAG_T_TEXT@=$ala";
+# and the 'restargs' are argv[2 ..]
+
+# so, build up the complete command here:
+# 'cc' -static -Ttext='ala' 'restargs'
+
+# For mips we need to use "--section-start=.reginfo=$ala" because
+# "--section-start=.reginfo=$ala" will put all the sections to the 
+# specificed address ($ala)
+my $triple=`$cc -v 2>&1 | grep Target | sed 's/Target: //g'`;
+
+# nuke the trailing \n, if any
+if (length($triple) > 0) {
+   $triple = substr($triple, 0, length($triple)-1);
 }
 
-my $cmd = join(" ", @ARGV, $extra_args);
+my $arch=substr($triple, 0, index($triple, '-'));
+
+my $cmd;
+
+if (($arch eq 'mips') || ($arch eq 'mipsel')) {
+   $cmd = "$cc -static -Wl,--section-start=.reginfo=$ala";
+} else {
+   $cmd = "$cc -static -Wl,-Ttext=$ala";
+}
+
+# If we're linking for BGQ, don't throw anything away.
+if ($triple eq 'powerpc64-bgq-linux') {
+   $cmd = "$cmd -Wl,--whole-archive";
+}
+
+# Add the rest of the parameters
+foreach my $n (2 .. $#ARGV) {
+   $cmd = "$cmd $ARGV[$n]";
+}
+
+# If we're linking for BGQ, add "-r" at the end so that we produce 
+# an ELF relocatable rather than an ELF executable.
+if ($triple eq 'powerpc64-bgq-linux') {
+   $cmd = "$cmd -r";
+}
 
 #print "link_tool_exe_linux: $cmd\n";
 
 
 # Execute the command:
-my $r = system($cmd);
+my $r = system("$cmd");
+if ($r != 0) { exit 1; }
 
-if ($r == 0) {
-    exit 0;
-} else {
-    exit 1;
+
+# Do BGQ specific post-link cleanup
+#
+if ($triple eq 'powerpc64-bgq-linux') {
+
+   # figure out what the outfile name is, and run localise_names on it
+   my $outname = "";
+   foreach my $n (2 .. $#ARGV - 1) {
+      my $str = $ARGV[$n];
+      if ($str eq "-o" && $outname eq "") {
+         $outname = $ARGV[$n + 1];
+      }
+   }
+   die "Can't find '-o outfilename' in command line"
+      if ($outname eq "");
+
+   $cmd = "";
+   $cmd = "$cmd  mv -f $outname tmp_$outname && ";
+   $cmd = "$cmd  ../coregrind/localise_names tmp_$outname $outname && ";
+   $cmd = "$cmd  rm -f tmp_$outname; ";
+
+   #print "QQQ cmd = $cmd\n";
+   $r = system($cmd);
+   if ($r != 0) { exit 1; }
 }
+
+
+# Success.
+exit 0;

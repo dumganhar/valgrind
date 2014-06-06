@@ -10,7 +10,7 @@ int main (int argc, char **argv)
    CLOSE_INHERITED_FDS;
 
    s1 = DO( open("/dev/null", O_RDONLY) );
-   (void) DO( fcntl(s1, F_DUPFD, s1) );
+   DO( fcntl(s1, F_DUPFD, s1) );
 
    return 0;
 }

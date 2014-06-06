@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -116,7 +116,7 @@
 __attribute__ ((__noreturn__))
 static inline void my_exit ( int x )
 {
-#  if defined(VGPV_arm_linux_android) || defined(VGPV_mips32_linux_android)
+#  if defined(VGPV_arm_linux_android)
    __asm__ __volatile__(".word 0xFFFFFFFF");
    while (1) {}
 #  elif defined(VGPV_x86_linux_android)
@@ -131,8 +131,7 @@ static inline void my_exit ( int x )
 /* Same problem with getpagesize. */
 static inline int my_getpagesize ( void )
 {
-#  if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android) \
-      || defined(VGPV_mips32_linux_android)
+#  if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android)
    return 4096; /* kludge - link failure on Android, for some reason */
 #  else
    extern int getpagesize (void);
@@ -175,7 +174,6 @@ static UWord umulHW ( UWord u, UWord v )
 */
 static struct vg_mallocfunc_info info;
 static int init_done;
-#define DO_INIT if (UNLIKELY(!init_done)) init()
 
 /* Startup hook - called as init section */
 __attribute__((constructor))
@@ -196,22 +194,6 @@ static void init(void);
    replacing.
 */
 
-/* The replacement functions are running on the simulated CPU.
-   The code on the simulated CPU does not necessarily use
-   all arguments. E.g. args can be ignored and/or only given
-   to a NON SIMD call.
-   The definedness of such 'unused' arguments will not be verified
-   by memcheck.
-   A call to 'trigger_memcheck_error_if_undefined' allows 
-   memcheck to detect such errors for the otherwise unused args.
-   Apart of allowing memcheck to detect an error, the function
-   trigger_memcheck_error_if_undefined has no effect and
-   has a minimal cost for other tools replacing malloc functions.
-*/
-static inline void trigger_memcheck_error_if_undefined ( ULong x )
-{
-   if (x == 0) __asm__ __volatile__( "" ::: "memory" );
-}
 
 /*---------------------- malloc ----------------------*/
 
@@ -225,8 +207,7 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
    { \
       void* v; \
       \
-      DO_INIT; \
-      trigger_memcheck_error_if_undefined((ULong)n ); \
+      if (!init_done) init(); \
       MALLOC_TRACE(#fnname "(%llu)", (ULong)n ); \
       \
       v = (void*)VALGRIND_NON_SIMD_CALL1( info.tl_##vg_replacement, n ); \
@@ -241,9 +222,7 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
    { \
       void* v; \
       \
-      DO_INIT; \
-      trigger_memcheck_error_if_undefined((ULong)(UWord) zone);	\
-      trigger_memcheck_error_if_undefined((ULong) n); \
+      if (!init_done) init(); \
       MALLOC_TRACE(#fnname "(%p, %llu)", zone, (ULong)n ); \
       \
       v = (void*)VALGRIND_NON_SIMD_CALL1( info.tl_##vg_replacement, n ); \
@@ -263,8 +242,7 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
    { \
       void* v; \
       \
-      DO_INIT; \
-      trigger_memcheck_error_if_undefined((ULong) n); \
+      if (!init_done) init(); \
       MALLOC_TRACE(#fnname "(%llu)", (ULong)n );        \
       \
       v = (void*)VALGRIND_NON_SIMD_CALL1( info.tl_##vg_replacement, n ); \
@@ -443,8 +421,7 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
    void VG_REPLACE_FUNCTION_EZU(10040,soname,fnname) (void *zone, void *p); \
    void VG_REPLACE_FUNCTION_EZU(10040,soname,fnname) (void *zone, void *p)  \
    { \
-      DO_INIT; \
-      trigger_memcheck_error_if_undefined((ULong)(UWord) zone);	\
+      if (!init_done) init(); \
       MALLOC_TRACE(#fnname "(%p, %p)\n", zone, p ); \
       if (p == NULL)  \
          return; \
@@ -456,7 +433,7 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
    void VG_REPLACE_FUNCTION_EZU(10050,soname,fnname) (void *p); \
    void VG_REPLACE_FUNCTION_EZU(10050,soname,fnname) (void *p)  \
    { \
-      DO_INIT; \
+      if (!init_done) init(); \
       MALLOC_TRACE(#fnname "(%p)\n", p ); \
       if (p == NULL)  \
          return; \
@@ -577,10 +554,7 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
    { \
       void* v; \
       \
-      DO_INIT; \
-      trigger_memcheck_error_if_undefined((ULong)(UWord) zone); \
-      trigger_memcheck_error_if_undefined((ULong) nmemb); \
-      trigger_memcheck_error_if_undefined((ULong) size); \
+      if (!init_done) init(); \
       MALLOC_TRACE("zone_calloc(%p, %llu,%llu)", zone, (ULong)nmemb, (ULong)size ); \
       \
       v = (void*)VALGRIND_NON_SIMD_CALL2( info.tl_calloc, nmemb, size ); \
@@ -597,7 +571,7 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
    { \
       void* v; \
       \
-      DO_INIT; \
+      if (!init_done) init(); \
       MALLOC_TRACE("calloc(%llu,%llu)", (ULong)nmemb, (ULong)size ); \
       \
       /* Protect against overflow.  See bug 24078. (that bug number is
@@ -639,7 +613,7 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
    { \
       void* v; \
       \
-      DO_INIT; \
+      if (!init_done) init(); \
       MALLOC_TRACE("zone_realloc(%p,%p,%llu)", zone, ptrV, (ULong)new_size ); \
       \
       if (ptrV == NULL) \
@@ -666,7 +640,7 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
    { \
       void* v; \
       \
-      DO_INIT; \
+      if (!init_done) init(); \
       MALLOC_TRACE("realloc(%p,%llu)", ptrV, (ULong)new_size ); \
       \
       if (ptrV == NULL) \
@@ -708,9 +682,7 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
    { \
       void* v; \
       \
-      DO_INIT; \
-      trigger_memcheck_error_if_undefined((ULong)(UWord) zone);	\
-      trigger_memcheck_error_if_undefined((ULong) n); \
+      if (!init_done) init(); \
       MALLOC_TRACE("zone_memalign(%p, al %llu, size %llu)", \
                    zone, (ULong)alignment, (ULong)n );  \
       \
@@ -735,8 +707,7 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
    { \
       void* v; \
       \
-      DO_INIT; \
-      trigger_memcheck_error_if_undefined((ULong) n); \
+      if (!init_done) init(); \
       MALLOC_TRACE("memalign(al %llu, size %llu)", \
                    (ULong)alignment, (ULong)n ); \
       \
@@ -789,7 +760,6 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
       static int pszB = 0; \
       if (pszB == 0) \
          pszB = my_getpagesize(); \
-      trigger_memcheck_error_if_undefined((ULong)(UWord) zone);	      \
       return VG_REPLACE_FUNCTION_EZU(10110,VG_Z_LIBC_SONAME,memalign) \
                 ((SizeT)pszB, size); \
    }
@@ -818,8 +788,6 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
    { \
       /* In glibc-2.2.4, 1 denotes a successful return value for \
          mallopt */ \
-      trigger_memcheck_error_if_undefined((ULong) cmd); \
-      trigger_memcheck_error_if_undefined((ULong) value); \
       return 1; \
    }
 
@@ -863,7 +831,6 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
    { \
       /* 0 denotes that malloc_trim() either wasn't able \
          to do anything, or was not implemented */ \
-      trigger_memcheck_error_if_undefined((ULong) pad); \
       return 0; \
    }
 
@@ -924,7 +891,7 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
    {  \
       SizeT pszB; \
       \
-      DO_INIT; \
+      if (!init_done) init(); \
       MALLOC_TRACE("malloc_usable_size(%p)", p ); \
       if (NULL == p) \
          return 0; \
@@ -940,8 +907,7 @@ static inline void trigger_memcheck_error_if_undefined ( ULong x )
  MALLOC_USABLE_SIZE(SO_SYN_MALLOC,    malloc_usable_size);
  MALLOC_USABLE_SIZE(VG_Z_LIBC_SONAME, malloc_size);
  MALLOC_USABLE_SIZE(SO_SYN_MALLOC,    malloc_size);
-# if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android) \
-     || defined(VGPV_mips32_linux_android)
+# if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android)
   MALLOC_USABLE_SIZE(VG_Z_LIBC_SONAME, dlmalloc_usable_size);
   MALLOC_USABLE_SIZE(SO_SYN_MALLOC,    dlmalloc_usable_size);
 # endif
@@ -1015,7 +981,7 @@ static void panic(const char *str)
    struct vg_mallinfo VG_REPLACE_FUNCTION_EZU(10200,soname,fnname) ( void ) \
    { \
       static struct vg_mallinfo mi; \
-      DO_INIT; \
+      if (!init_done) init(); \
       MALLOC_TRACE("mallinfo()\n"); \
       (void)VALGRIND_NON_SIMD_CALL1( info.mallinfo, &mi ); \
       return mi; \
@@ -1039,9 +1005,7 @@ static size_t my_malloc_size ( void* zone, void* ptr )
 {
    /* Implement "malloc_size" by handing the request through to the
       tool's .tl_usable_size method. */
-   DO_INIT;
-   trigger_memcheck_error_if_undefined((ULong)(UWord) zone);
-   trigger_memcheck_error_if_undefined((ULong)(UWord) ptr);
+   if (!init_done) init();
    size_t res = (size_t)VALGRIND_NON_SIMD_CALL1(
                            info.tl_malloc_usable_size, ptr);
    return res;
@@ -1101,7 +1065,6 @@ ZONE_FROM_PTR(SO_SYN_MALLOC,    malloc_zone_from_ptr);
    int VG_REPLACE_FUNCTION_EZU(10230,soname,fnname)(void* zone); \
    int VG_REPLACE_FUNCTION_EZU(10230,soname,fnname)(void* zone)  \
    { \
-      trigger_memcheck_error_if_undefined((ULong) zone); \
       return 1; \
    }
 

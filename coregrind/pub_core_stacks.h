@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward 
+   Copyright (C) 2000-2012 Julian Seward 
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,8 +31,6 @@
 #ifndef __PUB_CORE_STACKS_H
 #define __PUB_CORE_STACKS_H
 
-#include "pub_core_basics.h"    // VG_ macro
-
 //--------------------------------------------------------------------
 // PURPOSE: This module deals with the registration of stacks for the
 // purposes of detecting stack switches.
@@ -44,10 +42,7 @@ extern void  VG_(change_stack)     ( UWord id, Addr start, Addr end );
 extern void  VG_(stack_limits)     ( Addr SP, Addr *start, Addr *end );
 
 extern VG_REGPARM(3)
-       void VG_(unknown_SP_update_w_ECU)
-                                   ( Addr old_SP, Addr new_SP, UInt ecu );
-extern VG_REGPARM(2)
-       void VG_(unknown_SP_update) ( Addr old_SP, Addr new_SP );
+       void VG_(unknown_SP_update) ( Addr old_SP, Addr new_SP, UInt otag );
 
 #endif   // __PUB_CORE_STACKS_H
 

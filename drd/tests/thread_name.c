@@ -11,7 +11,6 @@
 #define NUM_THREADS 10
 
 
-static pthread_barrier_t s_barrier;
 static pthread_mutex_t s_mutex;
 static pthread_cond_t  s_cond;
 static int s_counter;
@@ -27,8 +26,6 @@ static void* thread_func(void* argp)
   ANNOTATE_THREAD_NAME(thread_name);
 
   memset(&invalid_mutex, 0xff, sizeof(invalid_mutex));
-
-  pthread_barrier_wait(&s_barrier);
 
   pthread_mutex_lock(&s_mutex);
   while (s_counter != thread_num)
@@ -48,7 +45,6 @@ int main(int arg, char** argv)
   int i;
   pthread_t tid[NUM_THREADS];
 
-  pthread_barrier_init(&s_barrier, NULL, NUM_THREADS);
   pthread_mutex_init(&s_mutex, 0);
   pthread_cond_init(&s_cond, 0);
 

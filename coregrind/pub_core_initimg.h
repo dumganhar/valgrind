@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2013 OpenWorks LLP
+   Copyright (C) 2006-2012 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -32,7 +32,6 @@
 #ifndef __PUB_CORE_INITIMG_H
 #define __PUB_CORE_INITIMG_H
 
-#include "pub_core_basics.h"      // Addr
 
 //--------------------------------------------------------------------
 // PURPOSE: Map the client executable into memory, then set up its
@@ -66,11 +65,11 @@ void VG_(ii_finalise_image)( IIFinaliseImageInfo );
 
 /* ------------------------- Linux ------------------------- */
 
-#if defined(VGO_linux)
+#if defined(VGO_linux) && !defined(VGPV_ppc64_linux_bgq)
 
 struct _IICreateImageInfo {
    /* ------ Mandatory fields ------ */
-   const HChar*  toolname;
+   HChar*  toolname;
    Addr    sp_at_startup;
    Addr    clstack_top;
    /* ------ Per-OS fields ------ */
@@ -94,7 +93,7 @@ struct _IIFinaliseImageInfo {
 
 struct _IICreateImageInfo {
    /* ------ Mandatory fields ------ */
-   const HChar*  toolname;
+   HChar*  toolname;
    Addr    sp_at_startup;
    Addr    clstack_top;
    /* ------ Per-OS fields ------ */
@@ -117,6 +116,27 @@ struct _IIFinaliseImageInfo {
    Addr  initial_client_IP;
 };
 
+/* ------------------------- BGQ ------------------------- */
+
+#elif defined(VGPV_ppc64_linux_bgq)
+
+struct _IICreateImageInfo {
+   /* ------ Mandatory fields ------ */
+   HChar*  toolname;
+   Addr    sp_at_startup;
+   Addr    clstack_top;
+   /* ------ Per-OS fields ------ */
+};
+
+struct _IIFinaliseImageInfo {
+   /* ------ Mandatory fields ------ */
+   SizeT clstack_max_size;
+   Addr  initial_client_SP;
+   /* ------ Per-OS fields ------ */
+   Addr  r2_at_startup;
+   Addr  initial_client_IP;
+   Bool  have_hardwired_args;
+};
 
 #else
 #  error "Unknown OS"

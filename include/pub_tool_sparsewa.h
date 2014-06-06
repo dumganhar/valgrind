@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2008-2013 OpenWorks Ltd
+   Copyright (C) 2008-2012 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -32,8 +32,6 @@
 #ifndef __PUB_TOOL_SPARSEWA_H
 #define __PUB_TOOL_SPARSEWA_H
 
-#include "pub_tool_basics.h"   // UWord
-
 //--------------------------------------------------------------------
 // PURPOSE: (see coregrind/pub_core_sparsewa.h for details)
 //--------------------------------------------------------------------
@@ -51,8 +49,8 @@
 typedef  struct _SparseWA  SparseWA; /* opaque */
 
 // Create a new one, using the specified allocator/deallocator
-SparseWA* VG_(newSWA) ( void*(*alloc_nofail)(const HChar* cc, SizeT), 
-                        const HChar* cc,
+SparseWA* VG_(newSWA) ( void*(*alloc_nofail)(HChar* cc, SizeT), 
+                        HChar* cc,
                         void(*dealloc)(void*) );
 
 // Delete one, and free all associated storage

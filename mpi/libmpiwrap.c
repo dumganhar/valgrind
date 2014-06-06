@@ -18,7 +18,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2013 OpenWorks LLP.  All rights reserved.
+   Copyright (C) 2006-2012 OpenWorks LLP.  All rights reserved.
 
    Redistribution and use in source and binary forms, with or without
    modification, are permitted provided that the following conditions
@@ -123,8 +123,7 @@
    A suitable soname to match with is therefore "libmpi*.so*".
 */
 #define I_WRAP_FNNAME_U(_name) \
-        I_WRAP_SONAME_FNNAME_ZU(libmpiZaZdsoZa,_name)
-
+        I_WRAP_SONAME_FNNAME_ZU(NONE,_name)
 
 /* Define HAVE_MPI_STATUS_IGNORE iff we have to deal with
    MPI_STATUS{ES}_IGNORE. */
@@ -166,13 +165,15 @@ static long sizeof_long_double_image ( void );
 
 /* ------ Helpers for debug printing ------ */
 
+#include "spi/include/kernel/location.h" /* for Kernel_GetRank */
+
 /* constant */
 static const char* preamble = "valgrind MPI wrappers";
 
 /* established at startup */
 static pid_t my_pid         = -1;
 static char* options_str    = NULL;
-static int   opt_verbosity  = 1;
+static int   opt_verbosity  = 0; /* JCG default silent for BGL 2MAR07 */
 static Bool  opt_missing    = 0; /* 0:silent; 1:warn; 2:abort */
 static Bool  opt_help       = False;
 static Bool  opt_initkludge = False;
@@ -184,7 +185,11 @@ static void before ( char* fnname )
    static int done = 0;
    if (done == 0) {
       done = 1;
-      my_pid = getpid();
+      my_pid = Kernel_GetRank();
+      if (my_pid == 0) {
+         /* JCG BGL for task 0 only, print message so know working. */
+         fprintf(stderr, "%s: Active\n", preamble); /* JCG */
+      }
       options_str = getenv("MPIWRAP_DEBUG");
       if (options_str) {
          if (NULL != strstr(options_str, "warn"))

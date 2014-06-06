@@ -10,7 +10,7 @@ int main (int argc, char **argv)
    CLOSE_INHERITED_FDS;
 
    sprintf(filename, "/tmp/file.%d", getpid());
-   (void) DO( creat(filename, 0) );
-   (void) DO( unlink(filename) );
+   DO( creat(filename, 0) );
+   DO( unlink(filename) );
    return 0;
 }

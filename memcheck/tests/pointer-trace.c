@@ -74,7 +74,7 @@ int main()
 		perror("trap 4 failed");
 	else {
 		munmap(map, 256*1024);
-		(void)VALGRIND_MAKE_MEM_DEFINED(map, 256*1024); /* great big fat lie */
+		VALGRIND_MAKE_MEM_DEFINED(map, 256*1024); /* great big fat lie */
 	}
 
 	VALGRIND_DO_LEAK_CHECK;

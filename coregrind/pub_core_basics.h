@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -58,14 +58,10 @@
 #  include "libvex_guest_ppc64.h"
 #elif defined(VGA_arm)
 #  include "libvex_guest_arm.h"
-#elif defined(VGA_arm64)
-#  include "libvex_guest_arm64.h"
 #elif defined(VGA_s390x)
 #  include "libvex_guest_s390x.h"
 #elif defined(VGA_mips32)
 #  include "libvex_guest_mips32.h"
-#elif defined(VGA_mips64)
-#  include "libvex_guest_mips64.h"
 #else
 #  error Unknown arch
 #endif
@@ -111,10 +107,6 @@ typedef
             UInt r7;
          } ARM;
          struct {
-            ULong x29; /* FP */
-            ULong x30; /* LR */
-         } ARM64;
-         struct {
             ULong r_fp;
             ULong r_lr;
          } S390X;
@@ -123,11 +115,6 @@ typedef
             UInt r31;  /* Return address of the last subroutine call */
             UInt r28;
          } MIPS32;
-         struct {
-            ULong r30;  /* Stack frame pointer or subroutine variable */
-            ULong r31;  /* Return address of the last subroutine call */
-            ULong r28;
-         } MIPS64;
       } misc;
    }
    UnwindStartRegs;

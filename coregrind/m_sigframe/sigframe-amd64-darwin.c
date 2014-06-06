@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2013 OpenWorks Ltd
+   Copyright (C) 2006-2012 OpenWorks Ltd
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -89,8 +89,14 @@ struct hacky_sigframe {
 static Bool extend ( ThreadState *tst, Addr addr, SizeT size )
 {
    ThreadId tid = tst->tid;
-   VG_TRACK( new_mem_stack_signal, addr - VG_STACK_REDZONE_SZB,
-             size + VG_STACK_REDZONE_SZB, tid );
+   /* For tracking memory events, indicate the entire frame has been
+      allocated.  Except, don't mess with the area which
+      overlaps the previous frame's redzone. */
+   /* XXX is the following call really right?  compared with the
+      amd64-linux version, this doesn't appear to handle the redzone
+      in the same way. */
+   VG_TRACK( new_mem_stack_signal,
+             addr - VG_STACK_REDZONE_SZB, size, tid );
    return True;
 }
 

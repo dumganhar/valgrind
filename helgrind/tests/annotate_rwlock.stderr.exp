@@ -2,6 +2,7 @@
 
 Thread #x was created
    ...
+   by 0x........: pthread_create_WRK (hg_intercepts.c:...)
    by 0x........: pthread_create@* (hg_intercepts.c:...)
    by 0x........: main (annotate_rwlock.c:164)
 
@@ -9,6 +10,7 @@ Thread #x was created
 
 Thread #x was created
    ...
+   by 0x........: pthread_create_WRK (hg_intercepts.c:...)
    by 0x........: pthread_create@* (hg_intercepts.c:...)
    by 0x........: main (annotate_rwlock.c:164)
 
@@ -27,7 +29,6 @@ Locks held: none
    by 0x........: thread_func (annotate_rwlock.c:147)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
- Address 0x........ is 4 bytes inside data symbol "s_rwlock"
 
 ----------------------------------------------------------------
 
@@ -44,7 +45,6 @@ Locks held: none
    by 0x........: thread_func (annotate_rwlock.c:144)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
- Address 0x........ is 8 bytes inside data symbol "s_rwlock"
 
 ----------------------------------------------------------------
 
@@ -61,7 +61,6 @@ Locks held: none
    by 0x........: thread_func (annotate_rwlock.c:149)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
- Address 0x........ is 8 bytes inside data symbol "s_rwlock"
 
 ----------------------------------------------------------------
 
@@ -78,7 +77,6 @@ Locks held: none
    by 0x........: thread_func (annotate_rwlock.c:149)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
- Address 0x........ is 8 bytes inside data symbol "s_rwlock"
 
 ----------------------------------------------------------------
 
@@ -95,7 +93,6 @@ Locks held: none
    by 0x........: thread_func (annotate_rwlock.c:149)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
- Address 0x........ is 4 bytes inside data symbol "s_rwlock"
 
 ----------------------------------------------------------------
 
@@ -116,6 +113,5 @@ Locks held: none
    by 0x........: thread_func (annotate_rwlock.c:149)
    by 0x........: mythread_wrapper (hg_intercepts.c:...)
    ...
- Address 0x........ is 4 bytes inside data symbol "s_rwlock"
 
 Finished.

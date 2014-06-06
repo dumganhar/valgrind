@@ -385,29 +385,30 @@ behavior of the DRD tool itself:</para>
       <para>
         Whether to report races between accessing memory and freeing
         memory. Enabling this option may cause DRD to run slightly
-        slower. Notes:</para>
-      <itemizedlist>
-	<listitem>
-	  <para>
-	    Don't enable this option when using custom memory allocators
-	    that use
-	    the <computeroutput>VG_USERREQ__MALLOCLIKE_BLOCK</computeroutput>
-	    and <computeroutput>VG_USERREQ__FREELIKE_BLOCK</computeroutput>
-	    because that would result in false positives.
-	  </para>
-	</listitem>
-	<listitem>
-	  <para>Don't enable this option when using reference-counted
-	    objects because that will result in false positives, even when
-	    that code has been annotated properly with
-	    <computeroutput>ANNOTATE_HAPPENS_BEFORE</computeroutput>
-	    and <computeroutput>ANNOTATE_HAPPENS_AFTER</computeroutput>. See
-	    e.g.  the output of the following command for an example:
-	    <computeroutput>valgrind --tool=drd --free-is-write=yes
-	      drd/tests/annotate_smart_pointer</computeroutput>.
-	  </para>
-	</listitem>
-      </itemizedlist>
+        slower. Notes:
+	<itemizedlist>
+	  <listitem>
+	    <para>
+	      Don't enable this option when using custom memory allocators
+	      that use
+	      the <computeroutput>VG_USERREQ__MALLOCLIKE_BLOCK</computeroutput>
+	      and <computeroutput>VG_USERREQ__FREELIKE_BLOCK</computeroutput>
+	      because that would result in false positives.
+	    </para>
+	  </listitem>
+	  <listitem>
+	    <para>Don't enable this option when using reference-counted
+	      objects because that will result in false positives, even when
+	      that code has been annotated properly with
+	      <computeroutput>ANNOTATE_HAPPENS_BEFORE</computeroutput>
+	      and <computeroutput>ANNOTATE_HAPPENS_AFTER</computeroutput>. See
+	      e.g.  the output of the following command for an example:
+	      <computeroutput>valgrind --tool=drd --free-is-write=yes
+		drd/tests/annotate_smart_pointer</computeroutput>.
+	    </para>
+	  </listitem>
+	</itemizedlist>
+      </para>
     </listitem>
   </varlistentry>
   <varlistentry>
@@ -496,7 +497,7 @@ behavior of the DRD tool itself:</para>
         Print stack usage at thread exit time. When a program creates a large
         number of threads it becomes important to limit the amount of virtual
         memory allocated for thread stacks. This option makes it possible to
-        observe how much stack memory has been used by each thread of the
+        observe how much stack memory has been used by each thread of the the
         client program. Note: the DRD tool itself allocates some temporary
         data on the client thread stack. The space necessary for this
         temporary data must be allocated by the client program when it
@@ -1245,32 +1246,6 @@ installing it as a package however, you will probably have to install
 another package with a name like <literal>valgrind-devel</literal>
 before Valgrind's header files are available.
 </para>
-
-</sect2>
-
-
-<sect2 id="drd-manual.C++11" xreflabel="C++11">
-<title>Debugging C++11 Programs</title>
-
-<para>If you want to use the C++11 class std::thread you will need to add the
-following code at the start of a common header or at the start of each source
-file to avoid that false positives are reported on the std::thread
-implementation:</para>
-
-<programlisting>
-#include &lt;valgrind/drd.h&gt;
-#define _GLIBCXX_SYNCHRONIZATION_HAPPENS_BEFORE(addr) ANNOTATE_HAPPENS_BEFORE(addr)
-#define _GLIBCXX_SYNCHRONIZATION_HAPPENS_AFTER(addr)  ANNOTATE_HAPPENS_AFTER(addr)
-#define _GLIBCXX_EXTERN_TEMPLATE -1
-</programlisting>
-
-<para>This code must occur before any C++ header files are included. Since the
-implementation of std::thread uses the C++ shared pointer implementation, that
-shared pointer implementation has to be annotated in order to avoid false
-positives. The above code implements such annotation.  See also <emphasis>The
-GNU C++ Library Manual, Debugging Support</emphasis>
-(<ulink url="http://gcc.gnu.org/onlinedocs/libstdc++/manual/debug.html">http://gcc.gnu.org/onlinedocs/libstdc++/manual/debug.html</ulink>)
-for more information.</para>
 
 </sect2>
 

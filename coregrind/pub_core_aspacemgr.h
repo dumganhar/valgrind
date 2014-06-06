@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -73,8 +73,7 @@ extern Addr VG_(am_startup) ( Addr sp_at_startup );
 
 /* Find the next segment along from 'here', if it is a file/anon/resvn
    segment. */
-extern NSegment const* VG_(am_next_nsegment) ( const NSegment* here,
-                                               Bool fwds );
+extern NSegment const* VG_(am_next_nsegment) ( NSegment* here, Bool fwds );
 
 /* Is the area [start .. start+len-1] validly accessible by the 
    client with at least the permissions 'prot' ?  To find out
@@ -85,12 +84,6 @@ extern NSegment const* VG_(am_next_nsegment) ( const NSegment* here,
 // Is in tool-visible header file.
 // extern Bool VG_(am_is_valid_for_client)
 //   ( Addr start, SizeT len, UInt prot );
-
-/* Same as VG_(am_is_valid_for_client) but for valgrind :
-   test if memory is addressable by valgrind with at least
-   the protection 'prot'. */
-extern Bool VG_(am_is_valid_for_valgrind)
-   ( Addr start, SizeT len, UInt prot );
 
 /* Variant of VG_(am_is_valid_for_client) which allows free areas to
    be consider part of the client's addressable space.  It also
@@ -105,7 +98,7 @@ extern Bool VG_(am_is_valid_for_client_or_free_or_resvn)
 extern ULong VG_(am_get_anonsize_total)( void );
 
 /* Show the segment array on the debug log, at given loglevel. */
-extern void VG_(am_show_nsegments) ( Int logLevel, const HChar* who );
+extern void VG_(am_show_nsegments) ( Int logLevel, HChar* who );
 
 /* Get the filename corresponding to this segment, if known and if it
    has one.  The returned name's storage cannot be assumed to be
@@ -211,6 +204,18 @@ extern SysRes VG_(am_do_mmap_NO_NOTIFY)
 
 
 //--------------------------------------------------------------
+// Functions pertaining to BGL-specific notifications.
+
+/* Tell aspacem what the name of this executable is so aspacem can
+   read symbol and layout info from it.  Must be called before
+   VG_(am_startup) (in contradiction to comments on that function.) */
+extern void VG_(am_bgq_set_name_of_executable)( HChar* );
+
+/* And retrieve it, once it has ben set. */
+extern const HChar* VG_(am_bgq_get_name_of_executable)( void );
+
+
+//--------------------------------------------------------------
 // Dealing with mappings which do not arise directly from the
 // simulation of the client.  These are typically used for
 // loading the client and building its stack/data segment, before
@@ -235,10 +240,26 @@ extern SysRes VG_(am_mmap_anon_fixed_client)
    update the segment array accordingly.  */
 extern SysRes VG_(am_mmap_anon_float_client) ( SizeT length, Int prot );
 
+/* Similarly, acquire new address space for the client but with
+   considerable restrictions on what can be done with it: (1) the
+   actual protections may exceed those stated in 'prot', (2) the
+   area's protections cannot be later changed using any form of
+   mprotect, and (3) the area cannot be freed using any form of
+   munmap.  On Linux this behaves the same as
+   VG_(am_mmap_anon_float_client).  On AIX5 this *may* allocate memory
+   by using sbrk, so as to make use of large pages on AIX. */
+extern SysRes VG_(am_sbrk_anon_float_client) ( SizeT length, Int prot );
+
+
 /* Map anonymously at an unconstrained address for V, and update the
    segment array accordingly.  This is fundamentally how V allocates
    itself more address space when needed. */
 extern SysRes VG_(am_mmap_anon_float_valgrind)( SizeT cszB );
+
+/* Same comments apply as per VG_(am_sbrk_anon_float_client).  On
+   Linux this behaves the same as VG_(am_mmap_anon_float_valgrind). */
+extern SysRes VG_(am_sbrk_anon_float_valgrind)( SizeT cszB );
+
 
 /* Map privately a file at an unconstrained address for V, and update the
    segment array accordingly.  This is used by V for transiently
@@ -272,12 +293,12 @@ extern Bool VG_(am_change_ownership_v_to_c)( Addr start, SizeT len );
    (is-client-heap) flag for that area.  Otherwise do nothing.
    (Bizarre interface so that the same code works for both Linux and
    AIX and does not impose inefficiencies on the Linux version.) */
-extern void VG_(am_set_segment_isCH_if_SkAnonC)( const NSegment* seg );
+extern void VG_(am_set_segment_isCH_if_SkAnonC)( NSegment* seg );
 
 /* Same idea as VG_(am_set_segment_isCH_if_SkAnonC), except set the
    segment's hasT bit (has-cached-code) if this is SkFileC or SkAnonC
    segment. */
-extern void VG_(am_set_segment_hasT_if_SkFileC_or_SkAnonC)( const NSegment* );
+extern void VG_(am_set_segment_hasT_if_SkFileC_or_SkAnonC)( NSegment* );
 
 /* --- --- --- reservations --- --- --- */
 
@@ -303,7 +324,7 @@ extern Bool VG_(am_create_reservation)
    the reservation segment after the operation must be at least one
    page long. */
 extern Bool VG_(am_extend_into_adjacent_reservation_client) 
-   ( const NSegment* seg, SSizeT delta );
+   ( NSegment* seg, SSizeT delta );
 
 /* --- --- --- resizing/move a mapping --- --- --- */
 
@@ -315,7 +336,7 @@ extern Bool VG_(am_extend_into_adjacent_reservation_client)
    *need_discard is True after a successful return, the caller should
    immediately discard translations from the new area. */
 extern Bool VG_(am_extend_map_client)( /*OUT*/Bool* need_discard,
-                                       const NSegment* seg, SizeT delta );
+                                       NSegment* seg, SizeT delta );
 
 /* Remap the old address range to the new address range.  Fails if any
    parameter is not page aligned, if the either size is zero, if any
@@ -335,8 +356,7 @@ extern Bool VG_(am_relocate_nooverlap_client)( /*OUT*/Bool* need_discard,
 // protects such stacks.
 
 #if defined(VGP_ppc32_linux) || defined(VGP_ppc64_linux) \
-    || defined(VGP_mips32_linux) || defined(VGP_mips64_linux) \
-    || defined(VGP_arm64_linux)
+    || defined(VGP_mips32_linux)
 # define VG_STACK_GUARD_SZB  65536  // 1 or 16 pages
 # define VG_STACK_ACTIVE_SZB (4096 * 256) // 1Mb
 #else
@@ -353,7 +373,7 @@ typedef
    VgStack;
 
 
-/* Allocate and initialise a VgStack (anonymous valgrind space).
+/* Allocate and initialise a VgStack (anonymous client space).
    Protect the stack active area and the guard areas appropriately.
    Returns NULL on failure, else the address of the bottom of the
    stack.  On success, also sets *initial_sp to what the stack pointer
@@ -381,6 +401,11 @@ typedef
 extern Bool VG_(get_changed_segments)(
       const HChar* when, const HChar* where, /*OUT*/ChangedSeg* css,
       Int css_size, /*OUT*/Int* css_used);
+#endif
+
+// JRS: this is also ugly
+#if defined(VGPV_ppc64_linux_bgq)
+extern void VG_(amo_get_stack_segment) ( /*OUT*/Addr* start, /*OUT*/Addr* end );
 #endif
 
 #endif   // __PUB_CORE_ASPACEMGR_H

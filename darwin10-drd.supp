@@ -119,13 +119,7 @@
    fun:pthread_create
 }
 {
-   drd-darwin-pthread-join-1
-   drd:ConflictingAccess
-   ...
-   fun:pthread_join$UNIX2003
-}
-{
-   drd-darwin-pthread-join-2
+   pthread_join()
    drd:ConflictingAccess
    ...
    fun:pthread_join

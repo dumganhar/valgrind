@@ -14,7 +14,7 @@ EXTRA_DIST = \
 	   million.post.exp \
 	   million.vgtest
 
-AM_CCASFLAGS += -ffreestanding -Xassembler -I$(top_srcdir)/exp-bbv/tests
+AM_CCASFLAGS += -ffreestanding
 
 LDFLAGS += -nostartfiles -nodefaultlibs
 

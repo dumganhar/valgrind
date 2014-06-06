@@ -1,7 +1,7 @@
 /*
   This file is part of drd, a thread error detector.
 
-  Copyright (C) 2006-2013 Bart Van Assche <bvanassche@acm.org>.
+  Copyright (C) 2006-2012 Bart Van Assche <bvanassche@acm.org>.
 
   This program is free software; you can redistribute it and/or
   modify it under the terms of the GNU General Public License as
@@ -152,7 +152,8 @@ void DRD_(cond_pre_init)(const Addr cond)
 
    p = DRD_(cond_get)(cond);
 
-   if (p) {
+   if (p)
+   {
       CondErrInfo cei = { .tid = DRD_(thread_get_running_tid)(), .cond = cond };
       VG_(maybe_record_error)(VG_(get_running_tid)(),
                               CondErr,
@@ -161,11 +162,11 @@ void DRD_(cond_pre_init)(const Addr cond)
                               &cei);
    }
 
-   cond_get_or_allocate(cond);
+   p = cond_get_or_allocate(cond);
 }
 
 /** Called after pthread_cond_destroy(). */
-void DRD_(cond_post_destroy)(const Addr cond, const Bool destroy_succeeded)
+void DRD_(cond_post_destroy)(const Addr cond)
 {
    struct cond_info* p;
 
@@ -196,8 +197,7 @@ void DRD_(cond_post_destroy)(const Addr cond, const Bool destroy_succeeded)
                               &cei);
    }
 
-   if (destroy_succeeded)
-      DRD_(clientobj_remove)(p->a1, ClientCondvar);
+   DRD_(clientobj_remove)(p->a1, ClientCondvar);
 }
 
 /**

@@ -31,7 +31,7 @@ int main()
 	if (ret != -1 || errno != EINTR) {
 		fprintf(stderr, "FAILED: expected nanosleep to be interrupted\n");
 	} else {
-		(void) VALGRIND_CHECK_VALUE_IS_DEFINED(rem);
+		VALGRIND_CHECK_VALUE_IS_DEFINED(rem);
 		fprintf(stderr, "PASSED\n"); /* assuming CHECK_VALUE_IS_DEFINED doesn't print anything */
 	}
 

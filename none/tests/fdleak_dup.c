@@ -9,7 +9,7 @@ int main (int argc, char **argv)
    CLOSE_INHERITED_FDS;
 
    s = DO( open("/dev/null", O_RDONLY) );
-   (void) DO( dup(s) );
+   DO( dup(s) );
 
    return 0;
 }

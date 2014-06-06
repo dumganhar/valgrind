@@ -39,7 +39,6 @@ AM_CXXFLAGS += $(AM_FLAG_M3264_PRI)
 # least some optimisation.
 hackedbz2_CFLAGS	= $(AM_CFLAGS) -O -Wno-inline
 
-globalerr_CFLAGS        = $(AM_CFLAGS) @FLAG_W_NO_UNINITIALIZED@
 # C ones
 #pth_create_LDADD	= -lpthread
 

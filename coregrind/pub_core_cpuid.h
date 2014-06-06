@@ -7,7 +7,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2000-2013 Julian Seward
+   Copyright (C) 2000-2012 Julian Seward
       jseward@acm.org
 
    This program is free software; you can redistribute it and/or
@@ -31,20 +31,12 @@
 #ifndef __PUB_CORE_CPUID_H
 #define __PUB_CORE_CPUID_H
 
-#include "pub_core_basics.h"      // VG_ macro
-
 //--------------------------------------------------------------------
 // PURPOSE: This module provides Valgrind's interface to the x86/amd64
 // CPUID instruction.
 //--------------------------------------------------------------------
 
-#if defined(VGA_x86) || defined(VGA_amd64)
-extern Bool VG_(has_cpuid) ( void );
-
-extern void VG_(cpuid) ( UInt eax, UInt ecx,
-                         UInt* eax_ret, UInt* ebx_ret,
-                         UInt* ecx_ret, UInt* edx_ret );
-#endif
+#include "pub_tool_cpuid.h"
 
 #endif   // __PUB_CORE_CPUID_H
 

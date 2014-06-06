@@ -6,7 +6,7 @@
 /*
    This file is part of Callgrind, a Valgrind tool for call tracing.
 
-   Copyright (C) 2002-2013, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
+   Copyright (C) 2002-2012, Josef Weidendorfer (Josef.Weidendorfer@gmx.de)
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -48,16 +48,14 @@
 typedef struct _EventGroup EventGroup;
 struct _EventGroup {
     Int size;
-    const HChar* name[0];
+    Char* name[0];
 };
 
 /* return 0 if event group can not be registered */
-EventGroup* CLG_(register_event_group) (int id, const HChar*);
-EventGroup* CLG_(register_event_group2)(int id, const HChar*, const HChar*);
-EventGroup* CLG_(register_event_group3)(int id, const HChar*, const HChar*,
-                                        const HChar*);
-EventGroup* CLG_(register_event_group4)(int id, const HChar*, const HChar*,
-                                        const HChar*, const HChar*);
+EventGroup* CLG_(register_event_group) (int id, Char*);
+EventGroup* CLG_(register_event_group2)(int id, Char*, Char*);
+EventGroup* CLG_(register_event_group3)(int id, Char*, Char*, Char*);
+EventGroup* CLG_(register_event_group4)(int id, Char*, Char*, Char*, Char*);
 EventGroup* CLG_(get_event_group)(int id);
 
 /* Event sets are defined by event groups they consist of. */
@@ -79,7 +77,7 @@ EventSet* CLG_(add_event_group)(EventSet*, Int id);
 EventSet* CLG_(add_event_group2)(EventSet*, Int id1, Int id2);
 EventSet* CLG_(add_event_set)(EventSet*, EventSet*);
 /* Writes event names into buf. Returns number of characters written */
-Int CLG_(sprint_eventset)(HChar* buf, EventSet*);
+Int CLG_(sprint_eventset)(Char* buf, EventSet*);
 
 
 /* Operations on costs. A cost pointer of 0 means zero cost.
@@ -106,7 +104,7 @@ Bool CLG_(add_and_zero_cost2)(EventSet*,ULong* dst,EventSet*,ULong* src);
 Bool CLG_(add_diff_cost)(EventSet*,ULong* dst, ULong* old, ULong* new_cost);
 Bool CLG_(add_diff_cost_lz)(EventSet*,ULong** pdst, ULong* old, ULong* new_cost);
 /* Returns number of characters written */
-Int CLG_(sprint_cost)(HChar* buf, EventSet*, ULong*);
+Int CLG_(sprint_cost)(Char* buf, EventSet*, ULong*);
 
 /* EventMapping: An ordered subset of events from an event set.
  * This is used to print out part of an EventSet, or in another order.
@@ -126,10 +124,10 @@ struct _EventMapping {
 
 /* Allocate space for an event mapping */
 EventMapping* CLG_(get_eventmapping)(EventSet*);
-void CLG_(append_event)(EventMapping*, const HChar*);
+void CLG_(append_event)(EventMapping*, Char*);
 /* Returns number of characters written */
-Int CLG_(sprint_eventmapping)(HChar* buf, EventMapping*);
+Int CLG_(sprint_eventmapping)(Char* buf, EventMapping*);
 /* Returns number of characters written */
-Int CLG_(sprint_mappingcost)(HChar* buf, EventMapping*, ULong*);
+Int CLG_(sprint_mappingcost)(Char* buf, EventMapping*, ULong*);
 
 #endif /* CLG_EVENTS */

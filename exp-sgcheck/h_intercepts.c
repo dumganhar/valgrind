@@ -7,7 +7,7 @@
    This file is part of Ptrcheck, a Valgrind tool for checking pointer
    use in programs.
 
-   Copyright (C) 2003-2013 Nicholas Nethercote
+   Copyright (C) 2003-2012 Nicholas Nethercote
       njn@valgrind.org
 
    This program is free software; you can redistribute it and/or
@@ -37,7 +37,7 @@
 #include "pub_tool_hashtable.h"
 #include "pub_tool_redir.h"
 #include "pub_tool_tooliface.h"
-#include "pub_tool_clreq.h"
+#include "valgrind.h"
 
 
 /* The following intercepts are copied verbatim from
@@ -49,12 +49,12 @@
    char* VG_REPLACE_FUNCTION_ZU(soname,fnname)( const char* s, int c ); \
    char* VG_REPLACE_FUNCTION_ZU(soname,fnname)( const char* s, int c ) \
    { \
-      HChar ch = (HChar)c;   \
-      const HChar* p = s;       \
-      const HChar* last = NULL; \
+      UChar  ch   = (UChar)((UInt)c); \
+      UChar* p    = (UChar*)s; \
+      UChar* last = NULL; \
       while (True) { \
          if (*p == ch) last = p; \
-         if (*p == 0) return (HChar *)last;     \
+         if (*p == 0) return last; \
          p++; \
       } \
    }
@@ -75,10 +75,10 @@ STRRCHR(VG_Z_DYLD,          rindex)
    char* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( const char* s, int c ); \
    char* VG_REPLACE_FUNCTION_ZU(soname,fnname) ( const char* s, int c ) \
    { \
-      HChar  ch = (HChar)c ; \
-      const HChar* p  = s;   \
+      UChar  ch = (UChar)((UInt)c); \
+      UChar* p  = (UChar*)s; \
       while (True) { \
-         if (*p == ch) return (HChar *)p; \
+         if (*p == ch) return p; \
          if (*p == 0) return NULL; \
          p++; \
       } \
@@ -137,7 +137,7 @@ STRLEN(VG_Z_LD_SO_1,              strlen)
    char* VG_REPLACE_FUNCTION_ZU(soname, fnname) ( char* dst, const char* src ); \
    char* VG_REPLACE_FUNCTION_ZU(soname, fnname) ( char* dst, const char* src ) \
    { \
-      HChar* dst_orig = dst; \
+      Char* dst_orig = dst; \
       \
       while (*src) *dst++ = *src++; \
       *dst = 0; \
@@ -166,8 +166,8 @@ STRCPY(VG_Z_DYLD,        strcpy)
          if (*s1 == 0) return -1; \
          if (*s2 == 0) return 1; \
          \
-         if (*(const unsigned char*)s1 < *(const unsigned char*)s2) return -1; \
-         if (*(const unsigned char*)s1 > *(const unsigned char*)s2) return 1; \
+         if (*(unsigned char*)s1 < *(unsigned char*)s2) return -1; \
+         if (*(unsigned char*)s1 > *(unsigned char*)s2) return 1; \
          \
          s1++; s2++; n++; \
       } \
@@ -187,17 +187,17 @@ STRNCMP(VG_Z_DYLD,        strncmp)
    int VG_REPLACE_FUNCTION_ZU(soname,fnname) \
           ( const char* s1, const char* s2 ) \
    { \
-      register UChar c1; \
-      register UChar c2; \
+      register unsigned char c1; \
+      register unsigned char c2; \
       while (True) { \
-         c1 = *(const UChar *)s1; \
-         c2 = *(const UChar *)s2; \
+         c1 = *(unsigned char *)s1; \
+         c2 = *(unsigned char *)s2; \
          if (c1 != c2) break; \
          if (c1 == 0) break; \
          s1++; s2++; \
       } \
-      if ((UChar)c1 < (UChar)c2) return -1; \
-      if ((UChar)c1 > (UChar)c2) return 1; \
+      if ((unsigned char)c1 < (unsigned char)c2) return -1; \
+      if ((unsigned char)c1 > (unsigned char)c2) return 1; \
       return 0; \
    }
 
@@ -215,7 +215,7 @@ STRCMP(VG_Z_LD64_SO_1,            strcmp)
    { \
       SizeT i; \
       UChar c0 = (UChar)c; \
-      const UChar* p = (const UChar*)s; \
+      UChar* p = (UChar*)s; \
       for (i = 0; i < n; i++) \
          if (p[i] == c0) return (void*)(&p[i]); \
       return NULL; \
@@ -325,13 +325,13 @@ STPCPY(VG_Z_LD_LINUX_X86_64_SO_2, stpcpy)
 
 /* Find the first occurrence of C in S.  */
 #define GLIBC232_RAWMEMCHR(soname, fnname) \
-   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) (const void* s, int c_in); \
-   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) (const void* s, int c_in) \
+   char* VG_REPLACE_FUNCTION_ZU(soname,fnname) (const char* s, int c_in); \
+   char* VG_REPLACE_FUNCTION_ZU(soname,fnname) (const char* s, int c_in) \
    { \
-      UChar c = (UChar)c_in; \
-      const UChar* char_ptr = s; \
+      unsigned char  c        = (unsigned char) c_in; \
+      unsigned char* char_ptr = (unsigned char *)s; \
       while (1) { \
-        if (*char_ptr == c) return (void *)char_ptr;    \
+         if (*char_ptr == c) return char_ptr; \
          char_ptr++; \
       } \
    }
@@ -343,26 +343,26 @@ GLIBC232_RAWMEMCHR(VG_Z_LIBC_SONAME, __GI___rawmemchr)
 
 
 #define STRSTR(soname, fnname) \
-   char* VG_REPLACE_FUNCTION_ZU(soname,fnname) \
-         (const char* haystack, const char* needle); \
-   char* VG_REPLACE_FUNCTION_ZU(soname,fnname) \
-         (const char* haystack, const char* needle) \
+   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) \
+         (void* haystack, void* needle); \
+   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) \
+         (void* haystack, void* needle) \
    { \
-      const HChar* h = haystack; \
-      const HChar* n = needle; \
+      UChar* h = (UChar*)haystack; \
+      UChar* n = (UChar*)needle; \
       \
       /* find the length of n, not including terminating zero */ \
       UWord nlen = 0; \
       while (n[nlen]) nlen++; \
       \
       /* if n is the empty string, match immediately. */ \
-      if (nlen == 0) return (HChar *)h;                  \
+      if (nlen == 0) return h; \
       \
       /* assert(nlen >= 1); */ \
-      HChar n0 = n[0]; \
+      UChar n0 = n[0]; \
       \
       while (1) { \
-         const HChar hh = *h; \
+         UChar hh = *h; \
          if (hh == 0) return NULL; \
          if (hh != n0) { h++; continue; } \
          \
@@ -373,7 +373,7 @@ GLIBC232_RAWMEMCHR(VG_Z_LIBC_SONAME, __GI___rawmemchr)
          } \
          /* assert(i >= 0 && i <= nlen); */ \
          if (i == nlen) \
-           return (HChar *)h;                   \
+            return h; \
          \
          h++; \
       } \
@@ -385,13 +385,13 @@ STRSTR(VG_Z_LIBC_SONAME,          strstr)
 
 
 #define STRPBRK(soname, fnname) \
-   char* VG_REPLACE_FUNCTION_ZU(soname,fnname) \
-         (const char* sV, const char* acceptV); \
-   char* VG_REPLACE_FUNCTION_ZU(soname,fnname) \
-         (const char* sV, const char* acceptV) \
+   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) \
+         (void* sV, void* acceptV); \
+   void* VG_REPLACE_FUNCTION_ZU(soname,fnname) \
+         (void* sV, void* acceptV) \
    { \
-      const HChar* s = sV; \
-      const HChar* accept = acceptV; \
+      UChar* s = (UChar*)sV; \
+      UChar* accept = (UChar*)acceptV; \
       \
       /*  find the length of 'accept', not including terminating zero */ \
       UWord nacc = 0; \
@@ -403,12 +403,12 @@ STRSTR(VG_Z_LIBC_SONAME,          strstr)
       /* assert(nacc >= 1); */ \
       while (1) { \
          UWord i; \
-         HChar sc = *s; \
+         UChar sc = *s; \
          if (sc == 0) \
             break; \
          for (i = 0; i < nacc; i++) { \
             if (sc == accept[i]) \
-              return (HChar *)s; \
+               return s; \
          } \
          s++; \
       } \

@@ -28,7 +28,7 @@
 
 #include <pthread.h>
 
-#define  NUM_THREADS   10
+#define  NUM_THREADS   80
 
 static pthread_once_t welcome_once_block = PTHREAD_ONCE_INIT;
 
@@ -46,7 +46,8 @@ void *identify_yourself(void *arg)
 		fprintf(stderr, "pthread_once failed with %d",rtn);
 		pthread_exit((void *)NULL);
 	}
-	printf("identify_yourself: Hi, I'm a thread\n");
+	printf("identify_yourself: Hi, I'm a thread, %p\n", arg);
+        sleep(2);
         return(NULL);
 }
 
@@ -74,7 +75,7 @@ main(void)
 
 	for (thread_num = 0; thread_num < NUM_THREADS; thread_num++) {
 	  pthread_join(threads[thread_num], NULL);
-	  //printf("main: joined to thread %d\n", thread_num);
+	  printf("main: joined to thread %d\n", thread_num);
 	}
 	printf("main: Goodbye\n");
         return 0;

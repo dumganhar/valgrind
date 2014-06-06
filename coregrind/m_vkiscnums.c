@@ -8,7 +8,7 @@
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2006-2013 OpenWorks LLP
+   Copyright (C) 2006-2012 OpenWorks LLP
       info@open-works.co.uk
 
    This program is free software; you can redistribute it and/or
@@ -46,13 +46,13 @@
 #if defined(VGO_linux)
 //---------------------------------------------------------------------------
 
-HChar* VG_(sysnum_string)(Word sysnum, SizeT n_buf, HChar* buf)
+Char* VG_(sysnum_string)(Word sysnum, SizeT n_buf, Char* buf)
 {
    VG_(snprintf)(buf, n_buf, "%3ld", sysnum);
    return buf;
 }
 
-HChar* VG_(sysnum_string_extra)(Word sysnum, SizeT n_buf, HChar* buf)
+Char* VG_(sysnum_string_extra)(Word sysnum, SizeT n_buf, Char* buf)
 {
    return VG_(sysnum_string)(sysnum, n_buf, buf);
 }
@@ -61,9 +61,9 @@ HChar* VG_(sysnum_string_extra)(Word sysnum, SizeT n_buf, HChar* buf)
 #elif defined(VGO_darwin)
 //---------------------------------------------------------------------------
 
-HChar* VG_(sysnum_string)(Word sysnum, SizeT n_buf, HChar* buf)
+Char* VG_(sysnum_string)(Word sysnum, SizeT n_buf, Char* buf)
 {
-   const HChar* classname = NULL;
+   Char* classname = NULL;
    switch (VG_DARWIN_SYSNO_CLASS(sysnum)) {
       case VG_DARWIN_SYSCALL_CLASS_MACH: classname = "mach"; break;
       case VG_DARWIN_SYSCALL_CLASS_UNIX: classname = "unix"; break;
@@ -76,7 +76,7 @@ HChar* VG_(sysnum_string)(Word sysnum, SizeT n_buf, HChar* buf)
    return buf;
 }
 
-HChar* VG_(sysnum_string_extra)(Word sysnum, SizeT n_buf, HChar* buf)
+Char* VG_(sysnum_string_extra)(Word sysnum, SizeT n_buf, Char* buf)
 {
    return VG_(sysnum_string)(sysnum, n_buf, buf);
 }

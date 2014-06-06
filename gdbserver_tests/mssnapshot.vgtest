@@ -1,4 +1,4 @@
-# test the massif help and massif snapshots.
+# test the memcheck monitor help
 prereq: test -e gdb
 prog: t
 vgopts: --tool=massif --vgdb=yes --vgdb-error=0 --vgdb-prefix=./vgdb-prefix-mssnapshot
