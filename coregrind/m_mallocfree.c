@@ -2574,7 +2574,6 @@ void* VG_(arena_perm_malloc) ( ArenaId aid, SizeT size, Int align  )
 
 // All just wrappers to avoid exposing arenas to tools.
 
-// This function never returns NULL.
 void* VG_(malloc) ( const HChar* cc, SizeT nbytes )
 {
    return VG_(arena_malloc) ( VG_AR_CORE, cc, nbytes );
@@ -2595,16 +2594,17 @@ void* VG_(realloc) ( const HChar* cc, void* ptr, SizeT size )
    return VG_(arena_realloc) ( VG_AR_CORE, cc, ptr, size );
 }
 
-void VG_(realloc_shrink) ( void* ptr, SizeT size )
-{
-   VG_(arena_realloc_shrink) ( VG_AR_CORE, ptr, size );
-}
-
 HChar* VG_(strdup) ( const HChar* cc, const HChar* s )
 {
    return VG_(arena_strdup) ( VG_AR_CORE, cc, s ); 
 }
 
+// Useful for querying user blocks.           
+SizeT VG_(malloc_usable_size) ( void* p )                    
+{                                                            
+   return VG_(arena_malloc_usable_size)(VG_AR_CLIENT, p);
+}                                                            
+  
 void* VG_(perm_malloc) ( SizeT size, Int align  )
 {
    return VG_(arena_perm_malloc) ( VG_AR_CORE, size, align );

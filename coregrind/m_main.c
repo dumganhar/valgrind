@@ -1148,7 +1148,7 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
          the default one. */
       static const HChar default_supp[] = "default.supp";
       Int len = VG_(strlen)(VG_(libdir)) + 1 + sizeof(default_supp);
-      HChar *buf = VG_(malloc)("main.mpclo.3", len);
+      HChar *buf = VG_(arena_malloc)(VG_AR_CORE, "main.mpclo.3", len);
       VG_(sprintf)(buf, "%s/%s", VG_(libdir), default_supp);
       VG_(clo_suppressions)[VG_(clo_n_suppressions)] = buf;
       VG_(clo_n_suppressions)++;
@@ -1679,7 +1679,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    //--------------------------------------------------------------
    VG_(debugLog)(1, "main", "Starting the dynamic memory manager\n");
    { void* p = VG_(malloc)( "main.vm.1", 12345 );
-     VG_(free)( p );
+     if (p) VG_(free)( p );
    }
    VG_(debugLog)(1, "main", "Dynamic memory manager is running\n");
 

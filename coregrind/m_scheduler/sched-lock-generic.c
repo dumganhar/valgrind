@@ -51,7 +51,8 @@ static struct sched_lock *create_sched_lock(void)
    struct sched_lock *p;
 
    p = VG_(malloc)("sched_lock", sizeof(*p));
-   ML_(sema_init)(&p->sema);
+   if (p)
+      ML_(sema_init)(&p->sema);
    return p;
 }
 

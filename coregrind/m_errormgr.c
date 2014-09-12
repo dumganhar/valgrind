@@ -824,7 +824,7 @@ void VG_(maybe_record_error) ( ThreadId tid,
       DedupPoolAlloc for these strings will avoid duplicating
       such string in each error using it. */
    if (NULL != p->string) {
-      p->string = VG_(strdup)("errormgr.mre.2", p->string);
+      p->string = VG_(arena_strdup)(VG_AR_CORE, "errormgr.mre.2", p->string);
    }
 
    /* copy block pointed to by 'extra', if there is one */
@@ -1198,13 +1198,15 @@ static Bool is_simple_str (const HChar *s)
 static Bool setLocationTy ( SuppLoc* p, HChar *buf )
 {
    if (VG_(strncmp)(buf, "fun:", 4) == 0) {
-      p->name = VG_(strdup)("errormgr.sLTy.1", buf+4);
+      p->name = VG_(arena_strdup)(VG_AR_CORE,
+                                  "errormgr.sLTy.1", buf+4);
       p->name_is_simple_str = is_simple_str (p->name);
       p->ty = FunName;
       return True;
    }
    if (VG_(strncmp)(buf, "obj:", 4) == 0) {
-      p->name = VG_(strdup)("errormgr.sLTy.2", buf+4);
+      p->name = VG_(arena_strdup)(VG_AR_CORE,
+                                  "errormgr.sLTy.2", buf+4);
       p->name_is_simple_str = is_simple_str (p->name);
       p->ty = ObjName;
       return True;
@@ -1278,7 +1280,8 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
    while (True) {
       /* Assign and initialise the two suppression halves (core and tool) */
       Supp* supp;
-      supp        = VG_(malloc)("errormgr.losf.1", sizeof(Supp));
+      supp        = VG_(arena_malloc)(VG_AR_CORE, "errormgr.losf.1",
+                                      sizeof(Supp));
       supp->count = 0;
 
       // Initialise temporary reading-in buffer.
@@ -1292,7 +1295,7 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
 
       eof = get_nbnc_line ( fd, &buf, &nBuf, &lineno );
       if (eof) {
-         VG_(free)(supp);
+         VG_(arena_free)(VG_AR_CORE, supp);
          break;
       }
 
@@ -1302,7 +1305,7 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
 
       if (eof || VG_STREQ(buf, "}")) BOMB("unexpected '}'");
 
-      supp->sname = VG_(strdup)("errormgr.losf.2", buf);
+      supp->sname = VG_(arena_strdup)(VG_AR_CORE, "errormgr.losf.2", buf);
       supp->clo_suppressions_i = clo_suppressions_i;
       supp->sname_lineno = lineno;
 
@@ -1349,8 +1352,8 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
             if (VG_STREQ(buf, "}"))
                break;
          }
-         VG_(free)(supp->sname);
-         VG_(free)(supp);
+         VG_(arena_free)(VG_AR_CORE, supp->sname);
+         VG_(arena_free)(VG_AR_CORE, supp);
          continue;
       }
 
@@ -1419,7 +1422,8 @@ static void load_one_suppressions_file ( Int clo_suppressions_i )
 
       // Copy tmp_callers[] into supp->callers[]
       supp->n_callers = i;
-      supp->callers = VG_(malloc)("errormgr.losf.4", i * sizeof(SuppLoc));
+      supp->callers = VG_(arena_malloc)(VG_AR_CORE, "errormgr.losf.4",
+                                        i*sizeof(SuppLoc));
       for (i = 0; i < supp->n_callers; i++) {
          supp->callers[i] = tmp_callers[i];
       }

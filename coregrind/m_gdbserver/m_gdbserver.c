@@ -161,11 +161,13 @@ static int gdbserver_exited = 0;
 /* alloc and free functions for xarray and similar. */
 static void* gs_alloc (const HChar* cc, SizeT sz)
 {
-   return VG_(malloc)(cc, sz);
+   void* res = VG_(arena_malloc)(VG_AR_CORE, cc, sz);
+   vg_assert (res);
+   return res;
 }
 static void gs_free (void* ptr)
 {
-   VG_(free)(ptr);
+   VG_(arena_free)(VG_AR_CORE, ptr);
 }
 
 typedef
@@ -211,7 +213,7 @@ static void add_gs_address (Addr addr, GS_Kind kind, const HChar* from)
 {
    GS_Address *p;
 
-   p = VG_(malloc)(from, sizeof(GS_Address));
+   p = VG_(arena_malloc)(VG_AR_CORE, from, sizeof(GS_Address));
    p->addr = HT_addr (addr);
    p->kind = kind;
    VG_(HT_add_node)(gs_addresses, p);
@@ -230,7 +232,7 @@ static void remove_gs_address (GS_Address* g, const HChar* from)
    // See add_gs_address for the explanation for condition and the range 2 below.
    if (VG_(clo_vgdb) != Vg_VgdbFull)
       VG_(discard_translations) (g->addr, 2, from);
-   VG_(free) (g);
+   VG_(arena_free) (VG_AR_CORE, g);
 }
 
 const HChar* VG_(ppPointKind) (PointKind kind)
@@ -372,7 +374,8 @@ Bool VG_(gdbserver_point) (PointKind kind, Bool insert,
    g = lookup_gs_watch (addr, len, kind, &g_ix);
    if (insert) {
       if (g == NULL) {
-         g = VG_(malloc)("gdbserver_point watchpoint", sizeof(GS_Watch));
+         g = VG_(arena_malloc)(VG_AR_CORE, "gdbserver_point watchpoint",
+                               sizeof(GS_Watch));
          g->addr = addr;
          g->len  = len;
          g->kind = kind;
@@ -385,7 +388,7 @@ Bool VG_(gdbserver_point) (PointKind kind, Bool insert,
    } else {
       if (g != NULL) {
          VG_(removeIndexXA) (gs_watches, g_ix);
-         VG_(free) (g);
+         VG_(arena_free) (VG_AR_CORE, g);
       } else {
          dlog(1, 
               "VG_(gdbserver_point) addr %p len %d kind %s already deleted?\n",
