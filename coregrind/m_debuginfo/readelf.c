@@ -50,6 +50,7 @@
 #include "priv_readelf.h"          /* self */
 #include "priv_readdwarf.h"        /* 'cos ELF contains DWARF */
 #include "priv_readdwarf3.h"
+#include "priv_readstabs.h"        /* and stabs, if we're unlucky */
 #include "priv_readexidx.h"
 
 /* --- !!! --- EXTERNAL HEADERS start --- !!! --- */
@@ -109,9 +110,9 @@
 /* Identify an ELF object file by peering at the first few bytes of
    it. */
 
-Bool ML_(is_elf_object_file)( const void* image, SizeT n_image, Bool rel_ok )
+Bool ML_(is_elf_object_file)( void* image, SizeT n_image, Bool rel_ok )
 {
-   const ElfXX_Ehdr* ehdr = image;
+   ElfXX_Ehdr* ehdr = (ElfXX_Ehdr*)image;
    Int ok = 1;
 
    if (n_image < sizeof(ElfXX_Ehdr))
@@ -158,7 +159,7 @@ static Bool is_elf_object_file_by_DiImage( DiImage* img, Bool rel_ok )
 static
 void show_raw_elf_symbol ( DiImage* strtab_img,
                            Int i, 
-                           const ElfXX_Sym* sym,
+                           ElfXX_Sym* sym,
                            DiOffT sym_name_ioff, Addr sym_svma,
                            Bool ppc64_linux_format )
 {
@@ -185,8 +186,8 @@ void show_raw_elf_symbol ( DiImage* strtab_img,
    HChar* sym_name = NULL;
    if (sym->st_name)
       sym_name = ML_(img_strdup)(strtab_img, "di.sres.1", sym_name_ioff);
-   VG_(printf)(": svma %#010lx, %ssz %4llu  %s\n",
-               sym_svma, space, (ULong)(sym->st_size + 0UL),
+   VG_(printf)(": svma %#010lx, %ssz %4ld  %s\n",
+               sym_svma, space, sym->st_size + 0UL,
                (sym_name ? sym_name : "NONAME") ); 
    if (sym_name)
       ML_(dinfo_free)(sym_name);
@@ -224,12 +225,12 @@ static
 Bool get_elf_symbol_info ( 
         /* INPUTS */
         struct _DebugInfo* di, /* containing DebugInfo */
-        const ElfXX_Sym* sym,        /* ELF symbol */
+        ElfXX_Sym* sym,        /* ELF symbol */
         DiOffT     sym_name_ioff, /* name, may be absent (DiOffT_INVALID) */
-        const DiSlice*   escn_strtab,   /* holds the name */
+        DiSlice*   escn_strtab,   /* holds the name */
         Addr       sym_svma,   /* address as stated in the object file */
         Bool       symtab_in_debug, /* symbol table is in the debug file */
-        const DiSlice*   escn_opd,   /* the .opd (ppc64be-linux only) */
+        DiSlice*   escn_opd,   /* the .opd (ppc64be-linux only) */
         PtrdiffT   opd_bias,   /* for biasing AVMAs found in .opd */
         /* OUTPUTS */
         DiOffT* sym_name_out_ioff, /* name (in strtab) we should record */
@@ -420,10 +421,7 @@ Bool get_elf_symbol_info (
       in /system/bin/linker:  __dl_strcmp __dl_strlen
    */
    if (*sym_size_out == 0) {
-#     if defined(VGPV_arm_linux_android) \
-         || defined(VGPV_x86_linux_android) \
-         || defined(VGPV_mips32_linux_android) \
-         || defined(VGPV_arm64_linux_android)
+#     if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android)
       *sym_size_out = 2048;
 #     else
       if (TRACE_SYMTAB_ENABLED) {
@@ -748,7 +746,7 @@ void read_elf_symtab__normal(
      )
 {
    if (escn_strtab->img == NULL || escn_symtab->img == NULL) {
-      HChar buf[80];  // FIXME: allocate dynamically
+      HChar buf[80];
       vg_assert(VG_(strlen)(tab_name) < 40);
       VG_(sprintf)(buf, "   object doesn't have a %s", tab_name);
       ML_(symerr)(di, False, buf);
@@ -810,7 +808,7 @@ void read_elf_symtab__normal(
                          i,
                          disym.avmas.main,
                          (Int)disym.size,
-                         disym.pri_name
+                         (HChar*)disym.pri_name
             );
 	    if (GET_LOCAL_EP_AVMA(disym.avmas) != 0) {
                TRACE_SYMTAB("               local entry point %#010lx\n",
@@ -848,7 +846,7 @@ typedef
    }
    TempSym;
 
-static Word cmp_TempSymKey ( const TempSymKey* key1, const TempSym* elem2 )
+static Word cmp_TempSymKey ( TempSymKey* key1, TempSym* elem2 )
 {
    /* Stay sane ... */
    vg_assert(key1->img == elem2->key.img);
@@ -879,7 +877,7 @@ void read_elf_symtab__ppc64be_linux(
    TempSym    *prev;
 
    if (escn_strtab->img == NULL || escn_symtab->img == NULL) {
-      HChar buf[80];  // FIXME: allocate dynamically
+      HChar buf[80];
       vg_assert(VG_(strlen)(tab_name) < 40);
       VG_(sprintf)(buf, "   object doesn't have a %s", tab_name);
       ML_(symerr)(di, False, buf);
@@ -893,6 +891,7 @@ void read_elf_symtab__ppc64be_linux(
                                (OSetCmp_t)cmp_TempSymKey, 
                                ML_(dinfo_zalloc), "di.respl.1",
                                ML_(dinfo_free) );
+   vg_assert(oset);
 
    /* Perhaps should start at i = 1; ELF docs suggest that entry
       0 always denotes 'unknown symbol'. */
@@ -989,6 +988,7 @@ void read_elf_symtab__ppc64be_linux(
 
             /* A new (name,addr) key.  Add and continue. */
             elem = VG_(OSetGen_AllocNode)(oset, sizeof(TempSym));
+            vg_assert(elem);
             elem->key      = key;
             elem->tocptr   = GET_TOCPTR_AVMA(sym_avmas_really);
             elem->size     = sym_size;
@@ -1045,7 +1045,7 @@ void read_elf_symtab__ppc64be_linux(
                      disym.avmas.main,
                      GET_TOCPTR_AVMA(disym.avmas),
                      (Int)   disym.size,
-                     disym.pri_name
+                     (HChar*)disym.pri_name
                );
       }
       i++;
@@ -1319,7 +1319,7 @@ DiImage* find_debug_file( struct _DebugInfo* di,
    hacky and dangerous way: check only the --extra-debuginfo-path and
    the --debuginfo-server.  And don't do a consistency check. */
 static
-DiImage* find_debug_file_ad_hoc( const DebugInfo* di,
+DiImage* find_debug_file_ad_hoc( struct _DebugInfo* di,
                                  const HChar* objpath )
 {
    const HChar* extrapath  = VG_(clo_extra_debuginfo_path);
@@ -1525,7 +1525,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
       Bool has_nonempty_rx = False;
       Bool has_nonempty_rw = False;
       for (i = 0; i < VG_(sizeXA)(di->fsm.maps); i++) {
-         DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
+         struct _DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
          if (!map->rx && !map->rw)
             continue;
          if (map->rx && map->size > 0)
@@ -1601,13 +1601,13 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
    TRACE_SYMTAB("shdr:    ioff %llu nent %ld ent_szB %ld\n",
                shdr_mioff, shdr_mnent, shdr_ment_szB);
    for (i = 0; i < VG_(sizeXA)(di->fsm.maps); i++) {
-      const DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
+      struct _DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
       if (map->rx)
          TRACE_SYMTAB("rx_map:  avma %#lx   size %lu  foff %lu\n",
                       map->avma, map->size, map->foff);
    }
    for (i = 0; i < VG_(sizeXA)(di->fsm.maps); i++) {
-      const DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
+      struct _DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
       if (map->rw)
          TRACE_SYMTAB("rw_map:  avma %#lx   size %lu  foff %lu\n",
                       map->avma, map->size, map->foff);
@@ -1691,9 +1691,8 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
             if (a_phdr.p_memsz > 0) {
                Bool loaded = False;
                for (j = 0; j < VG_(sizeXA)(di->fsm.maps); j++) {
-                  const DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, j);
+                  struct _DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, j);
                   if (   (map->rx || map->rw)
-                      && map->size > 0 /* stay sane */
                       && a_phdr.p_offset >= map->foff
                       && a_phdr.p_offset <  map->foff + map->size
                       && a_phdr.p_offset + a_phdr.p_filesz 
@@ -1708,9 +1707,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                             == (PF_R | PF_W)) {
                         item.exec = False;
                         VG_(addToXA)(svma_ranges, &item);
-                        TRACE_SYMTAB(
-                           "PT_LOAD[%ld]:   acquired as rw, bias 0x%lx\n",
-                           i, item.bias);
+                        TRACE_SYMTAB("PT_LOAD[%ld]:   acquired as rw\n", i);
                         loaded = True;
                      }
                      if (map->rx
@@ -1718,9 +1715,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                             == (PF_R | PF_X)) {
                         item.exec = True;
                         VG_(addToXA)(svma_ranges, &item);
-                        TRACE_SYMTAB(
-                           "PT_LOAD[%ld]:   acquired as rx, bias 0x%lx\n",
-                           i, item.bias);
+                        TRACE_SYMTAB("PT_LOAD[%ld]:   acquired as rx\n", i);
                         loaded = True;
                      }
                   }
@@ -1808,27 +1803,27 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
    TRACE_SYMTAB("\n");
    TRACE_SYMTAB("------ Examining the section headers ------\n");
    for (i = 0; i < VG_(sizeXA)(di->fsm.maps); i++) {
-      const DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
+      struct _DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
       if (map->rx)
          TRACE_SYMTAB("rx: at %#lx are mapped foffsets %ld .. %ld\n",
                       map->avma, map->foff, map->foff + map->size - 1 );
    }
    TRACE_SYMTAB("rx: contains these svma regions:\n");
    for (i = 0; i < VG_(sizeXA)(svma_ranges); i++) {
-      const RangeAndBias* reg = VG_(indexXA)(svma_ranges, i);
+      RangeAndBias* reg = VG_(indexXA)(svma_ranges, i);
       if (reg->exec)
          TRACE_SYMTAB("  svmas %#lx .. %#lx with bias %#lx\n",
                       reg->svma_base, reg->svma_limit - 1, reg->bias );
    }
    for (i = 0; i < VG_(sizeXA)(di->fsm.maps); i++) {
-      const DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
+      struct _DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, i);
       if (map->rw)
          TRACE_SYMTAB("rw: at %#lx are mapped foffsets %ld .. %ld\n",
                       map->avma, map->foff, map->foff + map->size - 1 );
    }
    TRACE_SYMTAB("rw: contains these svma regions:\n");
    for (i = 0; i < VG_(sizeXA)(svma_ranges); i++) {
-      const RangeAndBias* reg = VG_(indexXA)(svma_ranges, i);
+      RangeAndBias* reg = VG_(indexXA)(svma_ranges, i);
       if (!reg->exec)
          TRACE_SYMTAB("  svmas %#lx .. %#lx with bias %#lx\n",
                       reg->svma_base, reg->svma_limit - 1, reg->bias );
@@ -2327,6 +2322,8 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
       DiSlice dynsym_escn         = DiSlice_INVALID; // .dynsym
       DiSlice debuglink_escn      = DiSlice_INVALID; // .gnu_debuglink
       DiSlice debugaltlink_escn   = DiSlice_INVALID; // .gnu_debugaltlink
+      DiSlice stab_escn           = DiSlice_INVALID; // .stab         (stabs) 
+      DiSlice stabstr_escn        = DiSlice_INVALID; // .stabstr      (stabs) 
       DiSlice debug_line_escn     = DiSlice_INVALID; // .debug_line   (dwarf2)
       DiSlice debug_info_escn     = DiSlice_INVALID; // .debug_info   (dwarf2)
       DiSlice debug_types_escn    = DiSlice_INVALID; // .debug_types  (dwarf4)
@@ -2409,6 +2406,9 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
 
          FIND(".gnu_debuglink",     debuglink_escn)
          FIND(".gnu_debugaltlink",  debugaltlink_escn)
+
+         FIND(".stab",              stab_escn)
+         FIND(".stabstr",           stabstr_escn)
 
          FIND(".debug_line",        debug_line_escn)
          FIND(".debug_info",        debug_info_escn)
@@ -2532,7 +2532,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
          Addr     rw_dsvma_limit = 0;
          PtrdiffT rw_dbias = 0;
 
-         Bool need_symtab, need_dwarf2, need_dwarf1;
+         Bool need_symtab, need_stabs, need_dwarf2, need_dwarf1;
 
          if (phdr_dnent == 0
              || !ML_(img_valid)(dimg, phdr_dioff,
@@ -2580,7 +2580,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                            sizeof(a_phdr));
             if (a_phdr.p_type == PT_LOAD) {
                for (j = 0; j < VG_(sizeXA)(di->fsm.maps); j++) {
-                  const DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, j);
+                  struct _DebugInfoMapping* map = VG_(indexXA)(di->fsm.maps, j);
                   if (   a_phdr.p_offset >= map->foff
                       && a_phdr.p_offset <  map->foff + map->size
                       && a_phdr.p_offset + a_phdr.p_filesz
@@ -2602,6 +2602,7 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
          }
 
          need_symtab = (symtab_escn.img == NULL);
+         need_stabs  = (stab_escn.img == NULL);
          need_dwarf2 = (debug_info_escn.img == NULL);
          need_dwarf1 = (dwarf1d_escn.img == NULL);
 
@@ -2694,6 +2695,8 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
             /* NEEDED?        NAME             ElfSec */
             FIND(need_symtab, ".symtab",       symtab_escn)
             FIND(need_symtab, ".strtab",       strtab_escn)
+            FIND(need_stabs,  ".stab",         stab_escn)
+            FIND(need_stabs,  ".stabstr",      stabstr_escn)
             FIND(need_dwarf2, ".debug_line",   debug_line_escn)
             FIND(need_dwarf2, ".debug_info",   debug_info_escn)
             FIND(need_dwarf2, ".debug_types",  debug_types_escn)
@@ -2883,6 +2886,27 @@ Bool ML_(read_elf_debug_info) ( struct _DebugInfo* di )
                                           0/*assume zero avma*/,
                                           False/*!is_ehframe*/ );
       }
+
+      /* Read the stabs and/or dwarf2 debug information, if any.  It
+         appears reading stabs stuff on amd64-linux doesn't work, so
+         we ignore it.  On s390x stabs also doesnt work and we always
+         have the dwarf info in the eh_frame.  We also segfault on
+         ppc64-linux when reading stabs, so skip that.  ppc32-linux
+         seems OK though.  Also skip on Android. */
+#     if !defined(VGP_amd64_linux) \
+         && !defined(VGP_s390x_linux) \
+         && !defined(VGP_ppc64be_linux) \
+         && !defined(VGP_ppc64le_linux) \
+         && !defined(VGPV_arm_linux_android) \
+         && !defined(VGPV_x86_linux_android) \
+         && !defined(VGP_mips64_linux)
+      // JRS 31 July 2014: stabs reading is currently broken and
+      // therefore deactivated.
+      //if (stab_img && stabstr_img) {
+      //   ML_(read_debuginfo_stabs) ( di, stab_img, stab_sz, 
+      //                                   stabstr_img, stabstr_sz );
+      //}
+#     endif
 
       /* TOPLEVEL */
       /* jrs 2006-01-01: icc-8.1 has been observed to generate

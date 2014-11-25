@@ -1,4 +1,3 @@
-#if defined(__mips_hard_float)
 typedef enum {
    TO_NEAREST=0,
    TO_ZERO,
@@ -60,4 +59,3 @@ void set_rounding_mode(round_mode_t mode)
          break;
       }
 }
-#endif

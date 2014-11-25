@@ -1237,18 +1237,18 @@ UInt vprintf_wrk ( void(*send)(HChar), const HChar *format, va_list vargs )
 	 }
 #        if 0
 	 case 'y': { /* %y - print symbol */
+	    Char buf[100];
+	    Char *cp = buf;
 	    Addr a = va_arg(vargs, Addr);
 
-
-
-            HChar *name;
-	    if (VG_(get_fnname_w_offset)(a, &name)) {
-               HChar buf[1 + VG_strlen(name) + 1 + 1];
+	    if (flags & VG_MSG_PAREN)
+	       *cp++ = '(';
+	    if (VG_(get_fnname_w_offset)(a, cp, sizeof(buf)-4)) {
 	       if (flags & VG_MSG_PAREN) {
-                  VG_(sprintf)(str, "(%s)", name):
-	       } else {
-                  VG_(sprintf)(str, "%s", name):
-               }
+		  cp += VG_(strlen)(cp);
+		  *cp++ = ')';
+		  *cp = '\0';
+	       }
 	       ret += myvprintf_str(send, flags, width, buf, 0);
 	    }
 	    break;

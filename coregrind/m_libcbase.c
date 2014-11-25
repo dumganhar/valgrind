@@ -38,7 +38,6 @@
    Assert machinery for use in this file. vg_assert cannot be called
    here due to cyclic dependencies.
    ------------------------------------------------------------------ */
-#if 0
 #define libcbase_assert(expr)                             \
   ((void) (LIKELY(expr) ? 0 :                             \
            (ML_(libcbase_assert_fail)(#expr,              \
@@ -57,7 +56,6 @@ static void ML_(libcbase_assert_fail)( const HChar *expr,
    VG_(debugLog)(0, "libcbase", "Exiting now.\n");
    VG_(exit_now)(1);
 }
-#endif
 
 /* ---------------------------------------------------------------------
    HChar functions.
@@ -113,8 +111,7 @@ Long VG_(strtoll10) ( const HChar* str, HChar** endptr )
 
    if (!converted) str = str0;   // If nothing converted, endptr points to
    if (neg) n = -n;              //   the start of the string.
-   if (endptr)
-      *endptr = CONST_CAST(HChar *,str); // Record first failing character.
+   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
    return n;
 }
 
@@ -139,8 +136,7 @@ ULong VG_(strtoull10) ( const HChar* str, HChar** endptr )
 
    if (!converted) str = str0;   // If nothing converted, endptr points to
    //   the start of the string.
-   if (endptr)
-      *endptr = CONST_CAST(HChar *,str); // Record first failing character.
+   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
    return n;
 }
 
@@ -173,8 +169,7 @@ Long VG_(strtoll16) ( const HChar* str, HChar** endptr )
 
    if (!converted) str = str0;   // If nothing converted, endptr points to
    if (neg) n = -n;              //   the start of the string.
-   if (endptr)
-      *endptr = CONST_CAST(HChar *,str); // Record first failing character.
+   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
    return n;
 }
 
@@ -207,8 +202,7 @@ ULong VG_(strtoull16) ( const HChar* str, HChar** endptr )
 
    if (!converted) str = str0;   // If nothing converted, endptr points to
    //   the start of the string.
-   if (endptr)
-      *endptr = CONST_CAST(HChar *,str); // Record first failing character.
+   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
    return n;
 }
 
@@ -241,8 +235,7 @@ double VG_(strtod) ( const HChar* str, HChar** endptr )
 
    n += frac;
    if (neg) n = -n;
-   if (endptr)
-      *endptr = CONST_CAST(HChar *,str); // Record first failing character.
+   if (endptr) *endptr = (HChar *)str;    // Record first failing character.
    return n;
 }
 
@@ -291,7 +284,7 @@ HChar* VG_(strpbrk) ( const HChar* s, const HChar* accpt )
       a = accpt;
       while (*a)
          if (*a++ == *s)
-            return CONST_CAST(HChar *,s);
+           return (HChar *)s;
       s++;
    }
    return NULL;
@@ -303,6 +296,22 @@ HChar* VG_(strcpy) ( HChar* dest, const HChar* src )
    while (*src) *dest++ = *src++;
    *dest = 0;
    return dest_orig;
+}
+
+/* Copy bytes, not overrunning the end of dest and always ensuring
+   zero termination. */
+void VG_(strncpy_safely) ( HChar* dest, const HChar* src, SizeT ndest )
+{
+   libcbase_assert(ndest > 0);
+
+   SizeT i = 0;
+   while (True) {
+      dest[i] = 0;
+      if (src[i] == 0) return;
+      if (i >= ndest-1) return;
+      dest[i] = src[i];
+      i++;
+   }
 }
 
 HChar* VG_(strncpy) ( HChar* dest, const HChar* src, SizeT ndest )
@@ -391,7 +400,7 @@ HChar* VG_(strstr) ( const HChar* haystack, const HChar* needle )
       if (haystack[0] == 0) 
          return NULL;
       if (VG_(strncmp)(haystack, needle, n) == 0) 
-         return CONST_CAST(HChar *,haystack);
+         return (HChar*)haystack;
       haystack++;
    }
 }
@@ -406,7 +415,7 @@ HChar* VG_(strcasestr) ( const HChar* haystack, const HChar* needle )
       if (haystack[0] == 0) 
          return NULL;
       if (VG_(strncasecmp)(haystack, needle, n) == 0) 
-         return CONST_CAST(HChar *,haystack);
+         return (HChar*)haystack;
       haystack++;
    }
 }
@@ -414,7 +423,7 @@ HChar* VG_(strcasestr) ( const HChar* haystack, const HChar* needle )
 HChar* VG_(strchr) ( const HChar* s, HChar c )
 {
    while (True) {
-      if (*s == c) return CONST_CAST(HChar *,s);
+     if (*s == c) return (HChar *)s;
       if (*s == 0) return NULL;
       s++;
    }
@@ -424,7 +433,7 @@ HChar* VG_(strrchr) ( const HChar* s, HChar c )
 {
    Int n = VG_(strlen)(s);
    while (--n > 0) {
-      if (s[n] == c) return CONST_CAST(HChar *,s) + n;
+     if (s[n] == c) return (HChar *)s + n;
    }
    return NULL;
 }

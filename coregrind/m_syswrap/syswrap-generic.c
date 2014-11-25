@@ -427,8 +427,10 @@ SysRes do_mremap( Addr old_addr, SizeT old_len,
    SSizeT needL = new_len - old_len;
 
    vg_assert(needL > 0);
-   vg_assert(needA > 0);
-
+   if (needA == 0)
+      goto eINVAL; 
+      /* VG_(am_get_advisory_client_simple) interprets zero to mean
+         non-fixed, which is not what we want */
    advised = VG_(am_get_advisory_client_simple)( needA, needL, &ok );
    if (ok) {
       /* Fixes bug #129866. */
@@ -480,9 +482,10 @@ SysRes do_mremap( Addr old_addr, SizeT old_len,
    {
    Addr  needA = old_addr + old_len;
    SizeT needL = new_len - old_len;
-
-   vg_assert(needA > 0);
-
+   if (needA == 0) 
+      goto eINVAL;
+      /* VG_(am_get_advisory_client_simple) interprets zero to mean
+         non-fixed, which is not what we want */
    advised = VG_(am_get_advisory_client_simple)( needA, needL, &ok );
    if (ok) {
       /* Fixes bug #129866. */
@@ -567,8 +570,8 @@ void record_fd_close(Int fd)
          if(i->next)
             i->next->prev = i->prev;
          if(i->pathname) 
-            VG_(free) (i->pathname);
-         VG_(free) (i);
+            VG_(arena_free) (VG_AR_CORE, i->pathname);
+         VG_(arena_free) (VG_AR_CORE, i);
          fd_count--;
          break;
       }
@@ -582,8 +585,7 @@ void record_fd_close(Int fd)
    some such thing) or that we don't know the filename.  If the fd is
    already open, then we're probably doing a dup2() to an existing fd,
    so just overwrite the existing one. */
-void ML_(record_fd_open_with_given_name)(ThreadId tid, Int fd,
-                                         const HChar *pathname)
+void ML_(record_fd_open_with_given_name)(ThreadId tid, Int fd, char *pathname)
 {
    OpenFd *i;
 
@@ -594,7 +596,7 @@ void ML_(record_fd_open_with_given_name)(ThreadId tid, Int fd,
    i = allocated_fds;
    while (i) {
       if (i->fd == fd) {
-         if (i->pathname) VG_(free)(i->pathname);
+         if (i->pathname) VG_(arena_free)(VG_AR_CORE, i->pathname);
          break;
       }
       i = i->next;
@@ -602,7 +604,7 @@ void ML_(record_fd_open_with_given_name)(ThreadId tid, Int fd,
 
    /* Not already one: allocate an OpenFd */
    if (i == NULL) {
-      i = VG_(malloc)("syswrap.rfdowgn.1", sizeof(OpenFd));
+      i = VG_(arena_malloc)(VG_AR_CORE, "syswrap.rfdowgn.1", sizeof(OpenFd));
 
       i->prev = NULL;
       i->next = allocated_fds;
@@ -612,16 +614,16 @@ void ML_(record_fd_open_with_given_name)(ThreadId tid, Int fd,
    }
 
    i->fd = fd;
-   i->pathname = VG_(strdup)("syswrap.rfdowgn.2", pathname);
+   i->pathname = VG_(arena_strdup)(VG_AR_CORE, "syswrap.rfdowgn.2", pathname);
    i->where = (tid == -1) ? NULL : VG_(record_ExeContext)(tid, 0/*first_ip_delta*/);
 }
 
 // Record opening of an fd, and find its name.
 void ML_(record_fd_open_named)(ThreadId tid, Int fd)
 {
-   const HChar* buf;
-   const HChar* name;
-   if (VG_(resolve_filename)(fd, &buf))
+   static HChar buf[VKI_PATH_MAX];
+   HChar* name;
+   if (VG_(resolve_filename)(fd, buf, VKI_PATH_MAX))
       name = buf;
    else
       name = NULL;
@@ -671,8 +673,7 @@ void inet6_format(HChar *s, const UChar ip[16])
    static const unsigned char V4mappedprefix[12] = {0,0,0,0,0,0,0,0,0,0,0xff,0xff};
 
    if (!VG_(memcmp)(ip, V4mappedprefix, 12)) {
-      const struct vki_in_addr *sin_addr =
-          (const struct vki_in_addr *)(ip + 12);
+      struct vki_in_addr *sin_addr = (struct vki_in_addr *)(ip + 12);
       UInt addr = VG_(ntohl)(sin_addr->s_addr);
 
       VG_(sprintf)(s, "::ffff:%u.%u.%u.%u",
@@ -925,7 +926,7 @@ void pre_mem_read_sendmsg ( ThreadId tid, Bool read,
    HChar *outmsg = strdupcat ( "di.syswrap.pmrs.1",
                                "sendmsg", msg, VG_AR_CORE );
    PRE_MEM_READ( outmsg, base, size );
-   VG_(free) ( outmsg );
+   VG_(arena_free) ( VG_AR_CORE, outmsg );
 }
 
 static 
@@ -938,7 +939,7 @@ void pre_mem_write_recvmsg ( ThreadId tid, Bool read,
       PRE_MEM_READ( outmsg, base, size );
    else
       PRE_MEM_WRITE( outmsg, base, size );
-   VG_(free) ( outmsg );
+   VG_(arena_free) ( VG_AR_CORE, outmsg );
 }
 
 static
@@ -964,7 +965,7 @@ void msghdr_foreachfield (
    if ( !msg )
       return;
 
-   fieldName = VG_(malloc) ( "di.syswrap.mfef", VG_(strlen)(name) + 32 );
+   fieldName = VG_(arena_malloc) ( VG_AR_CORE, "di.syswrap.mfef", VG_(strlen)(name) + 32 );
 
    VG_(sprintf) ( fieldName, "(%s)", name );
 
@@ -1014,7 +1015,7 @@ void msghdr_foreachfield (
                      (Addr)msg->msg_control, msg->msg_controllen );
    }
 
-   VG_(free) ( fieldName );
+   VG_(arena_free) ( VG_AR_CORE, fieldName );
 }
 
 static void check_cmsg_for_fds(ThreadId tid, struct vki_msghdr *msg)
@@ -1060,8 +1061,8 @@ void pre_mem_read_sockaddr ( ThreadId tid,
    /* NULL/zero-length sockaddrs are legal */
    if ( sa == NULL || salen == 0 ) return;
 
-   outmsg = VG_(malloc) ( "di.syswrap.pmr_sockaddr.1",
-                          VG_(strlen)( description ) + 30 );
+   outmsg = VG_(arena_malloc) ( VG_AR_CORE, "di.syswrap.pmr_sockaddr.1",
+                                VG_(strlen)( description ) + 30 );
 
    VG_(sprintf) ( outmsg, description, "sa_family" );
    PRE_MEM_READ( outmsg, (Addr) &sa->sa_family, sizeof(vki_sa_family_t));
@@ -1130,7 +1131,7 @@ void pre_mem_read_sockaddr ( ThreadId tid,
          break;
    }
    
-   VG_(free) ( outmsg );
+   VG_(arena_free) ( VG_AR_CORE, outmsg );
 }
 
 /* Dereference a pointer to a UInt. */
@@ -2212,33 +2213,6 @@ ML_(generic_PRE_sys_mmap) ( ThreadId tid,
                                        arg5, arg6);
    }
 
-   /* Yet another refinement : sometimes valgrind chooses an address
-      which is not acceptable by the kernel. This at least happens
-      when mmap-ing huge pages, using the flag MAP_HUGETLB.
-      valgrind aspacem does not know about huge pages, and modifying
-      it to handle huge pages is not straightforward (e.g. need
-      to understand special file system mount options).
-      So, let's just redo an mmap, without giving any constraint to
-      the kernel. If that succeeds, check with aspacem that the returned
-      address is acceptable (i.e. is free).
-      This will give a similar effect as if the user would have
-      specified a MAP_FIXED at that address.
-      The aspacem state will be correctly updated afterwards.
-      We however cannot do this last refinement when the user asked
-      for a fixed mapping, as the user asked a specific address. */
-   if (sr_isError(sres) && !(arg4 & VKI_MAP_FIXED)) {
-      advised = 0; 
-      /* try mmap with NULL address and without VKI_MAP_FIXED
-         to let the kernel decide. */
-      sres = VG_(am_do_mmap_NO_NOTIFY)(advised, arg2, arg3,
-                                       arg4,
-                                       arg5, arg6);
-      if (!sr_isError(sres)) {
-         vg_assert(VG_(am_covered_by_single_free_segment)((Addr)sr_Res(sres),
-                                                           arg2));
-      }
-   }
-
    if (!sr_isError(sres)) {
       ULong di_handle;
       /* Notify aspacem. */
@@ -2760,7 +2734,7 @@ PRE(sys_execve)
    // Decide whether or not we want to follow along
    { // Make 'child_argv' be a pointer to the child's arg vector
      // (skipping the exe name)
-     const HChar** child_argv = (const HChar**)ARG2;
+     HChar** child_argv = (HChar**)ARG2;
      if (child_argv && child_argv[0] == NULL)
         child_argv = NULL;
      trace_this_child = VG_(should_we_trace_this_child)( (HChar*)ARG1, child_argv );
@@ -2882,6 +2856,7 @@ PRE(sys_execve)
       // allocate
       argv = VG_(malloc)( "di.syswrap.pre_sys_execve.1",
                           (tot_args+1) * sizeof(HChar*) );
+      if (argv == 0) goto hosed;
       // copy
       j = 0;
       argv[j++] = launcher_basename;
@@ -4140,12 +4115,8 @@ PRE(sys_setrlimit)
    arg1 &= ~_RLIMIT_POSIX_FLAG;
 #endif
 
-   if (!VG_(am_is_valid_for_client)(ARG2, sizeof(struct vki_rlimit), 
-                                    VKI_PROT_READ)) {
-      SET_STATUS_Failure( VKI_EFAULT );
-   }
-   else if (((struct vki_rlimit *)ARG2)->rlim_cur 
-            > ((struct vki_rlimit *)ARG2)->rlim_max) {
+   if (ARG2 &&
+       ((struct vki_rlimit *)ARG2)->rlim_cur > ((struct vki_rlimit *)ARG2)->rlim_max) {
       SET_STATUS_Failure( VKI_EINVAL );
    }
    else if (arg1 == VKI_RLIMIT_NOFILE) {

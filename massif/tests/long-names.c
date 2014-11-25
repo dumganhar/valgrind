@@ -1,8 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
-// Long function name. Make sure it is not truncated.
-
-
+// This function name is long enough to get truncated.  Nb: we need multiple
+// .exp.out* files because different length addresses can occur, which
+// result in a different number of chars from this name being truncated.
 #define A2500 \
 abcdefghijABCDEFGHIJabcdefghijABCDEFGHIJabcdefghij\
 abcdefghijABCDEFGHIJabcdefghijABCDEFGHIJabcdefghij\

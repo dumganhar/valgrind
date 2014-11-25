@@ -517,12 +517,10 @@ void prepare_fifos_and_shared_mem(int pid)
    user = getenv("LOGNAME");
    if (user == NULL) user = getenv("USER");
    if (user == NULL) user = "???";
-   if (strchr(user, '/')) user = "???";
 
    host = getenv("HOST");
    if (host == NULL) host = getenv("HOSTNAME");
    if (host == NULL) host = "???";
-   if (strchr(host, '/')) host = "???";
 
    len = strlen(vgdb_prefix) + strlen(user) + strlen(host) + 40;
    from_gdb_to_pid = vmalloc (len);
@@ -687,10 +685,8 @@ void received_signal (int signum)
       sigpipe++;
    } else if (signum == SIGALRM) {
       sigalrm++;
-#if defined(VGPV_arm_linux_android) \
-    || defined(VGPV_x86_linux_android) \
-    || defined(VGPV_mips32_linux_android) \
-    || defined(VGPV_arm64_linux_android)
+#if defined(VGPV_arm_linux_android) || defined(VGPV_x86_linux_android) \
+    || defined(VGPV_mips32_linux_android)
       /* Android has no pthread_cancel. As it also does not have
          an invoker implementation, there is no need for cleanup action.
          So, we just do nothing. */
@@ -751,11 +747,6 @@ void install_handlers(void)
       to cleanup.  */
    if (sigaction (SIGALRM, &action, &oldaction) != 0)
       XERROR (errno, "vgdb error sigaction SIGALRM\n");
-
-   /* unmask all signals, in case the process that launched vgdb
-      masked some. */
-   if (sigprocmask (SIG_SETMASK, &action.sa_mask, NULL) != 0)
-      XERROR (errno, "vgdb error sigprocmask");
 }
 
 /* close the FIFOs provided connections, terminate the invoker thread.  */

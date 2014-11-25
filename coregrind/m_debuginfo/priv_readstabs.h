@@ -1,15 +1,14 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
 
-/*---------------------------------------------------------------*/
-/*--- Provides guest state definition.       pub_core_guest.h ---*/
-/*---------------------------------------------------------------*/
+/*--------------------------------------------------------------------*/
+/*--- Read 'stabs' format debug info.             priv_readstabs.h ---*/
+/*--------------------------------------------------------------------*/
 
 /*
    This file is part of Valgrind, a dynamic binary instrumentation
    framework.
 
-   Copyright (C) 2014-2014 OpenWorks LLP
-      info@open-works.net
+   Copyright (C) 2000-2013 Julian Seward 
+      jseward@acm.org
 
    This program is free software; you can redistribute it and/or
    modify it under the terms of the GNU General Public License as
@@ -23,27 +22,33 @@
 
    You should have received a copy of the GNU General Public License
    along with this program; if not, write to the Free Software
-   Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA
-   02110-1301, USA.
+   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA
+   02111-1307, USA.
 
    The GNU General Public License is contained in the file COPYING.
-
-   Neither the names of the U.S. Department of Energy nor the
-   University of California nor the names of its contributors may be
-   used to endorse or promote products derived from this software
-   without prior written permission.
 */
 
-#ifndef __PUB_CORE_GUEST_H
-#define __PUB_CORE_GUEST_H
+#ifndef __PRIV_READSTABS_H
+#define __PRIV_READSTABS_H
 
-#include "pub_tool_guest.h"
+#include "pub_core_basics.h"      // UChar
+#include "pub_core_debuginfo.h"   // DebugInfo
 
-// No core-only exports;  everything in this module is visible to both
-// the core and tools.
+/*
+   Stabs reader greatly improved by Nick Nethercote, Apr 02.
+   This module was also extensively hacked on by Jeremy Fitzhardinge
+   and Tom Hughes.
+*/
 
+/* --------------------
+   Stabs reader
+   -------------------- */
+extern
+void ML_(read_debuginfo_stabs) ( DebugInfo* di,
+                                 UChar* stabC,   Int stab_sz,
+                                 HChar* stabstr, Int stabstr_sz );
 
-#endif   // __PUB_CORE_GUEST_H
+#endif /* ndef __PRIV_READSTABS_H */
 
 /*--------------------------------------------------------------------*/
 /*--- end                                                          ---*/

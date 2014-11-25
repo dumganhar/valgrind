@@ -130,13 +130,13 @@ static void avl_nasty ( AvlNode* root )
          root->child[1]->balance = 0;
          break;
       default:
-         vg_assert(0);
+         tl_assert(0);
    }
    root->balance=0;
 }
 
 /* Find size of a non-NULL tree. */
-static UWord size_avl_nonNull ( const AvlNode* nd )
+static UWord size_avl_nonNull ( AvlNode* nd )
 {
    return 1 + (nd->child[0] ? size_avl_nonNull(nd->child[0]) : 0)
             + (nd->child[1] ? size_avl_nonNull(nd->child[1]) : 0);
@@ -190,7 +190,7 @@ Bool avl_insert_wrk ( AvlNode**         rootp,
                case  1: return False;
                case  0: return True;
                case -1: break;
-               default: vg_assert(0);
+               default: tl_assert(0);
             }
             if ((*rootp)->child[0]->balance < 0) {
                avl_swr( rootp );
@@ -211,7 +211,7 @@ Bool avl_insert_wrk ( AvlNode**         rootp,
             return False;
          return True;
       }
-      vg_assert(0);/*NOTREACHED*/
+      tl_assert(0);/*NOTREACHED*/
    }
    else 
    if (cmpres < 0) {
@@ -223,7 +223,7 @@ Bool avl_insert_wrk ( AvlNode**         rootp,
                case -1: return False;
                case  0: return True;
                case  1: break;
-               default: vg_assert(0);
+               default: tl_assert(0);
             }
             if ((*rootp)->child[1]->balance > 0) {
                avl_swl( rootp );
@@ -244,7 +244,7 @@ Bool avl_insert_wrk ( AvlNode**         rootp,
             return False;
          return True;
       }
-      vg_assert(0);/*NOTREACHED*/
+      tl_assert(0);/*NOTREACHED*/
    }
    else {
       /* cmpres == 0, a duplicate - replace the val, but don't
@@ -273,7 +273,7 @@ Bool avl_remove_wrk ( AvlNode** rootp,
    if (cmpres > 0){
       /* remove from the left subtree */
       AvlNode* left_subtree = (*rootp)->child[0];
-      vg_assert(left_subtree);
+      tl_assert(left_subtree);
       ch = avl_remove_wrk(&left_subtree, a, kCmp);
       (*rootp)->child[0]=left_subtree;
       if (ch) {
@@ -281,7 +281,7 @@ Bool avl_remove_wrk ( AvlNode** rootp,
             case -1: return True;
             case  0: return False;
             case  1: break;
-            default: vg_assert(0);
+            default: tl_assert(0);
          }
          switch ((*rootp)->child[1]->balance) {
             case 0:
@@ -297,7 +297,7 @@ Bool avl_remove_wrk ( AvlNode** rootp,
             case -1:
                break;
             default:
-               vg_assert(0);
+               tl_assert(0);
          }
          avl_swr( &((*rootp)->child[1]) );
          avl_swl( rootp );
@@ -309,7 +309,7 @@ Bool avl_remove_wrk ( AvlNode** rootp,
    if (cmpres < 0) {
       /* remove from the right subtree */
       AvlNode* right_subtree = (*rootp)->child[1];
-      vg_assert(right_subtree);
+      tl_assert(right_subtree);
       ch = avl_remove_wrk(&right_subtree, a, kCmp);
       (*rootp)->child[1] = right_subtree;
       if (ch) {
@@ -317,7 +317,7 @@ Bool avl_remove_wrk ( AvlNode** rootp,
             case  1: return True;
             case  0: return False;
             case -1: break;
-            default: vg_assert(0);
+            default: tl_assert(0);
          }
          switch ((*rootp)->child[0]->balance) {
             case 0:
@@ -333,7 +333,7 @@ Bool avl_remove_wrk ( AvlNode** rootp,
             case 1:
                break;
             default:
-               vg_assert(0);
+               tl_assert(0);
          }
          avl_swl( &((*rootp)->child[0]) );
          avl_swr( rootp );
@@ -342,8 +342,8 @@ Bool avl_remove_wrk ( AvlNode** rootp,
       }
    }
    else {
-      vg_assert(cmpres == 0);
-      vg_assert((*rootp)==a);
+      tl_assert(cmpres == 0);
+      tl_assert((*rootp)==a);
       return avl_removeroot_wrk(rootp, kCmp);
    }
    return 0;
@@ -417,7 +417,7 @@ AvlNode* avl_find_node ( AvlNode* t, Word k, Word(*kCmp)(UWord,UWord) )
 }
 
 static
-Bool avl_find_bounds ( const AvlNode* t, 
+Bool avl_find_bounds ( AvlNode* t, 
                        /*OUT*/UWord* kMinP, /*OUT*/UWord* vMinP,
                        /*OUT*/UWord* kMaxP, /*OUT*/UWord* vMaxP,
                        UWord minKey, UWord minVal,
@@ -462,7 +462,7 @@ Bool avl_find_bounds ( const AvlNode* t,
 static void stackClear(WordFM* fm)
 {
    Int i;
-   vg_assert(fm);
+   tl_assert(fm);
    for (i = 0; i < WFM_STKMAX; i++) {
       fm->nodeStack[i] = NULL;
       fm->numStack[i]  = 0;
@@ -473,8 +473,8 @@ static void stackClear(WordFM* fm)
 // Push onto the iterator stack.
 static inline void stackPush(WordFM* fm, AvlNode* n, Int i)
 {
-   vg_assert(fm->stackTop < WFM_STKMAX);
-   vg_assert(1 <= i && i <= 3);
+   tl_assert(fm->stackTop < WFM_STKMAX);
+   tl_assert(1 <= i && i <= 3);
    fm->nodeStack[fm->stackTop] = n;
    fm-> numStack[fm->stackTop] = i;
    fm->stackTop++;
@@ -483,13 +483,13 @@ static inline void stackPush(WordFM* fm, AvlNode* n, Int i)
 // Pop from the iterator stack.
 static inline Bool stackPop(WordFM* fm, AvlNode** n, Int* i)
 {
-   vg_assert(fm->stackTop <= WFM_STKMAX);
+   tl_assert(fm->stackTop <= WFM_STKMAX);
 
    if (fm->stackTop > 0) {
       fm->stackTop--;
       *n = fm->nodeStack[fm->stackTop];
       *i = fm-> numStack[fm->stackTop];
-      vg_assert(1 <= *i && *i <= 3);
+      tl_assert(1 <= *i && *i <= 3);
       fm->nodeStack[fm->stackTop] = NULL;
       fm-> numStack[fm->stackTop] = 0;
       return True;
@@ -499,17 +499,17 @@ static inline Bool stackPop(WordFM* fm, AvlNode** n, Int* i)
 }
 
 static 
-AvlNode* avl_dopy ( const AvlNode* nd, 
+AvlNode* avl_dopy ( AvlNode* nd, 
                     UWord(*dopyK)(UWord), 
                     UWord(*dopyV)(UWord),
                     void*(alloc_nofail)(const HChar*,SizeT),
                     const HChar* cc )
 {
    AvlNode* nyu;
-
-   vg_assert(nd != NULL);
-
+   if (! nd)
+      return NULL;
    nyu = alloc_nofail(cc, sizeof(AvlNode));
+   tl_assert(nyu);
    
    nyu->child[0] = nd->child[0];
    nyu->child[1] = nd->child[1];
@@ -518,6 +518,8 @@ AvlNode* avl_dopy ( const AvlNode* nd,
    /* Copy key */
    if (dopyK) {
       nyu->key = dopyK( nd->key );
+      if (nd->key != 0 && nyu->key == 0)
+         return NULL; /* oom in key dcopy */
    } else {
       /* copying assumedly unboxed keys */
       nyu->key = nd->key;
@@ -526,6 +528,8 @@ AvlNode* avl_dopy ( const AvlNode* nd,
    /* Copy val */
    if (dopyV) {
       nyu->val = dopyV( nd->val );
+      if (nd->val != 0 && nyu->val == 0)
+         return NULL; /* oom in val dcopy */
    } else {
       /* copying assumedly unboxed vals */
       nyu->val = nd->val;
@@ -535,10 +539,14 @@ AvlNode* avl_dopy ( const AvlNode* nd,
    if (nyu->child[0]) {
       nyu->child[0] = avl_dopy( nyu->child[0], dopyK, dopyV, 
                                 alloc_nofail, cc );
+      if (! nyu->child[0])
+         return NULL;
    }
    if (nyu->child[1]) {
       nyu->child[1] = avl_dopy( nyu->child[1], dopyK, dopyV,
                                 alloc_nofail, cc );
+      if (! nyu->child[1])
+         return NULL;
    }
 
    return nyu;
@@ -574,6 +582,7 @@ WordFM* VG_(newFM) ( void* (*alloc_nofail)( const HChar*, SizeT ),
                      Word  (*kCmp)(UWord,UWord) )
 {
    WordFM* fm = alloc_nofail(cc, sizeof(WordFM));
+   tl_assert(fm);
    initFM(fm, alloc_nofail, cc, dealloc, kCmp);
    return fm;
 }
@@ -644,7 +653,7 @@ Bool VG_(delFromFM) ( WordFM* fm,
 }
 
 // Look up in fm, assigning found key & val at spec'd addresses
-Bool VG_(lookupFM) ( const WordFM* fm, 
+Bool VG_(lookupFM) ( WordFM* fm, 
                      /*OUT*/UWord* keyP, /*OUT*/UWord* valP, UWord key )
 {
    AvlNode* node = avl_find_node( fm->root, key, fm->kCmp );
@@ -660,7 +669,7 @@ Bool VG_(lookupFM) ( const WordFM* fm,
 }
 
 // See comment in pub_tool_wordfm.h for explanation
-Bool VG_(findBoundsFM)( const WordFM* fm,
+Bool VG_(findBoundsFM)( WordFM* fm,
                         /*OUT*/UWord* kMinP, /*OUT*/UWord* vMinP,
                         /*OUT*/UWord* kMaxP, /*OUT*/UWord* vMaxP,
                         UWord minKey, UWord minVal,
@@ -677,14 +686,14 @@ Bool VG_(findBoundsFM)( const WordFM* fm,
 }
 
 // See comment in pub_tool_wordfm.h for performance warning
-UWord VG_(sizeFM) ( const WordFM* fm )
+UWord VG_(sizeFM) ( WordFM* fm )
 {
    // Hmm, this is a bad way to do this
    return fm->root ? size_avl_nonNull( fm->root ) : 0;
 }
 
 // NB UNTESTED!  TEST BEFORE USE!
-//Bool VG_(isEmptyFM)( const WordFM* fm )
+//Bool VG_(isEmptyFM)( WordFM* fm )
 //{
 //   return fm->root ? False : True;
 //}
@@ -692,7 +701,7 @@ UWord VG_(sizeFM) ( const WordFM* fm )
 // set up FM for iteration
 void VG_(initIterFM) ( WordFM* fm )
 {
-   vg_assert(fm);
+   tl_assert(fm);
    stackClear(fm);
    if (fm->root)
       stackPush(fm, fm->root, 1);
@@ -709,7 +718,7 @@ void VG_(initIterAtFM) ( WordFM* fm, UWord start_at )
    Word    cmpresS; /* signed */
    UWord   cmpresU; /* unsigned */
 
-   vg_assert(fm);
+   tl_assert(fm);
    stackClear(fm);
 
    if (!fm->root) 
@@ -744,20 +753,20 @@ void VG_(initIterAtFM) ( WordFM* fm, UWord start_at )
    if (stackPop(fm, &n, &i)) {
       // If we've pushed something to stack and did not find the exact key, 
       // we must fix the top element of stack. 
-      vg_assert(i == 2);
+      tl_assert(i == 2);
       stackPush(fm, n, 3);
       // the stack looks like {2, 2, ..., 2, 3}
    }
 }
 
-// get next key/val pair.  Will vg_assert if fm has been modified
+// get next key/val pair.  Will tl_assert if fm has been modified
 // or looked up in since initIter{,At}FM was called.
 Bool VG_(nextIterFM) ( WordFM* fm, /*OUT*/UWord* pKey, /*OUT*/UWord* pVal )
 {
    Int i = 0;
    AvlNode* n = NULL;
    
-   vg_assert(fm);
+   tl_assert(fm);
 
    // This in-order traversal requires each node to be pushed and popped
    // three times.  These could be avoided by updating nodes in-situ on the
@@ -780,7 +789,7 @@ Bool VG_(nextIterFM) ( WordFM* fm, /*OUT*/UWord* pKey, /*OUT*/UWord* pVal )
          if (n->child[1]) { n = n->child[1]; goto case_1; }
          break;
       default:
-         vg_assert(0);
+         tl_assert(0);
       }
    }
 
@@ -788,20 +797,20 @@ Bool VG_(nextIterFM) ( WordFM* fm, /*OUT*/UWord* pKey, /*OUT*/UWord* pVal )
    return False;
 }
 
-// Finish an FM iteration
+// clear the I'm iterating flag
 void VG_(doneIterFM) ( WordFM* fm )
 {
 }
 
-WordFM* VG_(dopyFM) ( WordFM* fm, UWord(*dopyK)(UWord),
-                      UWord(*dopyV)(UWord) )
+WordFM* VG_(dopyFM) ( WordFM* fm, UWord(*dopyK)(UWord), UWord(*dopyV)(UWord) )
 {
    WordFM* nyu; 
 
    /* can't clone the fm whilst iterating on it */
-   vg_assert(fm->stackTop == 0);
+   tl_assert(fm->stackTop == 0);
 
    nyu = fm->alloc_nofail( fm->cc, sizeof(WordFM) );
+   tl_assert(nyu);
 
    *nyu = *fm;
 
@@ -817,6 +826,12 @@ WordFM* VG_(dopyFM) ( WordFM* fm, UWord(*dopyK)(UWord),
    }
 
    return nyu;
+}
+
+// admin: what's the 'common' allocation size (for tree nodes?)
+SizeT VG_(getNodeSizeFM)( void )
+{
+   return sizeof(AvlNode);
 }
 
 //------------------------------------------------------------------//
@@ -855,43 +870,43 @@ void VG_(addToBag)( WordBag* bag, UWord w )
 {
    UWord key, count;
    if (VG_(lookupFM)(bag->fm, &key, &count, w)) {
-      vg_assert(key == w);
-      vg_assert(count >= 1);
+      tl_assert(key == w);
+      tl_assert(count >= 1);
       VG_(addToFM)(bag->fm, w, count+1);
    } else {
       VG_(addToFM)(bag->fm, w, 1);
    }
 }
 
-UWord VG_(elemBag) ( const WordBag* bag, UWord w )
+UWord VG_(elemBag) ( WordBag* bag, UWord w )
 {
    UWord key, count;
    if (VG_(lookupFM)( bag->fm, &key, &count, w)) {
-      vg_assert(key == w);
-      vg_assert(count >= 1);
+      tl_assert(key == w);
+      tl_assert(count >= 1);
       return count;
    } else {
       return 0;
    }
 }
 
-UWord VG_(sizeUniqueBag) ( const WordBag* bag )
+UWord VG_(sizeUniqueBag) ( WordBag* bag )
 {
    return VG_(sizeFM)( bag->fm );
 }
 
-static UWord sizeTotalBag_wrk ( const AvlNode* nd )
+static UWord sizeTotalBag_wrk ( AvlNode* nd )
 {
    /* unchecked pre: nd is non-NULL */
    UWord w = nd->val;
-   vg_assert(w >= 1);
+   tl_assert(w >= 1);
    if (nd->child[0])
       w += sizeTotalBag_wrk(nd->child[0]);
    if (nd->child[1])
       w += sizeTotalBag_wrk(nd->child[1]);
    return w;
 }
-UWord VG_(sizeTotalBag)( const WordBag* bag )
+UWord VG_(sizeTotalBag)( WordBag* bag )
 {
    if (bag->fm->root)
       return sizeTotalBag_wrk(bag->fm->root);
@@ -903,12 +918,12 @@ Bool VG_(delFromBag)( WordBag* bag, UWord w )
 {
    UWord key, count;
    if (VG_(lookupFM)(bag->fm, &key, &count, w)) {
-      vg_assert(key == w);
-      vg_assert(count >= 1);
+      tl_assert(key == w);
+      tl_assert(count >= 1);
       if (count > 1) {
          VG_(addToFM)(bag->fm, w, count-1);
       } else {
-         vg_assert(count == 1);
+         tl_assert(count == 1);
          VG_(delFromFM)( bag->fm, NULL, NULL, w );
       }
       return True;
@@ -917,30 +932,30 @@ Bool VG_(delFromBag)( WordBag* bag, UWord w )
    }
 }
 
-Bool VG_(isEmptyBag)( const WordBag* bag )
+Bool VG_(isEmptyBag)( WordBag* bag )
 {
    return VG_(sizeFM)(bag->fm) == 0;
 }
 
-Bool VG_(isSingletonTotalBag)( const WordBag* bag )
+Bool VG_(isSingletonTotalBag)( WordBag* bag )
 {
    AvlNode* nd;
    if (VG_(sizeFM)(bag->fm) != 1)
       return False;
    nd = bag->fm->root;
-   vg_assert(nd);
-   vg_assert(!nd->child[0]);
-   vg_assert(!nd->child[1]);
+   tl_assert(nd);
+   tl_assert(!nd->child[0]);
+   tl_assert(!nd->child[1]);
    return nd->val == 1;
 }
 
-UWord VG_(anyElementOfBag)( const WordBag* bag )
+UWord VG_(anyElementOfBag)( WordBag* bag )
 {
    /* Return an arbitrarily chosen element in the bag.  We might as
       well return the one at the root of the underlying AVL tree. */
    AvlNode* nd = bag->fm->root;
-   vg_assert(nd); /* if this fails, 'bag' is empty - caller is in error. */
-   vg_assert(nd->val >= 1);
+   tl_assert(nd); /* if this fails, 'bag' is empty - caller is in error. */
+   tl_assert(nd->val >= 1);
    return nd->key;
 }
 

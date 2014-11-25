@@ -305,7 +305,7 @@ typedef enum { OpLoad=0, OpStore=1, OpAlu=2 } Op;
 
 /* --- Types --- */
 
-#define N_TYPES 14
+#define N_TYPES 11
 
 static Int type2index ( IRType ty )
 {
@@ -321,9 +321,6 @@ static Int type2index ( IRType ty )
       case Ity_F128:    return 8;
       case Ity_V128:    return 9;
       case Ity_V256:    return 10;
-      case Ity_D32:     return 11;
-      case Ity_D64:     return 12;
-      case Ity_D128:    return 13;
       default: tl_assert(0);
    }
 }
@@ -340,11 +337,8 @@ static const HChar* nameOfTypeIndex ( Int i )
       case 6: return "F32";  break;
       case 7: return "F64";  break;
       case 8: return "F128";  break;
-      case 9: return "V128";  break;
+      case 9: return "V128"; break;
       case 10: return "V256"; break;
-      case 11: return "D32";  break;
-      case 12: return "D64";  break;
-      case 13: return "D128"; break;
       default: tl_assert(0);
    }
 }
@@ -652,14 +646,15 @@ static void lk_post_clo_init(void)
 static
 IRSB* lk_instrument ( VgCallbackClosure* closure,
                       IRSB* sbIn, 
-                      const VexGuestLayout* layout, 
-                      const VexGuestExtents* vge,
-                      const VexArchInfo* archinfo_host,
+                      VexGuestLayout* layout, 
+                      VexGuestExtents* vge,
+                      VexArchInfo* archinfo_host,
                       IRType gWordTy, IRType hWordTy )
 {
    IRDirty*   di;
    Int        i;
    IRSB*      sbOut;
+   HChar      fnname[100];
    IRTypeEnv* tyenv = sbIn->tyenv;
    Addr       iaddr = 0, dst;
    UInt       ilen = 0;
@@ -749,9 +744,8 @@ IRSB* lk_instrument ( VgCallbackClosure* closure,
                 */
                tl_assert(clo_fnname);
                tl_assert(clo_fnname[0]);
-               const HChar *fnname;
                if (VG_(get_fnname_if_entry)(st->Ist.IMark.addr, 
-                                            &fnname)
+                                            fnname, sizeof(fnname))
                    && 0 == VG_(strcmp)(fnname, clo_fnname)) {
                   di = unsafeIRDirty_0_N( 
                           0, "add_one_func_call", 

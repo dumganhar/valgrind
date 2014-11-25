@@ -77,8 +77,7 @@ typedef  struct _WordFM  WordFM; /* opaque */
    VG_(initIterAtFM), VG_(nextIterFM), VG_(doneIterFM) to iterate over
    sections of the map, or the whole thing.  If kCmp is NULL then the
    ordering used is unsigned word ordering (UWord) on the key
-   values.
-   The function never returns NULL. */
+   values. */
 WordFM* VG_(newFM) ( void* (*alloc_nofail)( const HChar* cc, SizeT ),
                      const HChar* cc,
                      void  (*dealloc)(void*),
@@ -99,7 +98,7 @@ Bool VG_(delFromFM) ( WordFM* fm,
                       /*OUT*/UWord* oldK, /*OUT*/UWord* oldV, UWord key );
 
 // Look up in fm, assigning found key & val at spec'd addresses
-Bool VG_(lookupFM) ( const WordFM* fm, 
+Bool VG_(lookupFM) ( WordFM* fm, 
                      /*OUT*/UWord* keyP, /*OUT*/UWord* valP, UWord key );
 
 // Find the closest key values bracketing the given key, assuming the 
@@ -118,7 +117,7 @@ Bool VG_(lookupFM) ( const WordFM* fm,
 // False is returned, and *kMinP, *vMinP, *kMaxP and *vMaxP are
 // undefined.  Any of kMinP, vMinP, kMaxP and vMaxP may be safely
 // supplied as NULL.
-Bool VG_(findBoundsFM)( const WordFM* fm,
+Bool VG_(findBoundsFM)( WordFM* fm,
                         /*OUT*/UWord* kMinP, /*OUT*/UWord* vMinP,
                         /*OUT*/UWord* kMaxP, /*OUT*/UWord* vMaxP,
                         UWord minKey, UWord minVal,
@@ -128,7 +127,12 @@ Bool VG_(findBoundsFM)( const WordFM* fm,
 // How many elements are there in fm?  NOTE: dangerous in the
 // sense that this is not an O(1) operation but rather O(N),
 // since it involves walking the whole tree.
-UWord VG_(sizeFM) ( const WordFM* fm );
+UWord VG_(sizeFM) ( WordFM* fm );
+
+// Is fm empty?  This at least is an O(1) operation.
+// Code is present in m_wordfm.c but commented out due to no
+// current usage.  Un-comment (and TEST IT) if required.
+//Bool VG_(isEmptyFM)( WordFM* fm );
 
 // set up FM for iteration
 void VG_(initIterFM) ( WordFM* fm );
@@ -144,17 +148,20 @@ void VG_(initIterAtFM) ( WordFM* fm, UWord start_at );
 Bool VG_(nextIterFM) ( WordFM* fm,
                        /*OUT*/UWord* pKey, /*OUT*/UWord* pVal );
 
-// Finish an FM iteration
+// clear the I'm iterating flag
 void VG_(doneIterFM) ( WordFM* fm );
 
 // Deep copy a FM.  If dopyK is NULL, keys are copied verbatim.
 // If non-null, dopyK is applied to each key to generate the
-// version in the new copy.  dopyK may be called with a NULL argument
-// in which case it should return NULL. For all other argument values
-// dopyK must not return NULL. Ditto with dopyV for values.
-// VG_(dopyFM) never returns NULL.
+// version in the new copy.  In that case, if the argument to dopyK
+// is non-NULL but the result is NULL, it is assumed that dopyK
+// could not allocate memory, in which case the copy is abandoned
+// and NULL is returned.  Ditto with dopyV for values.
 WordFM* VG_(dopyFM) ( WordFM* fm,
                       UWord(*dopyK)(UWord), UWord(*dopyV)(UWord) );
+
+// admin: what's the 'common' allocation size (for tree nodes?)
+SizeT VG_(getNodeSizeFM)( void );
 
 //------------------------------------------------------------------//
 //---                         end WordFM                         ---//
@@ -168,7 +175,7 @@ WordFM* VG_(dopyFM) ( WordFM* fm,
 
 typedef  struct _WordBag  WordBag; /* opaque */
 
-/* Allocate and initialise a WordBag. Never returns NULL. */
+/* Allocate and initialise a WordBag */
 WordBag* VG_(newBag) ( void* (*alloc_nofail)( const HChar* cc, SizeT ),
                        const HChar* cc,
                        void  (*dealloc)(void*) );
@@ -180,23 +187,23 @@ void VG_(deleteBag) ( WordBag* );
 void VG_(addToBag)( WordBag*, UWord );
 
 /* Find out how many times the given word exists in the bag. */
-UWord VG_(elemBag) ( const WordBag*, UWord );
+UWord VG_(elemBag) ( WordBag*, UWord );
 
 /* Delete a word from the bag. */
 Bool VG_(delFromBag)( WordBag*, UWord );
 
 /* Is the bag empty? */
-Bool VG_(isEmptyBag)( const WordBag* );
+Bool VG_(isEmptyBag)( WordBag* );
 
 /* Does the bag have exactly one element? */
-Bool VG_(isSingletonTotalBag)( const WordBag* );
+Bool VG_(isSingletonTotalBag)( WordBag* );
 
 /* Return an arbitrary element from the bag. */
-UWord VG_(anyElementOfBag)( const WordBag* );
+UWord VG_(anyElementOfBag)( WordBag* );
 
 /* How many different / total elements are in the bag? */
-UWord VG_(sizeUniqueBag)( const WordBag* ); /* fast */
-UWord VG_(sizeTotalBag)( const WordBag* );  /* warning: slow */
+UWord VG_(sizeUniqueBag)( WordBag* ); /* fast */
+UWord VG_(sizeTotalBag)( WordBag* );  /* warning: slow */
 
 /* Iterating over the elements of a bag. */
 void VG_(initIterBag)( WordBag* );

@@ -323,12 +323,10 @@ void remote_open (const HChar *name)
    user = VG_(getenv)("LOGNAME");
    if (user == NULL) user = VG_(getenv)("USER");
    if (user == NULL) user = "???";
-   if (VG_(strchr)(user, '/')) user = "???";
 
    host = VG_(getenv)("HOST");
    if (host == NULL) host = VG_(getenv)("HOSTNAME");
    if (host == NULL) host = "???";
-   if (VG_(strchr)(host, '/')) host = "???";
 
    len = strlen(name) + strlen(user) + strlen(host) + 40;
 
@@ -836,7 +834,6 @@ int putpkt_binary (char *buf, int cnt)
    /* we might have to write a pkt when out FIFO not yet/anymore opened */
    if (!ensure_write_remote_desc()) {
       warning ("putpkt(write) error: no write_remote_desc\n");
-      free (buf2);
       return -1;
    }
 
@@ -846,7 +843,6 @@ int putpkt_binary (char *buf, int cnt)
    do {
       if (VG_(write) (write_remote_desc, buf2, p - buf2) != p - buf2) {
          warning ("putpkt(write) error\n");
-         free (buf2);
          return -1;
       }
 

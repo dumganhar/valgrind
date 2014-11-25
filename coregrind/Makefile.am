@@ -22,6 +22,7 @@ endif
 
 
 EXTRA_DIST = \
+	m_debuginfo/UNUSED_STABS.txt \
 	m_debuginfo/README.txt \
 	m_gdbserver/README_DEVELOPERS \
 	docs/vgdb-manpage.xml
@@ -170,7 +171,6 @@ noinst_HEADERS = \
 	pub_core_errormgr.h	\
 	pub_core_execontext.h	\
 	pub_core_gdbserver.h	\
-	pub_core_guest.h	\
 	pub_core_hashtable.h	\
 	pub_core_initimg.h	\
 	pub_core_inner.h	\
@@ -216,6 +216,7 @@ noinst_HEADERS = \
 	m_debuginfo/priv_misc.h	\
 	m_debuginfo/priv_storage.h	\
 	m_debuginfo/priv_tytypes.h      \
+	m_debuginfo/priv_readstabs.h	\
 	m_debuginfo/priv_readpdb.h	\
 	m_debuginfo/priv_d3basics.h	\
 	m_debuginfo/priv_readdwarf.h	\
@@ -269,7 +270,6 @@ COREGRIND_SOURCES_COMMON = \
 	m_addrinfo.c \
 	m_cache.c \
 	m_commandline.c \
-	m_compiler.c \
 	m_clientstate.c \
 	m_cpuid.S \
 	m_deduppoolalloc.c \
@@ -323,6 +323,7 @@ COREGRIND_SOURCES_COMMON = \
 	m_debuginfo/readexidx.c \
 	m_debuginfo/readmacho.c \
 	m_debuginfo/readpdb.c \
+	m_debuginfo/readstabs.c \
 	m_debuginfo/storage.c \
 	m_debuginfo/tytypes.c \
 	m_debuginfo/image.c \
@@ -642,7 +643,7 @@ if VGCONF_OS_IS_DARWIN
 
 BUILT_SOURCES += fixup_macho_loadcmds
 fixup_macho_loadcmds: fixup_macho_loadcmds.c
-	$(CC) -I $(top_srcdir) -g -Wall -o $@ $<
+	$(CC) -g -Wall -o $@ $<
 
 CLEANFILES += fixup_macho_loadcmds
 

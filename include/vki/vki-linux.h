@@ -1160,9 +1160,6 @@ struct vki_ipc_perm
 
 #define VKI_IPC_64  0x0100  /* New version (support 32-bit UIDs, bigger
 			       message sizes, etc. */
-// From /usr/include/bits/shm.h
-# define VKI_SHM_HUGETLB   04000
-
 
 //----------------------------------------------------------------------
 // From linux-2.6.8.1/include/linux/sem.h
@@ -3123,7 +3120,6 @@ struct vki_sockaddr_rc {
 #define VKI_KVM_RUN                   _VKI_IO(KVMIO,   0x80)
 #define VKI_KVM_S390_INITIAL_RESET    _VKI_IO(KVMIO,   0x97)
 #define VKI_KVM_NMI                   _VKI_IO(KVMIO,   0x9a)
-#define VKI_KVM_KVMCLOCK_CTRL         _VKI_IO(KVMIO,   0xad)
 
 //----------------------------------------------------------------------
 // From linux-2.6/include/linux/net_stamp.h

@@ -51,9 +51,8 @@
 typedef  struct _PoolAlloc  PoolAlloc;
 
 /* Create new PoolAlloc, using given allocation and free function, and
-   for elements of the specified size.  alloc_fn must not return NULL (that
-   is, if it returns it must have succeeded.)
-   This function never returns NULL. */
+   for elements of the specified size.  Alloc fn must not fail (that
+   is, if it returns it must have succeeded.) */
 extern PoolAlloc* VG_(newPA) ( UWord  elemSzB,
                                UWord  nPerPool,
                                void*  (*alloc)(const HChar*, SizeT),
@@ -64,7 +63,7 @@ extern PoolAlloc* VG_(newPA) ( UWord  elemSzB,
 /* Free all memory associated with a PoolAlloc. */
 extern void VG_(deletePA) ( PoolAlloc* pa);
 
-/* Allocates an element from pa. The function never returns NULL. */
+/* Allocates an element from pa. */
 extern void* VG_(allocEltPA) ( PoolAlloc* pa);
 
 /* Free element of pa. */

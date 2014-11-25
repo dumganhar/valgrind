@@ -138,11 +138,11 @@ static void ocache_sarp_Clear_Origins ( Addr, UWord ); /* fwds */
 
    On 64-bit machines it's more complicated.  If we followed the same basic
    scheme we'd have a four-level table which would require too many memory
-   accesses.  So instead the top-level map table has 2^20 entries (indexed
-   using bits 16..35 of the address);  this covers the bottom 64GB.  Any
-   accesses above 64GB are handled with a slow, sparse auxiliary table.
+   accesses.  So instead the top-level map table has 2^19 entries (indexed
+   using bits 16..34 of the address);  this covers the bottom 32GB.  Any
+   accesses above 32GB are handled with a slow, sparse auxiliary table.
    Valgrind's address space manager tries very hard to keep things below
-   this 64GB barrier so that performance doesn't suffer too much.
+   this 32GB barrier so that performance doesn't suffer too much.
 
    Note that this file has a lot of different functions for reading and
    writing shadow memory.  Only a couple are strictly necessary (eg.
@@ -578,6 +578,7 @@ static AuxMapEnt* find_or_alloc_in_auxmap ( Addr a )
    a &= ~(Addr)0xFFFF;
 
    nyu = (AuxMapEnt*) VG_(OSetGen_AllocNode)( auxmap_L2, sizeof(AuxMapEnt) );
+   tl_assert(nyu);
    nyu->base = a;
    nyu->sm   = &sm_distinguished[SM_DIST_NOACCESS];
    VG_(OSetGen_Insert)( auxmap_L2, nyu );
@@ -1088,9 +1089,10 @@ static void init_gIgnoredAddressRanges ( void )
       return;
    gIgnoredAddressRanges = VG_(newRangeMap)( VG_(malloc), "mc.igIAR.1",
                                              VG_(free), IAR_NotIgnored );
+   tl_assert(gIgnoredAddressRanges != NULL);
 }
 
-Bool MC_(in_ignored_range) ( Addr a )
+INLINE Bool MC_(in_ignored_range) ( Addr a )
 {
    if (LIKELY(gIgnoredAddressRanges == NULL))
       return False;
@@ -2412,6 +2414,7 @@ static void init_ocacheL2 ( void )
       = VG_(OSetGen_Create)( offsetof(OCacheLine,tag), 
                              NULL, /* fast cmp */
                              ocacheL2_malloc, "mc.ioL2", ocacheL2_free);
+   tl_assert(ocacheL2);
    stats__ocacheL2_n_nodes = 0;
 }
 
@@ -2447,6 +2450,7 @@ static void ocacheL2_add_line ( OCacheLine* line )
    OCacheLine* copy;
    tl_assert(is_valid_oc_tag(line->tag));
    copy = VG_(OSetGen_AllocNode)( ocacheL2, sizeof(OCacheLine) );
+   tl_assert(copy);
    *copy = *line;
    stats__ocacheL2_refs++;
    VG_(OSetGen_Insert)( ocacheL2, copy );

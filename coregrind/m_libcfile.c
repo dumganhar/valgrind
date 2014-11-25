@@ -1,4 +1,3 @@
-/* -*- mode: C; c-basic-offset: 3; -*- */
 
 /*--------------------------------------------------------------------*/
 /*--- File- and socket-related libc stuff.            m_libcfile.c ---*/
@@ -38,8 +37,8 @@
 #include "pub_core_libcfile.h"
 #include "pub_core_libcprint.h"     // VG_(sprintf)
 #include "pub_core_libcproc.h"      // VG_(getpid), VG_(getppid)
+#include "pub_core_xarray.h"
 #include "pub_core_clientstate.h"   // VG_(fd_hard_limit)
-#include "pub_core_mallocfree.h"    // VG_(realloc)
 #include "pub_core_syscall.h"
 
 /* IMPORTANT: on Darwin it is essential to use the _nocancel versions
@@ -71,58 +70,27 @@ Int VG_(safe_fd)(Int oldfd)
 
 /* Given a file descriptor, attempt to deduce its filename.  To do
    this, we use /proc/self/fd/<FD>.  If this doesn't point to a file,
-   or if it doesn't exist, we return False. 
-   Upon successful completion *result contains the filename. The
-   filename will be overwritten with the next invocation so callers
-   need to copy the filename if needed. *result is NULL if the filename
-   cannot be deduced. */
-Bool VG_(resolve_filename) ( Int fd, const HChar** result )
+   or if it doesn't exist, we return False. */
+Bool VG_(resolve_filename) ( Int fd, HChar* buf, Int n_buf )
 {
 #  if defined(VGO_linux)
-   static HChar *buf = NULL;
-   static SizeT  bufsiz = 0;
-
-   if (buf == NULL) {   // first time
-      bufsiz = 500;
-      buf = VG_(malloc)("resolve_filename", bufsiz);
-   }
-
-   HChar tmp[64];   // large enough
+   HChar tmp[64];
    VG_(sprintf)(tmp, "/proc/self/fd/%d", fd);
-
-   while (42) {
-      SSizeT res = VG_(readlink)(tmp, buf, bufsiz);
-      if (res < 0) break;
-      if (res == bufsiz) {  // buffer too small; increase and retry
-         bufsiz += 500;
-         buf = VG_(realloc)("resolve_filename", buf, bufsiz);
-         continue;
-      }
-      vg_assert(bufsiz > res);  // paranoia
-      if (buf[0] != '/') break;
-
-      buf[res] = '\0';
-      *result = buf;
+   VG_(memset)(buf, 0, n_buf);
+   if (VG_(readlink)(tmp, buf, n_buf) > 0 && buf[0] == '/')
       return True;
-   }
-   // Failure
-   *result = NULL;
-   return False;
+   else
+      return False;
 
 #  elif defined(VGO_darwin)
    HChar tmp[VKI_MAXPATHLEN+1];
    if (0 == VG_(fcntl)(fd, VKI_F_GETPATH, (UWord)tmp)) {
-      static HChar *buf = NULL;
-
-      if (buf == NULL) 
-         buf = VG_(malloc)("resolve_filename", VKI_MAXPATHLEN+1);
-      VG_(strcpy)( buf, tmp );
-
-      *result = buf;
-      if (buf[0] == '/') return True;
+      if (n_buf > 0) {
+         VG_(strncpy)( buf, tmp, n_buf < sizeof(tmp) ? n_buf : sizeof(tmp) );
+         buf[n_buf-1] = 0;
+      }
+      if (tmp[0] == '/') return True;
    }
-   // Failure
-   *result = NULL;
    return False;
 
 #  else
@@ -449,12 +417,14 @@ Int VG_(unlink) ( const HChar* file_name )
    return sr_isError(res) ? (-1) : 0;
 }
 
-/* The working directory at startup.
-   All that is really needed is to note the cwd at process startup.
-   Hence VG_(record_startup_wd) notes it (in a platform dependent way)
-   and VG_(get_startup_wd) produces the noted value. */
-static HChar *startup_wd;
-static Bool   startup_wd_acquired = False;
+/* The working directory at startup.  AIX doesn't provide an easy
+   system call to do getcwd, but fortunately we don't need arbitrary
+   getcwd support.  All that is really needed is to note the cwd at
+   process startup.  Hence VG_(record_startup_wd) notes it (in a
+   platform dependent way) and VG_(get_startup_wd) produces the noted
+   value.  Hence: */
+static HChar startup_wd[VKI_PATH_MAX];
+static Bool  startup_wd_acquired = False;
 
 /* Record the process' working directory at startup.  Is intended to
    be called exactly once, at startup, before the working directory
@@ -463,39 +433,37 @@ static Bool   startup_wd_acquired = False;
    there is a problem. */
 Bool VG_(record_startup_wd) ( void )
 {
+   const Int szB = sizeof(startup_wd);
    vg_assert(!startup_wd_acquired);
-
+   vg_assert(szB >= 512 && szB <= 16384/*let's say*/); /* stay sane */
+   VG_(memset)(startup_wd, 0, szB);
 #  if defined(VGO_linux)
    /* Simple: just ask the kernel */
-   SysRes res;
-   SizeT szB = 0;
-   do { 
-      szB += 500;
-      startup_wd = VG_(realloc)("startup_wd", startup_wd, szB);
-      VG_(memset)(startup_wd, 0, szB);
-      res = VG_(do_syscall2)(__NR_getcwd, (UWord)startup_wd, szB-1);
-   } while (sr_isError(res));
-
-   vg_assert(startup_wd[szB-1] == 0);
-   startup_wd_acquired = True;
-   return True;
-
+   { SysRes res
+        = VG_(do_syscall2)(__NR_getcwd, (UWord)startup_wd, szB-1);
+     vg_assert(startup_wd[szB-1] == 0);
+     if (sr_isError(res)) {
+        return False;
+     } else {
+        startup_wd_acquired = True;
+        return True;
+     }
+   }
 #  elif defined(VGO_darwin)
    /* We can't ask the kernel, so instead rely on launcher-*.c to
       tell us the startup path.  Note the env var is keyed to the
       parent's PID, not ours, since our parent is the launcher
       process. */
-   { HChar  envvar[100];   // large enough
-     HChar* wd;
+   { HChar  envvar[100];
+     HChar* wd = NULL;
      VG_(memset)(envvar, 0, sizeof(envvar));
      VG_(sprintf)(envvar, "VALGRIND_STARTUP_PWD_%d_XYZZY", 
                           (Int)VG_(getppid)());
      wd = VG_(getenv)( envvar );
-     if (wd == NULL)
+     if (wd == NULL || (1+VG_(strlen)(wd) >= szB))
         return False;
-     SizeT need = VG_(strlen)(wd) + 1;
-     startup_wd = VG_(malloc)("startup_wd", need);
-     VG_(strcpy)(startup_wd, wd);
+     VG_(strncpy_safely)(startup_wd, wd, szB);
+     vg_assert(startup_wd[szB-1] == 0);
      startup_wd_acquired = True;
      return True;
    }
@@ -504,12 +472,16 @@ Bool VG_(record_startup_wd) ( void )
 #  endif
 }
 
-/* Return the previously acquired startup_wd. */
-const HChar *VG_(get_startup_wd) ( void )
+/* Copy the previously acquired startup_wd into buf[0 .. size-1],
+   or return False if buf isn't big enough. */
+Bool VG_(get_startup_wd) ( HChar* buf, SizeT size )
 {
    vg_assert(startup_wd_acquired);
-
-   return startup_wd;
+   vg_assert(startup_wd[ sizeof(startup_wd)-1 ] == 0);
+   if (1+VG_(strlen)(startup_wd) >= size)
+      return False;
+   VG_(strncpy_safely)(buf, startup_wd, size);
+   return True;
 }
 
 SysRes VG_(poll) (struct vki_pollfd *fds, Int nfds, Int timeout)
@@ -537,11 +509,7 @@ SysRes VG_(poll) (struct vki_pollfd *fds, Int nfds, Int timeout)
 }
 
 
-/* Performs the readlink operation and puts the result into 'buf'.
-   Note, that the string in 'buf' is *not* null-terminated. The function
-   returns the number of characters put into 'buf' or -1 if an error
-   occurred. */
-SSizeT VG_(readlink) (const HChar* path, HChar* buf, SizeT bufsiz)
+Int VG_(readlink) (const HChar* path, HChar* buf, UInt bufsiz)
 {
    SysRes res;
    /* res = readlink( path, buf, bufsiz ); */
@@ -650,17 +618,9 @@ Int VG_(check_executable)(/*OUT*/Bool* is_setuid,
       if (VG_(getegid)() == st.gid)
 	 grpmatch = 1;
       else {
-         UInt *groups = NULL;
-         Int   ngrp;
-
-         /* Find out # groups, allocate large enough array and fetch groups */
-         ngrp = VG_(getgroups)(0, NULL);
-         if (ngrp != -1) {
-            groups = VG_(malloc)("check_executable", ngrp * sizeof *groups);
-            ngrp   = VG_(getgroups)(ngrp, groups);
-         }
-
-         Int i;
+	 UInt groups[32];
+	 Int ngrp = VG_(getgroups)(32, groups);
+	 Int i;
          /* ngrp will be -1 if VG_(getgroups) failed. */
          for (i = 0; i < ngrp; i++) {
 	    if (groups[i] == st.gid) {
@@ -668,7 +628,6 @@ Int VG_(check_executable)(/*OUT*/Bool* is_setuid,
 	       break;
 	    }
          }
-         VG_(free)(groups);
       }
 
       if (grpmatch) {
@@ -760,13 +719,13 @@ SizeT VG_(mkstemp_fullname_bufsz) ( SizeT part_of_name_len )
 
 Int VG_(mkstemp) ( const HChar* part_of_name, /*OUT*/HChar* fullname )
 {
-   Int    n, tries;
+   HChar  buf[VG_(mkstemp_fullname_bufsz)(VG_(strlen)(part_of_name))];
+   Int    n, tries, fd;
    UInt   seed;
    SysRes sres;
    const HChar *tmpdir;
 
    vg_assert(part_of_name);
-   vg_assert(fullname);
    n = VG_(strlen)(part_of_name);
    vg_assert(n > 0 && n < 100);
 
@@ -779,20 +738,23 @@ Int VG_(mkstemp) ( const HChar* part_of_name, /*OUT*/HChar* fullname )
    while (True) {
       if (tries++ > 10) 
          return -1;
-      VG_(sprintf)( fullname, mkstemp_format,
+      VG_(sprintf)( buf, mkstemp_format,
                     tmpdir, part_of_name, VG_(random)( &seed ));
       if (0)
-         VG_(printf)("VG_(mkstemp): trying: %s\n", fullname);
+         VG_(printf)("VG_(mkstemp): trying: %s\n", buf);
 
-      sres = VG_(open)(fullname,
+      sres = VG_(open)(buf,
                        VKI_O_CREAT|VKI_O_RDWR|VKI_O_EXCL|VKI_O_TRUNC,
                        VKI_S_IRUSR|VKI_S_IWUSR);
       if (sr_isError(sres)) {
-         VG_(umsg)("VG_(mkstemp): failed to create temp file: %s\n", fullname);
+         VG_(umsg)("VG_(mkstemp): failed to create temp file: %s\n", buf);
          continue;
       }
       /* VG_(safe_fd) doesn't return if it fails. */
-      return VG_(safe_fd)( sr_Res(sres) );
+      fd = VG_(safe_fd)( sr_Res(sres) );
+      if (fullname)
+         VG_(strcpy)( fullname, buf );
+      return fd;
    }
    /* NOTREACHED */
 }
@@ -1204,8 +1166,8 @@ Int VG_(setsockopt) ( Int sd, Int level, Int optname, void *optval,
 
 const HChar *VG_(basename)(const HChar *path)
 {
-   static HChar *buf = NULL;
-   static SizeT  buf_len = 0;
+   static HChar buf[VKI_PATH_MAX];
+   
    const HChar *p, *end;
 
    if (path == NULL  ||  
@@ -1231,11 +1193,6 @@ const HChar *VG_(basename)(const HChar *path)
 
    if (*p == '/') p++;
 
-   SizeT need = end-p+1 + 1;
-   if (need > buf_len) {
-      buf_len = (buf_len == 0) ? 500 : need;
-      buf = VG_(realloc)("basename", buf, buf_len);
-   }
    VG_(strncpy)(buf, p, end-p+1);
    buf[end-p+1] = '\0';
 
@@ -1245,8 +1202,7 @@ const HChar *VG_(basename)(const HChar *path)
 
 const HChar *VG_(dirname)(const HChar *path)
 {
-   static HChar *buf = NULL;
-   static SizeT  buf_len = 0;
+   static HChar buf[VKI_PATH_MAX];
     
    const HChar *p;
 
@@ -1278,11 +1234,6 @@ const HChar *VG_(dirname)(const HChar *path)
       p--;
    }
 
-   SizeT need = p-path+1 + 1;
-   if (need > buf_len) {
-      buf_len = (buf_len == 0) ? 500 : need;
-      buf = VG_(realloc)("dirname", buf, buf_len);
-   }
    VG_(strncpy)(buf, path, p-path+1);
    buf[p-path+1] = '\0';
 

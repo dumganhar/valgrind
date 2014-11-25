@@ -72,7 +72,6 @@ EXTRA_DIST = \
 	brk2.stderr.exp brk2.vgtest \
 	buflen_check.stderr.exp buflen_check.vgtest \
 		buflen_check.stderr.exp-kfail \
-	bug155125.stderr.exp bug155125.vgtest \
 	bug287260.stderr.exp bug287260.vgtest \
 	calloc-overflow.stderr.exp calloc-overflow.vgtest\
 	client-msg.stderr.exp client-msg.vgtest \
@@ -94,6 +93,8 @@ EXTRA_DIST = \
 		custom_alloc.stderr.exp-s390x-mvc \
 	custom-overlap.stderr.exp custom-overlap.vgtest \
 	deep-backtrace.vgtest deep-backtrace.stderr.exp \
+	deep_templates.vgtest \
+	deep_templates.stdout.exp deep_templates.stderr.exp \
 	demangle.stderr.exp demangle.vgtest \
 	describe-block.stderr.exp describe-block.vgtest \
 	descr_belowsp.vgtest descr_belowsp.stderr.exp \
@@ -292,7 +293,6 @@ check_PROGRAMS = \
 	big_blocks_freed_list \
 	brk2 \
 	buflen_check \
-	bug155125 \
 	bug287260 \
 	calloc-overflow \
 	client-msg \
@@ -377,6 +377,10 @@ if HAVE_PTHREAD_BARRIER
 check_PROGRAMS += reach_thread_register
 endif
 
+if HAVE_GSTABS
+check_PROGRAMS += deep_templates
+endif
+
 AM_CFLAGS   += $(AM_FLAG_M3264_PRI)
 AM_CXXFLAGS += $(AM_FLAG_M3264_PRI)
 
@@ -392,6 +396,9 @@ atomic_incs_CFLAGS = $(AM_CFLAGS)
 endif
 
 leak_cpp_interior_SOURCES	= leak_cpp_interior.cpp
+
+deep_templates_SOURCES	= deep_templates.cpp
+deep_templates_CXXFLAGS	= $(AM_CFLAGS) -O -gstabs
 
 demangle_SOURCES = demangle.cpp
 

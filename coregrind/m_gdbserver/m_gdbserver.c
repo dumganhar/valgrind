@@ -140,21 +140,15 @@ static void call_gdbserver ( ThreadId tid , CallReason reason);
    oldest result. */
 static HChar* sym (Addr addr, Bool is_code)
 {
-   static HChar *buf[2];
+   static HChar buf[2][200];
    static int w = 0;
    PtrdiffT offset;
    if (w == 2) w = 0;
-
+   buf[w][0] = '\0';
    if (is_code) {
-      const HChar *name;
-      name = VG_(describe_IP) (addr, NULL);
-      if (buf[w]) VG_(free)(buf[w]);
-      buf[w] = VG_(strdup)("gdbserver sym", name);
+      VG_(describe_IP) (addr, buf[w], 200, NULL);
    } else {
-      const HChar *name;
-      VG_(get_datasym_and_offset) (addr, &name, &offset);
-      if (buf[w]) VG_(free)(buf[w]);
-      buf[w] = VG_(strdup)("gdbserver sym", name);
+      VG_(get_datasym_and_offset) (addr, buf[w], 200, &offset);
    }
    return buf[w++];
 }
@@ -167,11 +161,13 @@ static int gdbserver_exited = 0;
 /* alloc and free functions for xarray and similar. */
 static void* gs_alloc (const HChar* cc, SizeT sz)
 {
-   return VG_(malloc)(cc, sz);
+   void* res = VG_(arena_malloc)(VG_AR_CORE, cc, sz);
+   vg_assert (res);
+   return res;
 }
 static void gs_free (void* ptr)
 {
-   VG_(free)(ptr);
+   VG_(arena_free)(VG_AR_CORE, ptr);
 }
 
 typedef
@@ -200,7 +196,7 @@ typedef
 
    Note for ARM: addr in GS_Address is the value without the thumb bit set.
 */
-static VgHashTable *gs_addresses = NULL;
+static VgHashTable gs_addresses = NULL;
 
 // Transform addr in the form stored in the list of addresses.
 // For the ARM architecture, we store it with the thumb bit set to 0.
@@ -217,7 +213,7 @@ static void add_gs_address (Addr addr, GS_Kind kind, const HChar* from)
 {
    GS_Address *p;
 
-   p = VG_(malloc)(from, sizeof(GS_Address));
+   p = VG_(arena_malloc)(VG_AR_CORE, from, sizeof(GS_Address));
    p->addr = HT_addr (addr);
    p->kind = kind;
    VG_(HT_add_node)(gs_addresses, p);
@@ -236,7 +232,7 @@ static void remove_gs_address (GS_Address* g, const HChar* from)
    // See add_gs_address for the explanation for condition and the range 2 below.
    if (VG_(clo_vgdb) != Vg_VgdbFull)
       VG_(discard_translations) (g->addr, 2, from);
-   VG_(free) (g);
+   VG_(arena_free) (VG_AR_CORE, g);
 }
 
 const HChar* VG_(ppPointKind) (PointKind kind)
@@ -378,7 +374,8 @@ Bool VG_(gdbserver_point) (PointKind kind, Bool insert,
    g = lookup_gs_watch (addr, len, kind, &g_ix);
    if (insert) {
       if (g == NULL) {
-         g = VG_(malloc)("gdbserver_point watchpoint", sizeof(GS_Watch));
+         g = VG_(arena_malloc)(VG_AR_CORE, "gdbserver_point watchpoint",
+                               sizeof(GS_Watch));
          g->addr = addr;
          g->len  = len;
          g->kind = kind;
@@ -391,7 +388,7 @@ Bool VG_(gdbserver_point) (PointKind kind, Bool insert,
    } else {
       if (g != NULL) {
          VG_(removeIndexXA) (gs_watches, g_ix);
-         VG_(free) (g);
+         VG_(arena_free) (VG_AR_CORE, g);
       } else {
          dlog(1, 
               "VG_(gdbserver_point) addr %p len %d kind %s already deleted?\n",
@@ -489,7 +486,7 @@ Bool VG_(is_watched)(PointKind kind, Addr addr, Int szB)
 }
 
 /* Returns the reason for which gdbserver instrumentation is needed */
-static VgVgdb VG_(gdbserver_instrumentation_needed) (const VexGuestExtents* vge)
+static VgVgdb VG_(gdbserver_instrumentation_needed) (VexGuestExtents* vge)
 {
    GS_Address* g;
    int e;
@@ -937,31 +934,6 @@ Bool VG_(gdbserver_activity) (ThreadId tid)
    return ret;
 }
 
-
-void VG_(gdbserver_report_fatal_signal) (Int vki_sigNo, ThreadId tid)
-{
-   dlog(1, "VG core calling VG_(gdbserver_report_fatal_signal) "
-        "vki_nr %d %s gdb_nr %d %s tid %d\n", 
-        vki_sigNo, VG_(signame)(vki_sigNo),
-        target_signal_from_host (vki_sigNo),
-        target_signal_to_name(target_signal_from_host (vki_sigNo)), 
-        tid);
-
-   if (remote_connected()) {
-      dlog(1, "already connected, assuming already reported\n");
-      return;
-   }
-
-   VG_(umsg)("(action on fatal signal) vgdb me ... \n");
-
-   /* indicate to gdbserver that there is a signal */
-   gdbserver_signal_encountered (vki_sigNo);
-
-   /* let gdbserver do some work, e.g. show the signal to the user */
-   call_gdbserver (tid, signal_reason);
-   
-}
-
 Bool VG_(gdbserver_report_signal) (Int vki_sigNo, ThreadId tid)
 {
    dlog(1, "VG core calling VG_(gdbserver_report_signal) "
@@ -1094,8 +1066,8 @@ void VG_(helperc_invalidate_if_not_gdbserved) ( Addr addr )
 
 static void VG_(add_stmt_call_invalidate_if_not_gdbserved)
      ( IRSB* sb_in,
-       const VexGuestLayout* layout, 
-       const VexGuestExtents* vge,
+       VexGuestLayout* layout, 
+       VexGuestExtents* vge,
        IRTemp jmp, 
        IRSB* irsb)
 {
@@ -1132,8 +1104,8 @@ static void VG_(add_stmt_call_invalidate_if_not_gdbserved)
    debugger statement will be inserted for all instructions of a block. */
 static void VG_(add_stmt_call_gdbserver) 
      (IRSB* sb_in,                /* block being translated */
-      const VexGuestLayout* layout, 
-      const VexGuestExtents* vge,
+      VexGuestLayout* layout, 
+      VexGuestExtents* vge,
       IRType gWordTy, IRType hWordTy,
       Addr  iaddr,                /* Addr of instruction being instrumented */
       UChar delta,                /* delta to add to iaddr to obtain IP */
@@ -1207,8 +1179,8 @@ static void VG_(add_stmt_call_gdbserver)
    or VG_(add_stmt_call_invalidate_if_not_gdbserved).  */
 static void VG_(add_stmt_call_invalidate_exit_target_if_not_gdbserved)
    (IRSB* sb_in,
-    const VexGuestLayout* layout,
-    const VexGuestExtents* vge,
+    VexGuestLayout* layout,
+    VexGuestExtents* vge,
     IRType gWordTy,
     IRSB* irsb)
 {
@@ -1226,8 +1198,8 @@ static void VG_(add_stmt_call_invalidate_exit_target_if_not_gdbserved)
 
 IRSB* VG_(instrument_for_gdbserver_if_needed)
      (IRSB* sb_in,
-      const VexGuestLayout* layout,
-      const VexGuestExtents* vge,
+      VexGuestLayout* layout,
+      VexGuestExtents* vge,
       IRType gWordTy, IRType hWordTy)
 {
    IRSB* sb_out;

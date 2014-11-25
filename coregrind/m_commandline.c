@@ -59,13 +59,10 @@ static HChar* read_dot_valgrindrc ( const HChar* dir )
    SysRes fd;
    struct vg_stat stat_buf;
    HChar* f_clo = NULL;
-   const  HChar dot_valgrindrc[] = ".valgrindrc";
+   HChar  filename[VKI_PATH_MAX];
 
-   vg_assert(dir != NULL);
-
-   HChar filename[VG_(strlen)(dir) + 1 + VG_(strlen)(dot_valgrindrc) + 1];
-   VG_(sprintf)(filename, "%s/%s", dir, dot_valgrindrc);
-
+   VG_(snprintf)(filename, VKI_PATH_MAX, "%s/.valgrindrc", 
+                           ( NULL == dir ? "" : dir ) );
    fd = VG_(open)(filename, 0, VKI_S_IRUSR);
    if ( !sr_isError(fd) ) {
       Int res = VG_(fstat)( sr_Res(fd), &stat_buf );
@@ -74,6 +71,7 @@ static HChar* read_dot_valgrindrc ( const HChar* dir )
           && (!(stat_buf.mode & VKI_S_IWOTH))) {
          if ( stat_buf.size > 0 ) {
             f_clo = VG_(malloc)("commandline.rdv.1", stat_buf.size+1);
+            vg_assert(f_clo);
             n = VG_(read)(sr_Res(fd), f_clo, stat_buf.size);
             if (n == -1) n = 0;
             vg_assert(n >= 0 && n <= stat_buf.size+1);
@@ -167,16 +165,19 @@ void VG_(split_up_argv)( Int argc, HChar** argv )
 
    tmp_xarray = VG_(newXA)( VG_(malloc), "commandline.sua.1",
                             VG_(free), sizeof(HChar*) );
+   vg_assert(tmp_xarray);
 
    vg_assert( ! VG_(args_for_valgrind) );
    VG_(args_for_valgrind)
       = VG_(newXA)( VG_(malloc), "commandline.sua.2",
                     VG_(free), sizeof(HChar*) );
+   vg_assert( VG_(args_for_valgrind) );
 
    vg_assert( ! VG_(args_for_client) );
    VG_(args_for_client)
       = VG_(newXA)( VG_(malloc), "commandline.sua.3",
                     VG_(free), sizeof(HChar*) );
+   vg_assert( VG_(args_for_client) );
 
    /* Collect up the args-for-V. */
    i = 1; /* skip the exe (stage2) name. */
@@ -221,8 +222,9 @@ void VG_(split_up_argv)( Int argc, HChar** argv )
       // Don't read ./.valgrindrc if "." is the same as "$HOME", else its
       // contents will be applied twice. (bug #142488)
       if (home) {
-         const HChar *cwd = VG_(get_startup_wd)();
-         f2_clo = ( VG_STREQ(home, cwd)
+         HChar cwd[VKI_PATH_MAX+1];
+         Bool  cwd_ok = VG_(get_startup_wd)(cwd, VKI_PATH_MAX);
+         f2_clo = ( (cwd_ok && VG_STREQ(home, cwd))
                        ? NULL : read_dot_valgrindrc(".") );
       }
 

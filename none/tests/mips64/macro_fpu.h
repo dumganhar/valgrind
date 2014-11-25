@@ -52,7 +52,6 @@ const char *flt_round_op_names[] = {
    "cvt.l.d", "cvt.s.l",
 };
 
-#if defined(__mips_hard_float)
 #define UNOPdd(op)               \
    fd_d = 0;                     \
    __asm__ __volatile__(         \
@@ -353,4 +352,3 @@ const char *flt_round_op_names[] = {
    printf("%s, bc1f   out=%f, fs=%f, ft=%f\n",   \
           instruction, outd, fs_d[i], ft_d[i]);  \
 }
-#endif

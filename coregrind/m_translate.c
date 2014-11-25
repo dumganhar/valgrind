@@ -59,7 +59,7 @@
 
 #include "pub_core_execontext.h"  // VG_(make_depth_1_ExeContext_from_Addr)
 
-#include "pub_core_gdbserver.h"   // VG_(instrument_for_gdbserver_if_needed)
+#include "pub_core_gdbserver.h"   // VG_(tool_instrument_then_gdbserver_if_needed)
 
 #include "libvex_emnote.h"        // For PPC, EmWarn_PPC64_redir_underflow
 
@@ -219,10 +219,10 @@ static IRExpr* mk_ecu_Expr ( Addr64 guest_IP )
 */
 static
 IRSB* tool_instrument_then_gdbserver_if_needed ( VgCallbackClosure* closureV,
-                                                 IRSB*              sb_in,
-                                                 const VexGuestLayout*  layout,
-                                                 const VexGuestExtents* vge,
-                                                 const VexArchInfo*     vai,
+                                                 IRSB*              sb_in, 
+                                                 VexGuestLayout*    layout, 
+                                                 VexGuestExtents*   vge,
+                                                 VexArchInfo*       vai,
                                                  IRType             gWordTy, 
                                                  IRType             hWordTy )
 {
@@ -261,9 +261,9 @@ IRSB* tool_instrument_then_gdbserver_if_needed ( VgCallbackClosure* closureV,
 static
 IRSB* vg_SP_update_pass ( void*             closureV,
                           IRSB*             sb_in, 
-                          const VexGuestLayout*   layout, 
-                          const VexGuestExtents*  vge,
-                          const VexArchInfo*      vai,
+                          VexGuestLayout*   layout, 
+                          VexGuestExtents*  vge,
+                          VexArchInfo*      vai,
                           IRType            gWordTy, 
                           IRType            hWordTy )
 {
@@ -344,7 +344,7 @@ IRSB* vg_SP_update_pass ( void*             closureV,
                                                                         \
          addStmtToIRSB( bb, IRStmt_Dirty(dcall) );                      \
                                                                         \
-         vg_assert(syze > 0);                                           \
+         tl_assert(syze > 0);                                           \
          update_SP_aliases(syze);                                       \
                                                                         \
          n_SP_updates_fast++;                                           \
@@ -374,7 +374,7 @@ IRSB* vg_SP_update_pass ( void*             closureV,
                                                                         \
          addStmtToIRSB( bb, IRStmt_Dirty(dcall) );                      \
                                                                         \
-         vg_assert(syze > 0);                                           \
+         tl_assert(syze > 0);                                           \
          update_SP_aliases(-(syze));                                    \
                                                                         \
          n_SP_updates_fast++;                                           \
@@ -776,7 +776,7 @@ static Bool translations_allowable_from_seg ( NSegment const* seg, Addr addr )
    return convention. */
 
 static UInt needs_self_check ( void* closureV,
-                               const VexGuestExtents* vge )
+                               VexGuestExtents* vge )
 {
    VgCallbackClosure* closure = (VgCallbackClosure*)closureV;
    UInt i, bitset;
@@ -1418,6 +1418,7 @@ Bool VG_(translate) ( ThreadId tid,
    if (!vex_init_done) {
       LibVEX_Init ( &failure_exit, &log_bytes, 
                     1,     /* debug_paranoia */ 
+                    False, /* valgrind support */
                     &VG_(clo_vex_control) );
       vex_init_done = True;
    }
@@ -1448,9 +1449,13 @@ Bool VG_(translate) ( ThreadId tid,
    if ((kind == T_Redir_Wrap || kind == T_Redir_Replace)
        && (VG_(clo_verbosity) >= 2 || VG_(clo_trace_redir))) {
       Bool ok;
-      const HChar *buf;
-      const HChar *name2;
-
+      HChar name1[512] = "";
+      HChar name2[512] = "";
+      name1[0] = name2[0] = 0;
+      ok = VG_(get_fnname_w_offset)(nraddr, name1, sizeof(name1));
+      if (!ok) VG_(strcpy)(name1, "???");
+      ok = VG_(get_fnname_w_offset)(addr, name2, sizeof(name2));
+      if (!ok) VG_(strcpy)(name2, "???");
       /* Try also to get the soname (not the filename) of the "from"
          object.  This makes it much easier to debug redirection
          problems. */
@@ -1461,15 +1466,6 @@ Bool VG_(translate) ( ThreadId tid,
          if (t)
             nraddr_soname = t;
       }
-
-      ok = VG_(get_fnname_w_offset)(nraddr, &buf);
-      if (!ok) buf = "???";
-      // Stash away name1
-      HChar name1[VG_(strlen)(buf) + 1];
-      VG_(strcpy)(name1, buf);
-      ok = VG_(get_fnname_w_offset)(addr, &name2);
-      if (!ok) name2 = "???";
-
       VG_(message)(Vg_DebugMsg, 
                    "REDIR: 0x%llx (%s:%s) redirected to 0x%llx (%s)\n",
                    nraddr, nraddr_soname, name1,
@@ -1482,6 +1478,8 @@ Bool VG_(translate) ( ThreadId tid,
 
    /* If doing any code printing, print a basic block start marker */
    if (VG_(clo_trace_flags) || debugging_translation) {
+      HChar fnname[512] = "UNKNOWN_FUNCTION";
+      VG_(get_fnname_w_offset)(addr, fnname, 512);
       const HChar* objname = "UNKNOWN_OBJECT";
       OffT         objoff  = 0;
       DebugInfo*   di      = VG_(find_DebugInfo)( addr );
@@ -1490,10 +1488,6 @@ Bool VG_(translate) ( ThreadId tid,
          objoff  = addr - VG_(DebugInfo_get_text_bias)(di);
       }
       vg_assert(objname);
- 
-      const HChar *fnname;
-      Bool ok = VG_(get_fnname_w_offset)(addr, &fnname);
-      if (!ok) fnname = "UNKNOWN_FUNCTION";
       VG_(printf)(
          "==== SB %d (evchecks %lld) [tid %d] 0x%llx %s %s+0x%llx\n",
          VG_(get_bbs_translated)(), bbs_done, (Int)tid, addr,
@@ -1570,7 +1564,7 @@ Bool VG_(translate) ( ThreadId tid,
 #  endif
 
    /* ------ Actually do the translation. ------ */
-   vg_assert2(VG_(tdict).tool_instrument,
+   tl_assert2(VG_(tdict).tool_instrument,
               "you forgot to set VgToolInterface function 'tool_instrument'");
 
    /* Get the CPU info established at startup. */
@@ -1629,14 +1623,16 @@ Bool VG_(translate) ( ThreadId tid,
         They are entirely legal but longwinded so as to maximise the
         chance of the C typechecker picking up any type snafus. */
      IRSB*(*f)(VgCallbackClosure*,
-               IRSB*,const VexGuestLayout*,const VexGuestExtents*,
-               const VexArchInfo*,IRType,IRType)
+               IRSB*,VexGuestLayout*,VexGuestExtents*, VexArchInfo*,
+               IRType,IRType)
         = VG_(clo_vgdb) != Vg_VgdbNo
              ? tool_instrument_then_gdbserver_if_needed
              : VG_(tdict).tool_instrument;
      IRSB*(*g)(void*,
-               IRSB*,const VexGuestLayout*,const VexGuestExtents*,
-               const VexArchInfo*,IRType,IRType) = (__typeof__(g)) f;
+               IRSB*,VexGuestLayout*,VexGuestExtents*,VexArchInfo*,
+               IRType,IRType)
+       = (IRSB*(*)(void*,IRSB*,VexGuestLayout*,VexGuestExtents*,
+                   VexArchInfo*,IRType,IRType))f;
      vta.instrument1     = g;
    }
    /* No need for type kludgery here. */

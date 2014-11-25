@@ -1,8 +1,6 @@
 #include "tests/asm.h"
 
-#if defined(VGO_linux)
 	.version	"01.01"
-#endif
 gcc2_compiled.:
 .text
 	.align 4

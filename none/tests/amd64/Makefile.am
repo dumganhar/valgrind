@@ -120,9 +120,7 @@ if BUILD_VPCLMULQDQ_TESTS
 endif
 endif
 if BUILD_AVX2_TESTS
-if !COMPILER_IS_ICC
   check_PROGRAMS += avx2-1
-endif
 endif
 if BUILD_TSX_TESTS
   check_PROGRAMS += tm1 xacq_xrel

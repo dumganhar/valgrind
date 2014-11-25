@@ -1052,7 +1052,8 @@ POST(sys_prctl)
 
             /* Don't bother reusing the memory. This is a rare event. */
             tst->thread_name =
-              VG_(realloc)("syswrap.prctl", tst->thread_name, new_len + 1);
+              VG_(arena_realloc)(VG_AR_CORE, "syswrap.prctl",
+                                 tst->thread_name, new_len + 1);
             VG_(strcpy)(tst->thread_name, new_name);
          }
       }
@@ -3606,15 +3607,6 @@ PRE(sys_ipc)
    case VKI_SHMGET:
       PRE_REG_READ4(int, "ipc",
                     vki_uint, call, int, first, int, second, int, third);
-      if (ARG4 & VKI_SHM_HUGETLB) {
-         static Bool warning_given = False;
-         ARG4 &= ~VKI_SHM_HUGETLB;
-         if (!warning_given) {
-            warning_given = True;
-            VG_(umsg)(
-               "WARNING: valgrind ignores shmget(shmflg) SHM_HUGETLB\n");
-         }
-      }
       break;
    case VKI_SHMCTL: /* IPCOP_shmctl */
       PRE_REG_READ5(int, "ipc",
@@ -3817,15 +3809,6 @@ PRE(sys_shmget)
 {
    PRINT("sys_shmget ( %ld, %ld, %ld )",ARG1,ARG2,ARG3);
    PRE_REG_READ3(long, "shmget", vki_key_t, key, vki_size_t, size, int, shmflg);
-   if (ARG3 & VKI_SHM_HUGETLB) {
-      static Bool warning_given = False;
-      ARG3 &= ~VKI_SHM_HUGETLB;
-      if (!warning_given) {
-         warning_given = True;
-         VG_(umsg)(
-            "WARNING: valgrind ignores shmget(shmflg) SHM_HUGETLB\n");
-      }
-   }
 }
 
 PRE(wrap_sys_shmat)
@@ -5462,7 +5445,6 @@ PRE(sys_ioctl)
    case VKI_KVM_S390_ENABLE_SIE:
    case VKI_KVM_CREATE_IRQCHIP:
    case VKI_KVM_S390_INITIAL_RESET:
-   case VKI_KVM_KVMCLOCK_CTRL:
 
    /* vhost without parameter */
    case VKI_VHOST_SET_OWNER:
@@ -7086,7 +7068,6 @@ PRE(sys_ioctl)
    case VKI_KVM_CREATE_VM:
    case VKI_KVM_GET_VCPU_MMAP_SIZE:
    case VKI_KVM_CHECK_EXTENSION:
-   case VKI_KVM_SET_TSS_ADDR:
    case VKI_KVM_CREATE_VCPU:
    case VKI_KVM_RUN:
       break;
@@ -9410,11 +9391,9 @@ POST(sys_ioctl)
    case VKI_KVM_GET_VCPU_MMAP_SIZE:
    case VKI_KVM_S390_ENABLE_SIE:
    case VKI_KVM_CREATE_VCPU:
-   case VKI_KVM_SET_TSS_ADDR:
    case VKI_KVM_CREATE_IRQCHIP:
    case VKI_KVM_RUN:
    case VKI_KVM_S390_INITIAL_RESET:
-   case VKI_KVM_KVMCLOCK_CTRL:
       break;
 
 #ifdef ENABLE_XEN

@@ -71,8 +71,7 @@ typedef
       Addr_Stack,       // on a thread's stack       
       Addr_DataSym,     // in a global data sym
       Addr_Variable,    // variable described by the debug info
-      Addr_SectKind,    // Section from a mmap-ed object file
-      Addr_SegmentKind  // Client segment (mapped memory)
+      Addr_SectKind     // last-ditch classification attempt
    }
    AddrTag;
 
@@ -154,10 +153,10 @@ struct _AddrInfo {
          ExeContext* freed_at;      // might be null_ExeContext.
       } Block;
 
-      // In a global .data symbol.  This holds
+      // In a global .data symbol.  This holds the first 127 chars of
       // the variable's name (zero terminated), plus a (memory) offset.
       struct {
-         HChar   *name;
+         HChar    name[128];
          PtrdiffT offset;
       } DataSym;
 
@@ -170,17 +169,9 @@ struct _AddrInfo {
       // Could only narrow it down to be the PLT/GOT/etc of a given
       // object.  Better than nothing, perhaps.
       struct {
-         HChar      *objname;
+         HChar      objname[128];
          VgSectKind kind;
       } SectKind;
-
-      struct {
-         SegKind segkind;   // SkAnonC, SkFileC or SkShmC.
-         HChar   *filename; // NULL if segkind != SkFileC
-         Bool    hasR;
-         Bool    hasW;
-         Bool    hasX;
-      } SegmentKind;
 
       // Classification yielded nothing useful.
       struct { } Unknown;
@@ -197,16 +188,15 @@ extern void VG_(describe_addr) ( Addr a, /*OUT*/AddrInfo* ai );
 
 extern void VG_(clear_addrinfo) ( AddrInfo* ai);
 
-/* Prints the AddrInfo ai describing a.
-   Note that an ai with tag Addr_Undescribed will cause an assert.*/
-extern void VG_(pp_addrinfo) ( Addr a, const AddrInfo* ai );
+/* Prints the AddrInfo ai describing a. */
+extern void VG_(pp_addrinfo) ( Addr a, AddrInfo* ai );
 
 /* Same as VG_(pp_addrinfo) but provides some memcheck specific behaviour:
    * maybe_gcc indicates Addr a was just below the stack ptr when the error
      with a was encountered.
    * the message for Unknown tag is slightly different, as memcheck
      has a recently freed list. */
-extern void VG_(pp_addrinfo_mc) ( Addr a, const AddrInfo* ai, Bool maybe_gcc );
+extern void VG_(pp_addrinfo_mc) ( Addr a, AddrInfo* ai, Bool maybe_gcc );
 
 #endif   // __PUB_TOOL_ADDRINFO_H
 

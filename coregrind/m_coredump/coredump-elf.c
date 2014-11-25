@@ -160,10 +160,8 @@ static UInt note_size(const struct note *n)
                             + VG_ROUNDUP(n->note.n_descsz, 4);
 }
 
-#if !defined(VGPV_arm_linux_android) \
-    && !defined(VGPV_x86_linux_android) \
-    && !defined(VGPV_mips32_linux_android) \
-    && !defined(VGPV_arm64_linux_android)
+#if !defined(VGPV_arm_linux_android) && !defined(VGPV_x86_linux_android) \
+    && !defined(VGPV_mips32_linux_android)
 static void add_note(struct note **list, const HChar *name, UInt type,
                      const void *data, UInt datasz)
 {
@@ -171,7 +169,7 @@ static void add_note(struct note **list, const HChar *name, UInt type,
    Int notelen = sizeof(struct note) + 
       VG_ROUNDUP(namelen, 4) + 
       VG_ROUNDUP(datasz, 4);
-   struct note *n = VG_(malloc)("coredump-elf.an.1", notelen);
+   struct note *n = VG_(arena_malloc)(VG_AR_CORE, "coredump-elf.an.1", notelen);
 
    VG_(memset)(n, 0, notelen);
 
@@ -195,7 +193,7 @@ static void write_note(Int fd, const struct note *n)
 static void fill_prpsinfo(const ThreadState *tst,
                           struct vki_elf_prpsinfo *prpsinfo)
 {
-   const HChar *name;
+   static HChar name[VKI_PATH_MAX];
 
    VG_(memset)(prpsinfo, 0, sizeof(*prpsinfo));
 
@@ -222,8 +220,8 @@ static void fill_prpsinfo(const ThreadState *tst,
    prpsinfo->pr_uid = 0;
    prpsinfo->pr_gid = 0;
    
-   if (VG_(resolve_filename)(VG_(cl_exec_fd), &name)) {
-      const HChar *n = name + VG_(strlen)(name) - 1;
+   if (VG_(resolve_filename)(VG_(cl_exec_fd), name, VKI_PATH_MAX)) {
+      HChar *n = name+VG_(strlen)(name)-1;
 
       while (n > name && *n != '/')
 	 n--;
@@ -561,18 +559,14 @@ void dump_one_thread(struct note **notelist, const vki_siginfo_t *si, ThreadId t
 #     endif
 
       fill_fpu(&VG_(threads)[tid], &fpu);
-#     if !defined(VGPV_arm_linux_android) \
-         && !defined(VGPV_x86_linux_android) \
-         && !defined(VGPV_mips32_linux_android) \
-         && !defined(VGPV_arm64_linux_android)
+#     if !defined(VGPV_arm_linux_android) && !defined(VGPV_x86_linux_android) \
+         && !defined(VGPV_mips32_linux_android)
       add_note(notelist, "CORE", NT_FPREGSET, &fpu, sizeof(fpu));
 #     endif
 
       fill_prstatus(&VG_(threads)[tid], &prstatus, si);
-#     if !defined(VGPV_arm_linux_android) \
-         && !defined(VGPV_x86_linux_android) \
-         && !defined(VGPV_mips32_linux_android) \
-         && !defined(VGPV_arm64_linux_android)
+#     if !defined(VGPV_arm_linux_android) && !defined(VGPV_x86_linux_android) \
+         && !defined(VGPV_mips32_linux_android)
       add_note(notelist, "CORE", NT_PRSTATUS, &prstatus, sizeof(prstatus));
 #     endif
 }
@@ -609,6 +603,7 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
    buf = VG_(malloc)( "coredump-elf.mec.1", 
                       VG_(strlen)(coreext) + VG_(strlen)(basename)
                          + 100/*for the two %ds. */ );
+   vg_assert(buf);
 
    for(;;) {
       Int oflags = VKI_O_CREAT|VKI_O_WRONLY|VKI_O_EXCL|VKI_O_TRUNC;
@@ -653,7 +648,8 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
    notelist = NULL;
 
    /* Second, work out their layout */
-   phdrs = VG_(malloc)("coredump-elf.mec.1", sizeof(*phdrs) * num_phdrs);
+   phdrs = VG_(arena_malloc)(VG_AR_CORE, "coredump-elf.mec.1", 
+                             sizeof(*phdrs) * num_phdrs);
 
    /* Add details for all threads except the one that faulted */
    for(i = 1; i < VG_N_THREADS; i++) {
@@ -674,10 +670,8 @@ void make_elf_coredump(ThreadId tid, const vki_siginfo_t *si, ULong max_size)
    dump_one_thread(&notelist, si, tid);
 
    fill_prpsinfo(&VG_(threads)[tid], &prpsinfo);
-#  if !defined(VGPV_arm_linux_android) \
-      && !defined(VGPV_x86_linux_android) \
-      && !defined(VGPV_mips32_linux_android) \
-      && !defined(VGPV_arm64_linux_android)
+#  if !defined(VGPV_arm_linux_android) && !defined(VGPV_x86_linux_android) \
+      && !defined(VGPV_mips32_linux_android)
    add_note(&notelist, "CORE", NT_PRPSINFO, &prpsinfo, sizeof(prpsinfo));
 #  endif
 

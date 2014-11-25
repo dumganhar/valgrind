@@ -35,6 +35,7 @@
 #include "drd_suppression.h"      // drd_start_suppression()
 #include "drd_thread.h"
 #include "pub_tool_basics.h"      // Bool
+#include "pub_tool_debuginfo.h"   // VG_(describe_IP)()
 #include "pub_tool_libcassert.h"
 #include "pub_tool_libcassert.h"  // tl_assert()
 #include "pub_tool_libcprint.h"   // VG_(message)()

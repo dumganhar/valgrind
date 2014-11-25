@@ -51,9 +51,8 @@ typedef  struct _XArray  XArray;
 typedef Int (*XACmpFn_t)(const void *, const void *);
 
 /* Create new XArray, using given allocation and free function, and
-   for elements of the specified size.  alloc_fn must not return NULL (that
-   is, if it returns it must have succeeded.)
-   This function never returns NULL. */
+   for elements of the specified size.  Alloc fn must not fail (that
+   is, if it returns it must have succeeded.) */
 extern XArray* VG_(newXA) ( void*(*alloc_fn)(const HChar*,SizeT), 
                             const HChar* cc,
                             void(*free_fn)(void*),
@@ -86,7 +85,7 @@ extern void VG_(sortXA) ( XArray* );
    value found.  If any values are found, return True, else return
    False, and don't change *first or *last.  first and/or last may be
    NULL.  Bomb if the array is not sorted. */
-extern Bool VG_(lookupXA) ( const XArray*, const void* key, 
+extern Bool VG_(lookupXA) ( XArray*, const void* key, 
                             /*OUT*/Word* first, /*OUT*/Word* last );
 
 /* A version of VG_(lookupXA) in which you can specify your own
@@ -97,12 +96,12 @@ extern Bool VG_(lookupXA) ( const XArray*, const void* key,
    VG_(lookupXA), which refuses to do anything (asserts) unless the
    array has first been sorted using the same comparison function as
    is being used for the lookup. */
-extern Bool VG_(lookupXA_UNSAFE) ( const XArray* xao, const void* key,
+extern Bool VG_(lookupXA_UNSAFE) ( XArray* xao, const void* key,
                                    /*OUT*/Word* first, /*OUT*/Word* last,
                                    XACmpFn_t cmpFn );
 
 /* How elements are there in this XArray now? */
-extern Word VG_(sizeXA) ( const XArray* );
+extern Word VG_(sizeXA) ( XArray* );
 
 /* Index into the XArray.  Checks bounds and bombs if the index is
    invalid.  What this returns is the address of the specified element
@@ -111,7 +110,7 @@ extern Word VG_(sizeXA) ( const XArray* );
    insertIndexXA, so you should copy it out immediately and not regard
    its address as unchanging.  Note also that indexXA will of course
    not return NULL if it succeeds. */
-extern void* VG_(indexXA) ( const XArray*, Word );
+extern void* VG_(indexXA) ( XArray*, Word );
 
 /* Drop the last n elements of an XArray.  Bombs if there are less
    than n elements in the array.  This is an O(1) operation. */
@@ -137,10 +136,11 @@ extern void VG_(insertIndexXA)( XArray*, Word, const void* elem );
 
 /* Make a new, completely independent copy of the given XArray, using
    the existing allocation function to allocate the new space.
-   Space for the clone (and all additions to it) is billed to 'cc' unless
-   that is NULL, in which case the parent's cost-center is used.
-   Ths function never returns NULL. */
-extern XArray* VG_(cloneXA)( const HChar* cc, const XArray* xa );
+   Returns NULL if the allocation function didn't manage to allocate
+   space (but did return NULL rather than merely abort.)  Space for
+   the clone (and all additions to it) is billed to 'cc' unless that
+   is NULL, in which case the parent's cost-center is used. */
+extern XArray* VG_(cloneXA)( const HChar* cc, XArray* xa );
 
 /* Get the raw array and size so callers can index it really fast.
    This is dangerous in the sense that there's no range or

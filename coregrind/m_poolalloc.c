@@ -36,9 +36,9 @@ struct _PoolAlloc {
    UWord   nrRef;         /* nr reference to this pool allocator */
    UWord   elemSzB;       /* element size */
    UWord   nPerPool;      /* # elems per pool */
-   void*   (*alloc_fn)(const HChar*, SizeT); /* pool allocator */
-   const HChar*  cc; /* pool allocator's cost centre */
-   void    (*free_fn)(void*); /* pool allocator's free-er */
+   void*   (*alloc)(const HChar*, SizeT); /* pool allocator */
+   const HChar*  cc; /* pool allocator's cc */
+   void    (*free)(void*); /* pool allocator's free-er */
    /* XArray of void* (pointers to pools).  The pools themselves.
       Each element is a pointer to a block of size (elemSzB *
       nPerPool) bytes. */
@@ -50,7 +50,7 @@ struct _PoolAlloc {
 
 PoolAlloc* VG_(newPA) ( UWord  elemSzB,
                         UWord  nPerPool,
-                        void*  (*alloc_fn)(const HChar*, SizeT),
+                        void*  (*alloc)(const HChar*, SizeT),
                         const  HChar* cc,
                         void   (*free_fn)(void*) )
 {
@@ -58,21 +58,22 @@ PoolAlloc* VG_(newPA) ( UWord  elemSzB,
    vg_assert(0 == (elemSzB % sizeof(UWord)));
    vg_assert(elemSzB >= sizeof(UWord));
    vg_assert(nPerPool >= 100); /* let's say */
-   vg_assert(alloc_fn);
+   vg_assert(alloc);
    vg_assert(cc);
    vg_assert(free_fn);
-   pa = alloc_fn(cc, sizeof(*pa));
+   pa = alloc(cc, sizeof(*pa));
+   vg_assert(pa);
    VG_(memset)(pa, 0, sizeof(*pa));
    pa->nrRef    = 0;
    pa->elemSzB  = elemSzB;
    pa->nPerPool = nPerPool;
    pa->pools    = NULL;
-   pa->alloc_fn = alloc_fn;
+   pa->alloc    = alloc;
    pa->cc       = cc;
-   pa->free_fn  = free_fn;
-   pa->pools    = VG_(newXA)( alloc_fn, cc, free_fn, sizeof(void*) );
+   pa->free     = free_fn;
+   pa->pools    = VG_(newXA)( alloc, cc, free_fn, sizeof(void*) );
    pa->nextFree = NULL;
-
+   vg_assert(pa->pools);
    return pa;
 }
 
@@ -81,9 +82,9 @@ void VG_(deletePA) ( PoolAlloc* pa)
    Word i;
    vg_assert(pa->nrRef == 0);
    for (i = 0; i < VG_(sizeXA) (pa->pools); i++)
-      pa->free_fn (*(UWord **)VG_(indexXA) ( pa->pools, i ));
+      pa->free (*(UWord **)VG_(indexXA) ( pa->pools, i ));
    VG_(deleteXA) (pa->pools);
-   pa->free_fn (pa);
+   pa->free (pa);
 }
 
 /* The freelist is empty.  Allocate a new pool and put all the new
@@ -95,7 +96,8 @@ static void pal_add_new_pool ( PoolAlloc* pa )
    UWord* pool;
    vg_assert(pa);
    vg_assert(pa->nextFree == NULL);
-   pool = pa->alloc_fn( pa->cc, pa->elemSzB * pa->nPerPool );
+   pool = pa->alloc( pa->cc, pa->elemSzB * pa->nPerPool );
+   vg_assert(pool);
    /* extend the freelist through the new pool.  Place the freelist
       pointer in the first word of each element.  That's why the
       element size must be at least one word. */

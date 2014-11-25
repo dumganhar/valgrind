@@ -242,7 +242,7 @@ ThreadId VG_(alloc_ThreadState) ( void )
 	 VG_(threads)[i].status = VgTs_Init;
 	 VG_(threads)[i].exitreason = VgSrc_None;
          if (VG_(threads)[i].thread_name)
-            VG_(free)(VG_(threads)[i].thread_name);
+            VG_(arena_free)(VG_AR_CORE, VG_(threads)[i].thread_name);
          VG_(threads)[i].thread_name = NULL;
          return i;
       }
@@ -696,7 +696,7 @@ void VG_(scheduler_init_phase2) ( ThreadId tid_main,
    guest state, its two copies, and the spill area.  In short, all 4
    areas must have a 16-aligned size and be 16-aligned, and placed
    back-to-back. */
-static void do_pre_run_checks ( volatile ThreadState* tst )
+static void do_pre_run_checks ( ThreadState* tst )
 {
    Addr a_vex     = (Addr) & tst->arch.vex;
    Addr a_vexsh1  = (Addr) & tst->arch.vex_shadow1;
@@ -859,7 +859,7 @@ void run_thread_for_a_while ( /*OUT*/HWord* two_words,
    vg_assert(*dispatchCtrP > 0);
 
    tst = VG_(get_ThreadState)(tid);
-   do_pre_run_checks( tst );
+   do_pre_run_checks( (ThreadState*)tst );
    /* end Paranoia */
 
    /* Futz with the XIndir stats counters. */
@@ -934,7 +934,7 @@ void run_thread_for_a_while ( /*OUT*/HWord* two_words,
       jumped, 
       VG_(disp_run_translations)( 
          two_words,
-         (volatile void*)&tst->arch.vex,
+         (void*)&tst->arch.vex,
          host_code_addr
       )
    );
@@ -1997,25 +1997,25 @@ void do_client_request ( ThreadId tid )
 
       case VG_USERREQ__MAP_IP_TO_SRCLOC: {
          Addr   ip    = arg[1];
-         HChar* buf64 = (HChar*)arg[2];  // points to a HChar [64] array
-         const HChar *buf;  // points to a string of unknown size
+         HChar* buf64 = (HChar*)arg[2];
 
          VG_(memset)(buf64, 0, 64);
          UInt linenum = 0;
          Bool ok = VG_(get_filename_linenum)(
-                      ip, &buf, NULL, NULL, &linenum
+                      ip, &buf64[0], 50, NULL, 0, NULL, &linenum
                    );
          if (ok) {
-            /* For backward compatibility truncate the filename to
-               49 characters. */
-            VG_(strncpy)(buf64, buf, 50);
-            buf64[49] = '\0';
+            /* Find the terminating zero in the first 50 bytes. */
             UInt i;
             for (i = 0; i < 50; i++) {
                if (buf64[i] == 0)
                   break;
             }
-            VG_(sprintf)(buf64+i, ":%u", linenum);  // safe
+            /* We must find a zero somewhere in 0 .. 49.  Else
+               VG_(get_filename_linenum) is not properly zero
+               terminating. */
+            vg_assert(i < 50);
+            VG_(sprintf)(&buf64[i], ":%u", linenum);
          } else {
             buf64[0] = 0;
          }

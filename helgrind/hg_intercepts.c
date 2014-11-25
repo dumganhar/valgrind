@@ -136,7 +136,7 @@
 
 #define DO_PthAPIerror(_fnnameF, _errF)                  \
    do {                                                  \
-      const char* _fnname = (_fnnameF);                  \
+      char* _fnname = (char*)(_fnnameF);                 \
       long  _err    = (long)(int)(_errF);                \
       const char* _errstr = lame_strerror(_err);         \
       DO_CREQ_v_WWW(_VG_USERREQ__HG_PTH_API_ERROR,       \
@@ -159,8 +159,8 @@
 __attribute__((noinline))
 static int my_memcmp ( const void* ptr1, const void* ptr2, size_t size)
 {
-   const unsigned char* uchar_ptr1 = (const unsigned char*) ptr1;
-   const unsigned char* uchar_ptr2 = (const unsigned char*) ptr2;
+   unsigned char* uchar_ptr1 = (unsigned char*) ptr1;
+   unsigned char* uchar_ptr2 = (unsigned char*) ptr2;
    size_t i;
    for (i = 0; i < size; ++i) {
       if (uchar_ptr1[i] != uchar_ptr2[i])

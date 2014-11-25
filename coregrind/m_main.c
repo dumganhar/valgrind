@@ -127,8 +127,6 @@ static void usage_NORETURN ( Bool debug_help )
 "    --num-callers=<number>    show <number> callers in stack traces [12]\n"
 "    --error-limit=no|yes      stop showing new errors if too many? [yes]\n"
 "    --error-exitcode=<number> exit code to return if errors found [0=disable]\n"
-"    --error-markers=<begin>,<end> add lines with begin/end markers before/after\n"
-"                              each error output in plain text mode [none]\n"
 "    --show-below-main=no|yes  continue stack traces below main() [no]\n"
 "    --default-suppressions=yes|no\n"
 "                              load default suppressions [yes]\n"
@@ -210,8 +208,6 @@ static void usage_NORETURN ( Bool debug_help )
 "                  NOTE: stack scanning is only available on arm-linux.\n"
 "    --unw-stack-scan-frames=<number>   Max number of frames that can be\n"
 "                  recovered by stack scanning [5]\n"
-"    --resync-filter=no|yes|verbose [yes on MacOS, no on other OSes]\n"
-"              attempt to avoid expensive address-space-resync operations\n"
 "\n";
 
    const HChar usage2[] = 
@@ -423,7 +419,7 @@ static void early_process_cmd_line_options ( /*OUT*/Int* need_help,
 */
 static
 void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
-                                     /*OUT*/const HChar** xml_fname_unexpanded,
+                                     /*OUT*/HChar** xml_fname_unexpanded,
                                      const HChar* toolname )
 {
    // VG_(clo_log_fd) is used by all the messaging.  It starts as 2 (stderr)
@@ -461,13 +457,6 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
                             "./configure --prefix=... or --libdir=...\n");
 
    vg_assert( VG_(args_for_valgrind) );
-
-   VG_(clo_suppressions) = VG_(newXA)(VG_(malloc), "main.mpclo.4",
-                                      VG_(free), sizeof(HChar *));
-   VG_(clo_fullpath_after) = VG_(newXA)(VG_(malloc), "main.mpclo.5",
-                                        VG_(free), sizeof(HChar *));
-   VG_(clo_req_tsyms) = VG_(newXA)(VG_(malloc), "main.mpclo.6",
-                                   VG_(free), sizeof(HChar *));
 
    /* BEGIN command-line processing loop */
 
@@ -582,31 +571,6 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
       else if VG_STR_CLO (arg, "--soname-synonyms",VG_(clo_soname_synonyms)) {}
       else if VG_BOOL_CLO(arg, "--error-limit",    VG_(clo_error_limit)) {}
       else if VG_INT_CLO (arg, "--error-exitcode", VG_(clo_error_exitcode)) {}
-      else if VG_STR_CLO (arg, "--error-markers",  tmp_str) {
-         Int m;
-         const HChar *startpos = tmp_str;
-         const HChar *nextpos;
-         for (m = 0; 
-              m < sizeof(VG_(clo_error_markers))
-                 /sizeof(VG_(clo_error_markers)[0]);
-              m++) {
-            /* Release previous value if clo given multiple times. */
-            VG_(free)(VG_(clo_error_markers)[m]);
-            VG_(clo_error_markers)[m] = NULL;
-
-            nextpos = VG_(strchr)(startpos, ',');
-            if (!nextpos)
-               nextpos = startpos + VG_(strlen)(startpos);
-            if (startpos != nextpos) {
-               VG_(clo_error_markers)[m] 
-                  = VG_(malloc)("main.mpclo.2", nextpos - startpos + 1);
-               VG_(memcpy)(VG_(clo_error_markers)[m], startpos, 
-                           nextpos - startpos);
-               VG_(clo_error_markers)[m][nextpos - startpos] = '\0';
-            }
-            startpos = *nextpos ? nextpos + 1 : nextpos;
-         }
-      }
       else if VG_BOOL_CLO(arg, "--show-emwarns",   VG_(clo_show_emwarns)) {}
 
       else if VG_BOOL_CLO(arg, "--run-libc-freeres", VG_(clo_run_libc_freeres)) {}
@@ -748,17 +712,34 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
                           VG_(clo_default_supp)) { }
 
       else if VG_STR_CLO(arg, "--suppressions", tmp_str) {
-         VG_(addToXA)(VG_(clo_suppressions), &tmp_str);
+         if (VG_(clo_n_suppressions) >= VG_CLO_MAX_SFILES) {
+            VG_(fmsg_bad_option)(arg,
+               "Too many suppression files specified.\n"
+               "Increase VG_CLO_MAX_SFILES and recompile.\n");
+         }
+         VG_(clo_suppressions)[VG_(clo_n_suppressions)] = tmp_str;
+         VG_(clo_n_suppressions)++;
       }
 
       else if VG_STR_CLO (arg, "--fullpath-after", tmp_str) {
-         VG_(addToXA)(VG_(clo_fullpath_after), &tmp_str);
+         if (VG_(clo_n_fullpath_after) >= VG_CLO_MAX_FULLPATH_AFTER) {
+            VG_(fmsg_bad_option)(arg,
+               "Too many --fullpath-after= specifications.\n"
+               "Increase VG_CLO_MAX_FULLPATH_AFTER and recompile.\n");
+         }
+         VG_(clo_fullpath_after)[VG_(clo_n_fullpath_after)] = tmp_str;
+         VG_(clo_n_fullpath_after)++;
       }
 
       else if VG_STR_CLO (arg, "--extra-debuginfo-path",
                       VG_(clo_extra_debuginfo_path)) {}
 
       else if VG_STR_CLO(arg, "--require-text-symbol", tmp_str) {
+         if (VG_(clo_n_req_tsyms) >= VG_CLO_MAX_REQ_TSYMS) {
+            VG_(fmsg_bad_option)(arg,
+               "Too many --require-text-symbol= specifications.\n"
+               "Increase VG_CLO_MAX_REQ_TSYMS and recompile.\n");
+         }
          /* String needs to be of the form C?*C?*, where C is any
             character, but is the same both times.  Having it in this
             form facilitates finding the boundary between the sopatt
@@ -779,7 +760,8 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
             VG_(fmsg_bad_option)(arg,
                "Invalid --require-text-symbol= specification.\n");
          }
-         VG_(addToXA)(VG_(clo_req_tsyms), &tmp_str);
+         VG_(clo_req_tsyms)[VG_(clo_n_req_tsyms)] = tmp_str;
+         VG_(clo_n_req_tsyms)++;
       }
 
       /* "stuvwxyz" --> stuvwxyz (binary) */
@@ -835,13 +817,6 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
                           VG_(clo_unw_stack_scan_thresh), 0, 100) {}
       else if VG_BINT_CLO(arg, "--unw-stack-scan-frames",
                           VG_(clo_unw_stack_scan_frames), 0, 32) {}
-
-      else if VG_XACT_CLO(arg, "--resync-filter=no",
-                               VG_(clo_resync_filter), 0) {}
-      else if VG_XACT_CLO(arg, "--resync-filter=yes",
-                               VG_(clo_resync_filter), 1) {}
-      else if VG_XACT_CLO(arg, "--resync-filter=verbose",
-                               VG_(clo_resync_filter), 2) {}
 
       else if ( ! VG_(needs).command_line_options
              || ! VG_TDICT_CALL(tool_process_cmd_line_option, arg) ) {
@@ -905,14 +880,6 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
          "Can't use --gen-suppressions= with %s\n"
          "because it doesn't generate errors.\n", VG_(details).name);
    }
-
-#  if !defined(VGO_darwin)
-   if (VG_(clo_resync_filter) != 0) {
-      VG_(fmsg_bad_option)("--resync-filter=yes or =verbose", 
-                           "--resync-filter= is only available on MacOS X.\n");
-      /*NOTREACHED*/
-   }
-#  endif
 
    /* If XML output is requested, check that the tool actually
       supports it. */
@@ -1077,7 +1044,9 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
          if (!sr_isError(sres)) {
             tmp_xml_fd = sr_Res(sres);
             VG_(clo_xml_fname_expanded) = xmlfilename;
-            *xml_fname_unexpanded = xml_fsname_unexpanded;
+            /* strdup here is probably paranoid overkill, but ... */
+            *xml_fname_unexpanded = VG_(strdup)( "main.mpclo.2",
+                                                 xml_fsname_unexpanded );
          } else {
             VG_(fmsg)("can't create XML file '%s': %s\n", 
                       xmlfilename, VG_(strerror)(sr_Err(sres)));
@@ -1173,24 +1142,23 @@ void main_process_cmd_line_options ( /*OUT*/Bool* logging_to_fd,
    // Suppressions related stuff
 
    if (VG_(clo_default_supp) &&
+       VG_(clo_n_suppressions) < VG_CLO_MAX_SFILES-1 &&
        (VG_(needs).core_errors || VG_(needs).tool_errors)) {
       /* If we haven't reached the max number of suppressions, load
          the default one. */
       static const HChar default_supp[] = "default.supp";
       Int len = VG_(strlen)(VG_(libdir)) + 1 + sizeof(default_supp);
-      HChar *buf = VG_(malloc)("main.mpclo.3", len);
+      HChar *buf = VG_(arena_malloc)(VG_AR_CORE, "main.mpclo.3", len);
       VG_(sprintf)(buf, "%s/%s", VG_(libdir), default_supp);
-      VG_(addToXA)(VG_(clo_suppressions), &buf);
+      VG_(clo_suppressions)[VG_(clo_n_suppressions)] = buf;
+      VG_(clo_n_suppressions)++;
    }
 
    *logging_to_fd = log_to == VgLogTo_Fd || log_to == VgLogTo_Socket;
 }
 
 // Write the name and value of log file qualifiers to the xml file.
-// We can safely assume here that the format string is well-formed.
-// It has been checked earlier in VG_(expand_file_name) when processing
-// command line options.
-static void print_file_vars(const HChar* format)
+static void print_file_vars(HChar* format)
 {
    Int i = 0;
    
@@ -1202,24 +1170,28 @@ static void print_file_vars(const HChar* format)
             i++;
             if ('{' == format[i]) {
 	       // Get the env var name, print its contents.
+	       HChar* qualname;
                HChar* qual;
-               Int begin_qualname = ++i;
+               i++;
+               qualname = &format[i];
                while (True) {
 		  if ('}' == format[i]) {
-                     Int qualname_len = i - begin_qualname;
-                     HChar qualname[qualname_len + 1];
-                     VG_(strncpy)(qualname, format + begin_qualname,
-                                  qualname_len);
-                     qualname[qualname_len] = '\0';
+                     // Temporarily replace the '}' with NUL to extract var
+                     // name.
+		     format[i] = 0;
                      qual = VG_(getenv)(qualname);
-                     i++;
-                     VG_(printf_xml)("<logfilequalifier> <var>%pS</var> "
-                                     "<value>%pS</value> </logfilequalifier>\n",
-                                     qualname, qual);
 		     break;
                   }
                   i++;
                }
+
+               VG_(printf_xml)(
+                  "<logfilequalifier> <var>%pS</var> "
+                  "<value>%pS</value> </logfilequalifier>\n",
+                  qualname,qual
+               );
+	       format[i] = '}';
+	       i++;
 	    }
          }
       } else {
@@ -1258,7 +1230,7 @@ static void xml_arg(const HChar* arg)
    command line args, to help people trying to interpret the
    results of a run which encompasses multiple processes. */
 static void print_preamble ( Bool logging_to_fd, 
-                             const HChar* xml_fname_unexpanded,
+                             HChar* xml_fname_unexpanded,
                              const HChar* toolname )
 {
    Int    i;
@@ -1408,21 +1380,18 @@ static void print_preamble ( Bool logging_to_fd,
       if (sr_isError(fd)) {
          VG_(message)(Vg_DebugMsg, "  can't open /proc/version\n");
       } else {
-         const SizeT bufsiz = 255;
-         HChar version_buf[bufsiz+1];
-         VG_(message)(Vg_DebugMsg, "  ");
-         Int n, fdno = sr_Res(fd);
-         do {
-            n = VG_(read)(fdno, version_buf, bufsiz);
-            if (n < 0) {
-               VG_(message)(Vg_DebugMsg, "  error reading /proc/version\n");
-               break;
-            }
-            version_buf[n] = '\0';
-            VG_(message)(Vg_DebugMsg, "%s", version_buf);
-         } while (n == bufsiz);
-         VG_(message)(Vg_DebugMsg, "\n");
-         VG_(close)(fdno);
+#        define BUF_LEN    256
+         HChar version_buf[BUF_LEN];
+         Int n = VG_(read) ( sr_Res(fd), version_buf, BUF_LEN );
+         vg_assert(n <= BUF_LEN);
+         if (n > 0) {
+            version_buf[n-1] = '\0';
+            VG_(message)(Vg_DebugMsg, "  %s\n", version_buf);
+         } else {
+            VG_(message)(Vg_DebugMsg, "  (empty?)\n");
+         }
+         VG_(close)(sr_Res(fd));
+#        undef BUF_LEN
       }
 
       VG_(machine_get_VexArchInfo)( &vex_arch, &vex_archinfo );
@@ -1563,7 +1532,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    Int     need_help          = 0; // 0 = no, 1 = --help, 2 = --help-debug
    ThreadId tid_main          = VG_INVALID_THREADID;
    Bool    logging_to_fd      = False;
-   const HChar* xml_fname_unexpanded = NULL;
+   HChar* xml_fname_unexpanded = NULL;
    Int     loglevel, i;
    struct vki_rlimit zero = { 0, 0 };
    XArray* addr2dihandle = NULL;
@@ -1710,7 +1679,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    //--------------------------------------------------------------
    VG_(debugLog)(1, "main", "Starting the dynamic memory manager\n");
    { void* p = VG_(malloc)( "main.vm.1", 12345 );
-     VG_(free)( p );
+     if (p) VG_(free)( p );
    }
    VG_(debugLog)(1, "main", "Dynamic memory manager is running\n");
 
@@ -1794,7 +1763,12 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
         VG_(err_config_error)( "Can't establish current working "
                                "directory at startup\n");
    }
-   VG_(debugLog)(1, "main", "... %s\n", VG_(get_startup_wd)() );
+   { HChar buf[VKI_PATH_MAX+1];
+     Bool ok = VG_(get_startup_wd)( buf, sizeof(buf) );
+     vg_assert(ok);
+     buf[VKI_PATH_MAX] = 0;
+     VG_(debugLog)(1, "main", "... %s\n", buf );
+   }
 
    //============================================================
    // Command line argument handling order:
@@ -1920,8 +1894,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    VG_(cl_auxv_fd) = -1;
 #else
    if (!need_help) {
-      HChar  buf[50];   // large enough
-      HChar  buf2[VG_(mkstemp_fullname_bufsz)(sizeof buf - 1)];
+      HChar  buf[50], buf2[VG_(mkstemp_fullname_bufsz)(50-1)];
       HChar  nul[1];
       Int    fd, r;
       const HChar* exename;
@@ -2053,7 +2026,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
       Bool  ok;
       ok = VG_(sanity_check_needs)( &s );
       if (!ok) {
-         VG_(core_panic)(s);
+         VG_(tool_panic)(s);
       }
    }
 
@@ -2139,9 +2112,10 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    //--------------------------------------------------------------
    VG_(debugLog)(1, "main", "Load initial debug info\n");
 
-   vg_assert(!addr2dihandle);
+   tl_assert(!addr2dihandle);
    addr2dihandle = VG_(newXA)( VG_(malloc), "main.vm.2",
                                VG_(free), sizeof(Addr_n_ULong) );
+   tl_assert(addr2dihandle);
 
 #  if defined(VGO_linux)
    { Addr* seg_starts;
@@ -2208,7 +2182,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
 
    if (VG_(clo_xml)) {
       HChar buf[50];
-      VG_(elapsed_wallclock_time)(buf, sizeof buf);
+      VG_(elapsed_wallclock_time)(buf);
       VG_(printf_xml)( "<status>\n"
                        "  <state>RUNNING</state>\n"
                        "  <time>%pS</time>\n"
@@ -2246,12 +2220,12 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
    { Addr*     seg_starts;
      Int       n_seg_starts;
 
-     vg_assert(addr2dihandle);
+     tl_assert(addr2dihandle);
 
      /* Mark the main thread as running while we tell the tool about
         the client memory so that the tool can associate that memory
         with the main thread. */
-     vg_assert(VG_(running_tid) == VG_INVALID_THREADID);
+     tl_assert(VG_(running_tid) == VG_INVALID_THREADID);
      VG_(running_tid) = tid_main;
 
      seg_starts = VG_(get_segment_starts)( &n_seg_starts );
@@ -2298,7 +2272,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
            for (j = 0; j < n; j++) {
               Addr_n_ULong* anl = VG_(indexXA)( addr2dihandle, j );
               if (anl->a == seg->start) {
-                  vg_assert(anl->ull > 0); /* check it's a valid handle */
+                  tl_assert(anl->ull > 0); /* check it's a valid handle */
                   break;
               }
            }
@@ -2354,7 +2328,7 @@ Int valgrind_main ( Int argc, HChar **argv, HChar **envp )
 
      /* Clear the running thread indicator */
      VG_(running_tid) = VG_INVALID_THREADID;
-     vg_assert(VG_(running_tid) == VG_INVALID_THREADID);
+     tl_assert(VG_(running_tid) == VG_INVALID_THREADID);
 
      /* Darwin only: tell the tools where the client's kernel commpage
         is.  It would be better to do this by telling aspacemgr about
@@ -2545,7 +2519,7 @@ void shutdown_actions_NORETURN( ThreadId tid,
 
    if (VG_(clo_xml)) {
       HChar buf[50];
-      VG_(elapsed_wallclock_time)(buf, sizeof buf);
+      VG_(elapsed_wallclock_time)(buf);
       VG_(printf_xml)( "<status>\n"
                               "  <state>FINISHED</state>\n"
                               "  <time>%pS</time>\n"
@@ -3775,28 +3749,6 @@ __fixunsdfdi(double a)
     return r.all;
 }
 
-
-#endif
-
-
-/*====================================================================*/
-/*=== Dummy _voucher_mach_msg_set for OSX 10.10                    ===*/
-/*====================================================================*/
-
-#if defined(VGO_darwin) && DARWIN_VERS == DARWIN_10_10
-
-/* Builds on MacOSX 10.10 seem to need this for some reason. */
-/* extern boolean_t voucher_mach_msg_set(mach_msg_header_t *msg) 
-                    __attribute__((weak_import));
-   I haven't a clue what the return value means, so just return 0.
-   Looks like none of the generated uses in the tree look at the 
-   return value anyway.
-*/
-UWord voucher_mach_msg_set ( UWord arg1 );
-UWord voucher_mach_msg_set ( UWord arg1 )
-{
-   return 0;
-}
 
 #endif
 

@@ -882,6 +882,7 @@ void alloc_F_for_writing ( /*MOD*/SecMap* sm, /*OUT*/Word* fixp ) {
    new_size = sm->linesF_size==0 ? 1 : 2 * sm->linesF_size;
    nyu      = HG_(zalloc)( "libhb.aFfw.1 (LineF storage)",
                            new_size * sizeof(LineF) );
+   tl_assert(nyu);
 
    stats__secmap_linesF_allocd += (new_size - sm->linesF_size);
    stats__secmap_linesF_bytes  += (new_size - sm->linesF_size)
@@ -1758,6 +1759,7 @@ static void zsm_init ( void(*p_rcinc)(SVal), void(*p_rcdec)(SVal) )
    map_shmem = VG_(newFM)( HG_(zalloc), "libhb.zsm_init.1 (map_shmem)",
                            HG_(free), 
                            NULL/*unboxed UWord cmp*/);
+   tl_assert(map_shmem != NULL);
    shmem__invalidate_scache();
 
    /* a SecMap must contain an integral number of CacheLines */
@@ -1846,6 +1848,7 @@ static void verydead_thread_table_init ( void )
      = VG_(newXA)( HG_(zalloc),
                    "libhb.verydead_thread_table_init.1",
                    HG_(free), sizeof(ThrID) );
+   tl_assert(verydead_thread_table);
    VG_(setCmpFnXA)(verydead_thread_table, cmp__ThrID);
 }
 
@@ -1913,8 +1916,8 @@ static UInt VTS__cmpLEQ ( VTS* a, VTS* b );
    Returns -1, 0 or 1. */
 static Word VTS__cmp_structural ( VTS* a, VTS* b );
 
-/* Debugging only.  Display the given VTS. */
-static void VTS__show ( const VTS* vts );
+/* Debugging only.  Display the given VTS in the buffer. */
+static void VTS__show ( HChar* buf, Int nBuf, VTS* vts );
 
 /* Debugging only.  Return vts[index], so to speak. */
 static ULong VTS__indexAt_SLOW ( VTS* vts, Thr* idx );
@@ -2378,20 +2381,35 @@ Word VTS__cmp_structural ( VTS* a, VTS* b )
 }
 
 
-/* Debugging only.  Display the given VTS.
+/* Debugging only.  Display the given VTS in the buffer.
 */
-static void VTS__show ( const VTS* vts )
+void VTS__show ( HChar* buf, Int nBuf, VTS* vts )
 {
+   ScalarTS* st;
+   HChar     unit[64];
    Word      i, n;
+   Int       avail = nBuf;
    tl_assert(vts && vts->ts);
-
-   VG_(printf)("[");
+   tl_assert(nBuf > 16);
+   buf[0] = '[';
+   buf[1] = 0;
    n =  vts->usedTS;
    for (i = 0; i < n; i++) {
-      const ScalarTS *st = &vts->ts[i];
-      VG_(printf)(i < n-1 ? "%u:%llu " : "%u:%llu", st->thrid, (ULong)st->tym);
+      tl_assert(avail >= 40);
+      st = &vts->ts[i];
+      VG_(memset)(unit, 0, sizeof(unit));
+      VG_(sprintf)(unit, i < n-1 ? "%u:%llu " : "%u:%llu",
+                         st->thrid, (ULong)st->tym);
+      if (avail < VG_(strlen)(unit) + 40/*let's say*/) {
+         VG_(strcat)(buf, " ...]");
+         buf[nBuf-1] = 0;
+         return;
+      }
+      VG_(strcat)(buf, unit);
+      avail -= VG_(strlen)(unit);
    }
-   VG_(printf)("]");
+   VG_(strcat)(buf, "]");
+   buf[nBuf-1] = 0;
 }
 
 
@@ -2472,6 +2490,7 @@ static void vts_set_init ( void )
    vts_set = VG_(newFM)( HG_(zalloc), "libhb.vts_set_init.1",
                          HG_(free),
                          (Word(*)(UWord,UWord))VTS__cmp_structural );
+   tl_assert(vts_set);
 }
 
 /* Given a VTS, look in vts_set to see if we already have a
@@ -2546,9 +2565,12 @@ static Word vts_next_GC_at = 1000;
 
 static void vts_tab_init ( void )
 {
-   vts_tab = VG_(newXA)( HG_(zalloc), "libhb.vts_tab_init.1",
-                         HG_(free), sizeof(VtsTE) );
-   vts_tab_freelist = VtsID_INVALID;
+   vts_tab
+      = VG_(newXA)( HG_(zalloc), "libhb.vts_tab_init.1",
+                    HG_(free), sizeof(VtsTE) );
+   vts_tab_freelist
+      = VtsID_INVALID;
+   tl_assert(vts_tab);
 }
 
 /* Add ii to the free list, checking that it looks out-of-use. */
@@ -3187,8 +3209,11 @@ static VTS* VtsID__to_VTS ( VtsID vi ) {
 }
 
 static void VtsID__pp ( VtsID vi ) {
+   HChar buf[100];
    VTS* vts = VtsID__to_VTS(vi);
-   VTS__show( vts );
+   VTS__show( buf, sizeof(buf)-1, vts );
+   buf[sizeof(buf)-1] = 0;
+   VG_(printf)("%s", buf);
 }
 
 /* compute partial ordering relation of vi1 and vi2. */
@@ -3655,6 +3680,7 @@ static Thr* Thr__new ( void )
    if (!thrid_to_thr_map) {
       thrid_to_thr_map = VG_(newXA)( HG_(zalloc), "libhb.Thr__new.4",
                                      HG_(free), sizeof(Thr*) );
+      tl_assert(thrid_to_thr_map);
    }
 
    if (thrid_counter >= ThrID_MAX_VALID) {
@@ -4385,6 +4411,7 @@ static void event_map_init ( void )
    tl_assert(!contextTab);
    contextTab = HG_(zalloc)( "libhb.event_map_init.2 (context table)",
                              N_RCEC_TAB * sizeof(RCEC*) );
+   tl_assert(contextTab);
    for (i = 0; i < N_RCEC_TAB; i++)
       contextTab[i] = NULL;
 
@@ -4404,6 +4431,7 @@ static void event_map_init ( void )
                    "libhb.event_map_init.4 (oldref tree)", 
                    HG_(free)
                 );
+   tl_assert(oldrefTree);
 
    oldrefGen = 0;
    oldrefGenIncAt = 0;

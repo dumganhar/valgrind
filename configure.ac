@@ -8,7 +8,7 @@
 ##------------------------------------------------------------##
 
 # Process this file with autoconf to produce a configure script.
-AC_INIT([Valgrind],[3.11.0.SVN],[valgrind-users@lists.sourceforge.net])
+AC_INIT([Valgrind],[3.10.1],[valgrind-users@lists.sourceforge.net])
 AC_CONFIG_SRCDIR(coregrind/m_main.c)
 AC_CONFIG_HEADERS([config.h])
 AM_INIT_AUTOMAKE([foreign subdir-objects])
@@ -103,7 +103,6 @@ AC_MSG_CHECKING([for a supported version of gcc])
 # 
 # A few examples of how the ${CC} --version output looks like:
 #
-# ######## gcc variants ########
 # Arch Linux: i686-pc-linux-gnu-gcc (GCC) 4.6.2
 # Debian Linux: gcc (Debian 4.3.2-1.1) 4.3.2
 # openSUSE: gcc (SUSE Linux) 4.5.1 20101208 [gcc-4_5-branch revision 167585]
@@ -111,29 +110,17 @@ AC_MSG_CHECKING([for a supported version of gcc])
 # MontaVista Linux for ARM: arm-none-linux-gnueabi-gcc (Sourcery G++ Lite 2009q1-203) 4.3.3
 # OS/X 10.6: i686-apple-darwin10-gcc-4.2.1 (GCC) 4.2.1 (Apple Inc. build 5666) (dot 3)
 # OS/X 10.7: i686-apple-darwin11-llvm-gcc-4.2 (GCC) 4.2.1 (Based on Apple Inc. build 5658) (LLVM build 2335.15.00)
-#
-# ######## clang variants ########
 # Clang: clang version 2.9 (tags/RELEASE_29/final)
 # Apple clang: Apple clang version 3.1 (tags/Apple/clang-318.0.58) (based on LLVM 3.1svn)
 # FreeBSD clang: FreeBSD clang version 3.1 (branches/release_31 156863) 20120523
 #
-# ######## Apple LLVM variants ########
-# Apple LLVM version 5.1 (clang-503.0.40) (based on LLVM 3.4svn)
-# Apple LLVM version 6.0 (clang-600.0.51) (based on LLVM 3.5svn)
-#
 [
-if test "x`${CC} --version | $SED -n -e 's/.*\Apple \(LLVM\) version.*clang.*/\1/p'`" = "xLLVM" ;
-then
-    is_clang="applellvm"
-    gcc_version=`${CC} --version | $SED -n -e 's/.*LLVM version \([0-9.]*\).*$/\1/p'`
-elif test "x`${CC} --version | $SED -n -e 's/.*\(clang\) version.*/\1/p'`" = "xclang" ;
-then
+if test "x`${CC} --version | $SED -n -e 's/.*\(clang\) version.*/\1/p'`" = "xclang" ; then
     is_clang="clang"
     # Don't use -dumpversion with clang: it will always produce "4.2.1".
     gcc_version=`${CC} --version | $SED -n -e 's/.*clang version \([0-9.]*\).*$/\1/p'`
-elif test "x`${CC} --version | $SED -n -e 's/icc.+\(ICC\).*/\1/p'`" = "ICC" ; then
-    is_clang="icc"
-    gcc_version=`${CC} --version | $SED -n -e 's/icc.+\(ICC\).+([0-9.]+).*$/\1/p'`
+    CFLAGS="$CFLAGS -Wno-tautological-compare -Wno-cast-align -Wno-self-assign"
+    CXXFLAGS="$CXXFLAGS -Wno-tautological-compare -Wno-cast-align -Wno-self-assign"
 else
     is_clang="notclang"
     gcc_version=`${CC} -dumpversion 2>/dev/null`
@@ -142,32 +129,24 @@ else
     fi
 fi
 ]
-AM_CONDITIONAL(COMPILER_IS_CLANG, test $is_clang = clang -o $is_clang = applellvm)
-AM_CONDITIONAL(COMPILER_IS_ICC, test $is_clang = icc)
+AM_CONDITIONAL(COMPILER_IS_CLANG, test $is_clang = clang)
 
-if test $is_clang = clang -o $is_clang = applellvm ; then
-    CFLAGS="$CFLAGS -Wno-tautological-compare -Wno-cast-align -Wno-self-assign"
-    CXXFLAGS="$CXXFLAGS -Wno-tautological-compare -Wno-cast-align -Wno-self-assign"
-fi
-
-# Note: m4 arguments are quoted with [ and ] so square brackets in shell
-# statements have to be quoted.
 case "${is_clang}-${gcc_version}" in
-     applellvm-5.1|applellvm-6.0*)
-	AC_MSG_RESULT([ok (Apple LLVM version ${gcc_version})])
-	;;
-     icc-1[3-9]*)
-	AC_MSG_RESULT([ok (ICC version ${gcc_version})])
-	;;
-     notclang-[[3-9]].*|notclang-[[1-9][0-9]]*)
+     notclang-3.*)
 	AC_MSG_RESULT([ok (${gcc_version})])
 	;;
-     clang-2.9|clang-[[3-9]].*|clang-[[1-9][0-9]]*)
+     notclang-4.*)
+	AC_MSG_RESULT([ok (${gcc_version})])
+	;;
+     notclang-5.*)
+	AC_MSG_RESULT([ok (${gcc_version})])
+	;;
+     clang-2.9|clang-3.*|clang-4.*)
 	AC_MSG_RESULT([ok (clang-${gcc_version})])
 	;;
      *)
 	AC_MSG_RESULT([no (${gcc_version})])
-	AC_MSG_ERROR([please use gcc >= 3.0 or clang >= 2.9 or icc >= 13.0])
+	AC_MSG_ERROR([please use gcc >= 3.0 or clang >= 2.9])
 	;;
 esac
 
@@ -350,7 +329,6 @@ case "${host_os}" in
         AC_DEFINE([DARWIN_10_7], 100700, [DARWIN_VERS value for Mac OS X 10.7])
         AC_DEFINE([DARWIN_10_8], 100800, [DARWIN_VERS value for Mac OS X 10.8])
         AC_DEFINE([DARWIN_10_9], 100900, [DARWIN_VERS value for Mac OS X 10.9])
-        AC_DEFINE([DARWIN_10_10], 101000, [DARWIN_VERS value for Mac OS X 10.10])
 
 	AC_MSG_CHECKING([for the kernel version])
 	kernel=`uname -r`
@@ -402,15 +380,9 @@ case "${host_os}" in
 		  DEFAULT_SUPP="darwin13.supp ${DEFAULT_SUPP}"
 		  DEFAULT_SUPP="darwin10-drd.supp ${DEFAULT_SUPP}"
 		  ;;
-	     14.*)
-		  AC_MSG_RESULT([Darwin 14.x (${kernel}) / Mac OS X 10.10 Yosemite])
-		  AC_DEFINE([DARWIN_VERS], DARWIN_10_10, [Darwin / Mac OS X version])
-		  DEFAULT_SUPP="darwin14.supp ${DEFAULT_SUPP}"
-		  DEFAULT_SUPP="darwin10-drd.supp ${DEFAULT_SUPP}"
-		  ;;
              *) 
 		  AC_MSG_RESULT([unsupported (${kernel})])
-		  AC_MSG_ERROR([Valgrind works on Darwin 10.x, 11.x, 12.x, 13.x and 14.x (Mac OS X 10.6/7/8/9/10)])
+		  AC_MSG_ERROR([Valgrind works on Darwin 10.x, 11.x, 12.x and 13.x (Mac OS X 10.6/7/8/9)])
 		  ;;
 	esac
         ;;
@@ -907,41 +879,141 @@ AC_EGREP_CPP([BIONIC_LIBC], [
 GLIBC_VERSION="bionic")
 
 
-AC_MSG_CHECKING([the glibc version])
+AC_MSG_CHECKING([the GLIBC_VERSION version])
 
 case "${GLIBC_VERSION}" in
      2.2)
-	AC_MSG_RESULT(${GLIBC_VERSION} family)
+	AC_MSG_RESULT(2.2 family)
+	AC_DEFINE([GLIBC_2_2], 1, [Define to 1 if you're using glibc 2.2.x])
 	DEFAULT_SUPP="glibc-2.2.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.2-LinuxThreads-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
-     2.[[3-6]])
-	AC_MSG_RESULT(${GLIBC_VERSION} family)
-	DEFAULT_SUPP="glibc-${GLIBC_VERSION}.supp ${DEFAULT_SUPP}"
+
+     2.3)
+	AC_MSG_RESULT(2.3 family)
+	AC_DEFINE([GLIBC_2_3], 1, [Define to 1 if you're using glibc 2.3.x])
+	DEFAULT_SUPP="glibc-2.3.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
-     2.[[7-9]])
-	AC_MSG_RESULT(${GLIBC_VERSION} family)
+
+     2.4)
+	AC_MSG_RESULT(2.4 family)
+	AC_DEFINE([GLIBC_2_4], 1, [Define to 1 if you're using glibc 2.4.x])
+	DEFAULT_SUPP="glibc-2.4.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+	;;
+
+     2.5)
+	AC_MSG_RESULT(2.5 family)
+	AC_DEFINE([GLIBC_2_5], 1, [Define to 1 if you're using glibc 2.5.x])
+	DEFAULT_SUPP="glibc-2.5.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+	;;
+     2.6)
+	AC_MSG_RESULT(2.6 family)
+	AC_DEFINE([GLIBC_2_6], 1, [Define to 1 if you're using glibc 2.6.x])
+	DEFAULT_SUPP="glibc-2.6.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+	;;
+     2.7)
+	AC_MSG_RESULT(2.7 family)
+	AC_DEFINE([GLIBC_2_7], 1, [Define to 1 if you're using glibc 2.7.x])
 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
-     2.10|2.11)
-	AC_MSG_RESULT(${GLIBC_VERSION} family)
-	AC_DEFINE([GLIBC_MANDATORY_STRLEN_REDIRECT], 1,
-		  [Define to 1 if strlen() has been optimized heavily (amd64 glibc >= 2.10)])
+     2.8)
+	AC_MSG_RESULT(2.8 family)
+	AC_DEFINE([GLIBC_2_8], 1, [Define to 1 if you're using glibc 2.8.x])
 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
 	;;
-     2.*)
-	AC_MSG_RESULT(${GLIBC_VERSION} family)
-	AC_DEFINE([GLIBC_MANDATORY_STRLEN_REDIRECT], 1,
-		  [Define to 1 if strlen() has been optimized heavily (amd64 glibc >= 2.10)])
-	AC_DEFINE([GLIBC_MANDATORY_INDEX_AND_STRLEN_REDIRECT], 1,
-		  [Define to 1 if index() and strlen() have been optimized heavily (x86 glibc >= 2.12)])
+     2.9)
+	AC_MSG_RESULT(2.9 family)
+	AC_DEFINE([GLIBC_2_9], 1, [Define to 1 if you're using glibc 2.9.x])
+	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+	;;
+     2.10)
+	AC_MSG_RESULT(2.10 family)
+	AC_DEFINE([GLIBC_2_10], 1, [Define to 1 if you're using glibc 2.10.x])
+	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+	;;
+     2.11)
+	AC_MSG_RESULT(2.11 family)
+	AC_DEFINE([GLIBC_2_11], 1, [Define to 1 if you're using glibc 2.11.x])
+	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+        ;;
+     2.12)
+	AC_MSG_RESULT(2.12 family)
+	AC_DEFINE([GLIBC_2_12], 1, [Define to 1 if you're using glibc 2.12.x])
+	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+	;;
+     2.13)
+	AC_MSG_RESULT(2.13 family)
+	AC_DEFINE([GLIBC_2_13], 1, [Define to 1 if you're using glibc 2.13.x])
+	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+	;;
+     2.14)
+	AC_MSG_RESULT(2.14 family)
+	AC_DEFINE([GLIBC_2_14], 1, [Define to 1 if you're using glibc 2.14.x])
+	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+	;;
+     2.15)
+	AC_MSG_RESULT(2.15 family)
+	AC_DEFINE([GLIBC_2_15], 1, [Define to 1 if you're using glibc 2.15.x])
+	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+	;;
+     2.16)
+	AC_MSG_RESULT(2.16 family)
+	AC_DEFINE([GLIBC_2_16], 1, [Define to 1 if you're using glibc 2.16.x])
+	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+	;;
+     2.17)
+	AC_MSG_RESULT(2.17 family)
+	AC_DEFINE([GLIBC_2_17], 1, [Define to 1 if you're using glibc 2.17.x])
+	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+	;;
+     2.18)
+	AC_MSG_RESULT(2.18 family)
+	AC_DEFINE([GLIBC_2_18], 1, [Define to 1 if you're using glibc 2.18.x])
+	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+	;;
+     2.19)
+	AC_MSG_RESULT(2.19 family)
+	AC_DEFINE([GLIBC_2_19], 1, [Define to 1 if you're using glibc 2.19.x])
+	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
+	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
+	;;
+     2.20)
+	AC_MSG_RESULT(2.20 family)
+	AC_DEFINE([GLIBC_2_20], 1, [Define to 1 if you're using glibc 2.20.x])
 	DEFAULT_SUPP="glibc-2.X.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.34567-NPTL-helgrind.supp ${DEFAULT_SUPP}"
 	DEFAULT_SUPP="glibc-2.X-drd.supp ${DEFAULT_SUPP}"
@@ -956,9 +1028,10 @@ case "${GLIBC_VERSION}" in
 	AC_DEFINE([BIONIC_LIBC], 1, [Define to 1 if you're using Bionic])
 	DEFAULT_SUPP="bionic.supp ${DEFAULT_SUPP}"
 	;;
-     2.0|2.1|*)
+
+     *)
 	AC_MSG_RESULT([unsupported version ${GLIBC_VERSION}])
-	AC_MSG_ERROR([Valgrind requires glibc version 2.2 or later])
+	AC_MSG_ERROR([Valgrind requires glibc version 2.2 - 2.19])
 	AC_MSG_ERROR([or Darwin or Bionic libc])
 	;;
 esac
@@ -1439,6 +1512,7 @@ AC_DEFINE([HAVE_EVENTFD_READ], 1,
 AC_MSG_RESULT([no])
 ])
 
+
 # Check whether compiler can process #include <thread> without errors
 # clang 3.3 cannot process <thread> from e.g.
 # gcc (Ubuntu/Linaro 4.6.3-1ubuntu5) 4.6.3
@@ -1687,10 +1761,6 @@ AC_DEFUN([AC_GCC_WARNING_COND],[
 
 AC_GCC_WARNING_COND([pointer-sign], [HAS_POINTER_SIGN_WARNING])
 AC_GCC_WARNING_COND([write-strings], [HAS_WRITE_STRINGS_WARNING])
-if test $has_warning_flag = yes; then
-  CFLAGS="$CFLAGS -Wwrite-strings"
-  CXXFLAGS="$CXXFLAGS -Wwrite-strings"
-fi
 
 # Convenience function to check whether GCC supports a particular
 # warning option. Similar to AC_GCC_WARNING_COND, but does a
@@ -1747,13 +1817,6 @@ AC_MSG_RESULT([-Wextra])
   ])
 ])
 CFLAGS=$safe_CFLAGS
-
-# does this compiler support -Wcast-qual ?
-AC_GCC_WARNING_COND([cast-qual], [HAS_CAST_QUAL_WARNING])
-if test $has_warning_flag = yes; then
-  CFLAGS="$CFLAGS -Wcast-qual"
-  CXXFLAGS="$CXXFLAGS -Wcast-qual"
-fi
 
 
 # does this compiler support -fno-stack-protector ?
@@ -1821,6 +1884,25 @@ AC_MSG_RESULT([no])
 ])
 AM_CONDITIONAL(DWARF4, test x$ac_have_dwarf4 = xyes)
 CFLAGS=$safe_CFLAGS
+
+
+# does this compiler support -gstabs ?
+
+AC_MSG_CHECKING([if gcc accepts -gstabs])
+
+safe_CFLAGS=$CFLAGS
+CFLAGS="-gstabs"
+AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
+  return 0;
+]])], [
+ac_have_gstabs=yes
+AC_MSG_RESULT([yes])
+], [
+ac_have_gstabs=no
+AC_MSG_RESULT([no])
+])
+CFLAGS=$safe_CFLAGS
+AM_CONDITIONAL([HAVE_GSTABS], [test x$ac_have_gstabs = xyes])
 
 
 # does this compiler support nested functions ?
@@ -2214,7 +2296,6 @@ AC_MSG_CHECKING([if x86/amd64 assembler speaks BMI1 and BMI2])
 
 AC_COMPILE_IFELSE([AC_LANG_PROGRAM([[]], [[
   do { unsigned int h, l;
-   __asm__ __volatile__( "mulx %rax,%rcx,%r8" );
    __asm__ __volatile__(
       "andn %2, %1, %0" : "=r" (h) : "r" (0x1234567), "r" (0x7654321) );
    __asm__ __volatile__(
@@ -2681,48 +2762,6 @@ CFLAGS=$safe_CFLAGS
 
 AM_CONDITIONAL([HAVE_OPENMP], [test x$ac_have_openmp = xyes])
 
-
-# Check for __builtin_popcount
-AC_MSG_CHECKING([for __builtin_popcount()])
-AC_LINK_IFELSE([AC_LANG_PROGRAM([[
-]], [[
-  __builtin_popcount(2);
-  return 0;
-]])], [
-AC_MSG_RESULT([yes])
-AC_DEFINE([HAVE_BUILTIN_POPCOUT], 1,
-          [Define to 1 if compiler provides __builtin_popcount().])
-], [
-AC_MSG_RESULT([no])
-])
-
-# Check for __builtin_clz
-AC_MSG_CHECKING([for __builtin_clz()])
-AC_LINK_IFELSE([AC_LANG_PROGRAM([[
-]], [[
-  __builtin_clz(2);
-  return 0;
-]])], [
-AC_MSG_RESULT([yes])
-AC_DEFINE([HAVE_BUILTIN_CLZ], 1,
-          [Define to 1 if compiler provides __builtin_clz().])
-], [
-AC_MSG_RESULT([no])
-])
-
-# Check for __builtin_ctz
-AC_MSG_CHECKING([for __builtin_ctz()])
-AC_LINK_IFELSE([AC_LANG_PROGRAM([[
-]], [[
-  __builtin_ctz(2);
-  return 0;
-]])], [
-AC_MSG_RESULT([yes])
-AC_DEFINE([HAVE_BUILTIN_CTZ], 1,
-          [Define to 1 if compiler provides __builtin_ctz().])
-], [
-AC_MSG_RESULT([no])
-])
 
 # does this compiler have built-in functions for atomic memory access for the
 # primary target ?

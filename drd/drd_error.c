@@ -43,7 +43,7 @@
 
 /* Local function declarations. */
 
-static const HChar* drd_get_error_name(const Error* e);
+static const HChar* drd_get_error_name(Error* e);
 
 
 /* Local variables. */
@@ -151,8 +151,7 @@ static void first_observed(const Addr obj)
 }
 
 static
-void drd_report_data_race(const Error* const err,
-                          const DataRaceErrInfo* const dri)
+void drd_report_data_race(Error* const err, const DataRaceErrInfo* const dri)
 {
    const Bool xml = VG_(clo_xml);
    const HChar* const what_prefix = xml ? "  <what>" : "";
@@ -172,6 +171,8 @@ void drd_report_data_race(const Error* const err,
    tl_assert(dri);
    tl_assert(dri->addr);
    tl_assert(dri->size > 0);
+   tl_assert(descr1);
+   tl_assert(descr2);
 
    (void) VG_(get_data_description)(descr1, descr2, dri->addr);
    /* If there's nothing in descr1/2, free them.  Why is it safe to to
@@ -221,10 +222,11 @@ void drd_report_data_race(const Error* const err,
       if (xml)
          print_err_detail("  </allocation_context>\n");
    } else {
-      const HChar *sect_name;
+      HChar sect_name[64];
       VgSectKind sect_kind;
 
-      sect_kind = VG_(DebugInfo_sect_kind)(&sect_name, dri->addr);
+      sect_kind = VG_(DebugInfo_sect_kind)(sect_name, sizeof(sect_name),
+                                           dri->addr);
       if (sect_kind != Vg_SectUnknown) {
          print_err_detail("%sAllocation context: %ps section of %ps%s\n",
                           auxwhat_prefix, VG_(pp_SectKind)(sect_kind),
@@ -254,8 +256,7 @@ void drd_report_data_race(const Error* const err,
  * if the error kind of e1 and e2 matches and if the ExeContext's of e1 and
  * e2 also match.
  */
-static Bool drd_compare_error_contexts(VgRes res, const Error* e1,
-                                       const Error* e2)
+static Bool drd_compare_error_contexts(VgRes res, Error* e1, Error* e2)
 {
    tl_assert(VG_(get_error_kind)(e1) == VG_(get_error_kind)(e2));
 
@@ -283,7 +284,7 @@ static Bool drd_compare_error_contexts(VgRes res, const Error* e1,
  * Called by the core just before an error message will be printed. Used by
  * DRD to print the thread number as a preamble.
  */
-static void drd_tool_error_before_pp(const Error* const e)
+static void drd_tool_error_before_pp(Error* const e)
 {
    static DrdThreadId s_last_tid_printed = 1;
    DrdThreadId* err_extra;
@@ -297,7 +298,7 @@ static void drd_tool_error_before_pp(const Error* const e)
 }
 
 /** Report an error to the user. */
-static void drd_tool_error_pp(const Error* const e)
+static void drd_tool_error_pp(Error* const e)
 {
    const Bool xml = VG_(clo_xml);
    const HChar* const what_prefix = xml ? "  <what>" : "";
@@ -461,7 +462,7 @@ static void drd_tool_error_pp(const Error* const e)
    }
 }
 
-static UInt drd_tool_error_update_extra(const Error* e)
+static UInt drd_tool_error_update_extra(Error* e)
 {
    switch (VG_(get_error_kind)(e))
    {
@@ -564,13 +565,12 @@ Bool drd_read_extra_suppression_info(Int fd, HChar** bufpp,
  * Determine whether or not the types of the given error message and the
  * given suppression match.
  */
-static Bool drd_error_matches_suppression(const Error* const e,
-                                          const Supp* const supp)
+static Bool drd_error_matches_suppression(Error* const e, Supp* const supp)
 {
    return VG_(get_supp_kind)(supp) == VG_(get_error_kind)(e);
 }
 
-static const HChar* drd_get_error_name(const Error* e)
+static const HChar* drd_get_error_name(Error* e)
 {
    switch (VG_(get_error_kind)(e))
    {
@@ -602,25 +602,21 @@ static const HChar* drd_get_error_name(const Error* e)
  * define any 'extra' suppression information.
  */
 static
-SizeT drd_get_extra_suppression_info(const Error* e,
+Bool drd_get_extra_suppression_info(Error* e,
+                                    /*OUT*/HChar* buf, Int nBuf)
+{
+   return False;
+}
+
+static
+Bool drd_print_extra_suppression_use(Supp* su,
                                      /*OUT*/HChar* buf, Int nBuf)
 {
-   tl_assert(nBuf >= 1);
-   buf[0] = '\0';
-   return 0;
+   return False;
 }
 
 static
-SizeT drd_print_extra_suppression_use(const Supp* su,
-                                      /*OUT*/HChar* buf, Int nBuf)
-{
-   tl_assert(nBuf >= 1);
-   buf[0] = '\0';
-   return 0;
-}
-
-static
-void  drd_update_extra_suppresion_use(const Error* e, const Supp* supp)
+void  drd_update_extra_suppresion_use(Error* e, Supp* supp)
 {
    return;
 }

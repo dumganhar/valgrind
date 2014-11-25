@@ -152,7 +152,7 @@ VG_(get_shadow_regs_area) ( ThreadId tid,
       case 1: src = (void*)(((Addr)&(tst->arch.vex_shadow1)) + offset); break;
       case 2: src = (void*)(((Addr)&(tst->arch.vex_shadow2)) + offset); break;
    }
-   vg_assert(src != NULL);
+   tl_assert(src != NULL);
    VG_(memcpy)( dst, src, size);
 }
 
@@ -176,7 +176,7 @@ VG_(set_shadow_regs_area) ( ThreadId tid,
       case 1: dst = (void*)(((Addr)&(tst->arch.vex_shadow1)) + offset); break;
       case 2: dst = (void*)(((Addr)&(tst->arch.vex_shadow2)) + offset); break;
    }
-   vg_assert(dst != NULL);
+   tl_assert(dst != NULL);
    VG_(memcpy)( dst, src, size);
 }
 
@@ -537,7 +537,7 @@ static void find_ppc_dcbz_sz(VexArchInfo *arch_info)
 static UInt VG_(get_machine_model)(void)
 {
    static struct model_map {
-      const HChar name[5];
+      HChar name[5];
       UInt  id;
    } model_map[] = {
       { "2064", VEX_S390X_MODEL_Z900 },
@@ -1263,7 +1263,7 @@ Bool VG_(machine_get_hwcaps)( void )
                              ".short 0x0057" : : : "r0", "r1", "cc", "memory");
      }
 
-     /* Check availability of STFLE. If available store facility bits
+     /* Check availability og STFLE. If available store facility bits
         in hoststfle. */
      ULong hoststfle[S390_NUM_FACILITY_DW];
 

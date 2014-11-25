@@ -44,7 +44,6 @@
 #include "pub_tool_threadstate.h"
 #include "pub_tool_debuginfo.h"     // VG_(get_dataname_and_offset)
 #include "pub_tool_xarray.h"
-#include "pub_tool_aspacemgr.h"
 #include "pub_tool_addrinfo.h"
 
 #include "mc_include.h"
@@ -201,7 +200,7 @@ struct _MC_Error {
    look at it any print any preamble you want" function.  Which, in
    Memcheck, we don't use.  Hence a no-op.
 */
-void MC_(before_pp_Error) ( const Error* err ) {
+void MC_(before_pp_Error) ( Error* err ) {
 }
 
 /* Do a printf-style operation on either the XML or normal output
@@ -306,12 +305,6 @@ HChar * MC_(snprintf_delta) (HChar * buf, Int size,
                              SizeT current_val, SizeT old_val, 
                              LeakCheckDeltaMode delta_mode)
 {
-   // Make sure the buffer size is large enough. With old_val == 0 and
-   // current_val == ULLONG_MAX the delta including inserted commas is:
-   // 18,446,744,073,709,551,615
-   // whose length is 26. Therefore:
-   tl_assert(size >= 26 + 4 + 1);
-
    if (delta_mode == LCD_Any)
       buf[0] = '\0';
    else if (current_val >= old_val)
@@ -327,24 +320,24 @@ static void pp_LossRecord(UInt n_this_record, UInt n_total_records,
 {
    // char arrays to produce the indication of increase/decrease in case
    // of delta_mode != LCD_Any
-   HChar d_bytes[31];
-   HChar d_direct_bytes[31];
-   HChar d_indirect_bytes[31];
-   HChar d_num_blocks[31];
+   HChar d_bytes[20];
+   HChar d_direct_bytes[20];
+   HChar d_indirect_bytes[20];
+   HChar d_num_blocks[20];
 
-   MC_(snprintf_delta) (d_bytes, sizeof(d_bytes),
+   MC_(snprintf_delta) (d_bytes, 20, 
                         lr->szB + lr->indirect_szB, 
                         lr->old_szB + lr->old_indirect_szB,
                         MC_(detect_memory_leaks_last_delta_mode));
-   MC_(snprintf_delta) (d_direct_bytes, sizeof(d_direct_bytes),
+   MC_(snprintf_delta) (d_direct_bytes, 20,
                         lr->szB,
                         lr->old_szB,
                         MC_(detect_memory_leaks_last_delta_mode));
-   MC_(snprintf_delta) (d_indirect_bytes, sizeof(d_indirect_bytes),
+   MC_(snprintf_delta) (d_indirect_bytes, 20,
                         lr->indirect_szB,
                         lr->old_indirect_szB,
                         MC_(detect_memory_leaks_last_delta_mode));
-   MC_(snprintf_delta) (d_num_blocks, sizeof(d_num_blocks),
+   MC_(snprintf_delta) (d_num_blocks, 20,
                         (SizeT) lr->num_blocks,
                         (SizeT) lr->old_num_blocks,
                         MC_(detect_memory_leaks_last_delta_mode));
@@ -411,7 +404,7 @@ void MC_(pp_LossRecord)(UInt n_this_record, UInt n_total_records,
    pp_LossRecord (n_this_record, n_total_records, l, /* xml */ False);
 }
 
-void MC_(pp_Error) ( const Error* err )
+void MC_(pp_Error) ( Error* err )
 {
    const Bool xml  = VG_(clo_xml); /* a shorthand */
    MC_Error* extra = VG_(get_error_extra)(err);
@@ -932,7 +925,7 @@ void MC_(record_user_error) ( ThreadId tid, Addr a,
 /* Compare error contexts, to detect duplicates.  Note that if they
    are otherwise the same, the faulting addrs and associated rwoffsets
    are allowed to be different.  */
-Bool MC_(eq_Error) ( VgRes res, const Error* e1, const Error* e2 )
+Bool MC_(eq_Error) ( VgRes res, Error* e1, Error* e2 )
 {
    MC_Error* extra1 = VG_(get_error_extra)(e1);
    MC_Error* extra2 = VG_(get_error_extra)(e2);
@@ -1086,7 +1079,6 @@ void MC_(pp_describe_addr) ( Addr a )
    ai.tag = Addr_Undescribed;
    describe_addr (a, &ai);
    VG_(pp_addrinfo_mc) (a, &ai, /* maybe_gcc */ False);
-   VG_(clear_addrinfo) (&ai);
 }
 
 /* Fill in *origin_ec as specified by otag, or NULL it out if otag
@@ -1102,7 +1094,7 @@ static void update_origin ( /*OUT*/ExeContext** origin_ec,
 }
 
 /* Updates the copy with address info if necessary (but not for all errors). */
-UInt MC_(update_Error_extra)( const Error* err )
+UInt MC_(update_Error_extra)( Error* err )
 {
    MC_Error* extra = VG_(get_error_extra)(err);
 
@@ -1359,36 +1351,29 @@ Bool MC_(read_extra_suppression_info) ( Int fd, HChar** bufpp,
       }
    } else if (VG_(get_supp_kind)(su) == FishyValueSupp) {
       MC_FishyValueExtra *extra;
-      HChar *p, *function_name, *argument_name = NULL;
+      HChar *p;
 
       eof = VG_(get_line) ( fd, bufpp, nBufp, lineno );
       if (eof) return True;
 
-      // The suppression string is: function_name(argument_name)
-      function_name = VG_(strdup)("mv.resi.4", *bufpp);
-      p = VG_(strchr)(function_name, '(');
-      if (p != NULL) {
-         *p++ = '\0';
-         argument_name = p;
-         p = VG_(strchr)(p, ')');
-         if (p != NULL)
-            *p = '\0';
-      }
-      if (p == NULL) {    // malformed suppression string
-         VG_(free)(function_name);
-         return False;
-      }
-
       extra = VG_(malloc)("mc.resi.3", sizeof *extra);
-      extra->function_name = function_name;
-      extra->argument_name = argument_name;
+      extra->function_name = VG_(strdup)("mv.resi.4", *bufpp);
+
+      // The suppression string is: function_name(argument_name)
+      p = VG_(strchr)(extra->function_name, '(');
+      if (p == NULL) return False;  // malformed suppression string
+      *p++ = '\0';
+      extra->argument_name = p;
+      p = VG_(strchr)(p, ')');
+      if (p == NULL) return False;  // malformed suppression string
+      *p = '\0';
 
       VG_(set_supp_extra)(su, extra);
    }
    return True;
 }
 
-Bool MC_(error_matches_suppression) ( const Error* err, const Supp* su )
+Bool MC_(error_matches_suppression) ( Error* err, Supp* su )
 {
    Int       su_szB;
    MC_Error* extra = VG_(get_error_extra)(err);
@@ -1472,7 +1457,7 @@ Bool MC_(error_matches_suppression) ( const Error* err, const Supp* su )
    }
 }
 
-const HChar* MC_(get_error_name) ( const Error* err )
+const HChar* MC_(get_error_name) ( Error* err )
 {
    switch (VG_(get_error_kind)(err)) {
    case Err_RegParam:       return "Param";
@@ -1513,54 +1498,54 @@ const HChar* MC_(get_error_name) ( const Error* err )
    }
 }
 
-SizeT MC_(get_extra_suppression_info) ( const Error* err,
-                                        /*OUT*/HChar* buf, Int nBuf )
+Bool MC_(get_extra_suppression_info) ( Error* err,
+                                       /*OUT*/HChar* buf, Int nBuf )
 {
    ErrorKind ekind = VG_(get_error_kind )(err);
    tl_assert(buf);
-   tl_assert(nBuf >= 1);
-
+   tl_assert(nBuf >= 16); // stay sane
    if (Err_RegParam == ekind || Err_MemParam == ekind) {
       const HChar* errstr = VG_(get_error_string)(err);
       tl_assert(errstr);
-      return VG_(snprintf)(buf, nBuf, "%s", errstr);
+      VG_(snprintf)(buf, nBuf-1, "%s", errstr);
+      return True;
    } else if (Err_Leak == ekind) {
       MC_Error* extra = VG_(get_error_extra)(err);
-      return VG_(snprintf) (buf, nBuf, "match-leak-kinds: %s",
+      VG_(snprintf)
+         (buf, nBuf-1, "match-leak-kinds: %s",
           pp_Reachedness_for_leak_kinds(extra->Err.Leak.lr->key.state));
+      return True;
    } else if (Err_FishyValue == ekind) {
       MC_Error* extra = VG_(get_error_extra)(err);
-      return VG_(snprintf) (buf, nBuf, "%s(%s)",
-                            extra->Err.FishyValue.function_name,
-                            extra->Err.FishyValue.argument_name);
+      VG_(snprintf)
+         (buf, nBuf-1, "%s(%s)", extra->Err.FishyValue.function_name,
+          extra->Err.FishyValue.argument_name);
+      return True;
    } else {
-      buf[0] = '\0';
-      return 0;
+      return False;
    }
 }
 
-SizeT MC_(print_extra_suppression_use) ( const Supp *su,
-                                         /*OUT*/HChar *buf, Int nBuf )
+Bool MC_(print_extra_suppression_use) ( Supp *su,
+                                        /*OUT*/HChar *buf, Int nBuf )
 {
-   tl_assert(nBuf >= 1);
-
    if (VG_(get_supp_kind)(su) == LeakSupp) {
       MC_LeakSuppExtra *lse = (MC_LeakSuppExtra*) VG_(get_supp_extra) (su);
 
       if (lse->leak_search_gen == MC_(leak_search_gen)
           && lse->blocks_suppressed > 0) {
-         return VG_(snprintf) (buf, nBuf,
-                               "suppressed: %'lu bytes in %'lu blocks",
-                               lse->bytes_suppressed,
-                               lse->blocks_suppressed);
-      }
-   }
-
-   buf[0] = '\0';
-   return 0;
+         VG_(snprintf) (buf, nBuf-1, 
+                        "suppressed: %'lu bytes in %'lu blocks",
+                        lse->bytes_suppressed,
+                        lse->blocks_suppressed);
+         return True;
+      } else
+         return False;
+   } else
+      return False;
 }
 
-void MC_(update_extra_suppression_use) ( const Error* err, const Supp* su)
+void MC_(update_extra_suppression_use) ( Error* err, Supp* su)
 {
    if (VG_(get_supp_kind)(su) == LeakSupp) {
       MC_LeakSuppExtra *lse = (MC_LeakSuppExtra*) VG_(get_supp_extra) (su);

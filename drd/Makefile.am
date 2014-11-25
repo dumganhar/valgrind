@@ -38,7 +38,6 @@ DRD_CFLAGS =				\
   -O2					\
   @FLAG_W_EXTRA@			\
   -Wformat-nonliteral			\
-  -Wswitch-enum			        \
   -Wno-inline				\
   -Wno-unused-parameter
 

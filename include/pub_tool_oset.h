@@ -89,23 +89,24 @@ typedef void  (*OSetFree_t)        ( void* p );
 /*--- Creating and destroying OSets (UWord)                        ---*/
 /*--------------------------------------------------------------------*/
 
-// * Create: allocates and initialises the OSet.  Never returns NULL.
-//   Parameters:
-//   - alloc_fn  The allocation function used internally for allocating the
-//               OSet and all its nodes. It must not return NULL (that is,
-//               if it returns it must have succeeded.)
+// * Create: allocates and initialises the OSet.  Arguments:
+//   - alloc     The allocation function used internally for allocating the
+//               OSet and all its nodes.
 //   - cc        Cost centre string used by 'alloc'.
-//   - free_fn   The deallocation function used internally for freeing nodes
+//   - free      The deallocation function used internally for freeing nodes
 //               called by VG_(OSetWord_Destroy)().
+//
+// * CreateWithCmp: like Create, but you specify your own comparison
+//   function.
 //
 // * Destroy: frees all nodes in the table, plus the memory used by
 //   the table itself.  The passed-in function is called on each node first
 //   to allow the destruction of any attached resources;  if NULL it is not
 //   called.
 
-extern OSet* VG_(OSetWord_Create) ( OSetAlloc_t alloc_fn, const HChar* cc, 
-                                    OSetFree_t free_fn );
-extern void  VG_(OSetWord_Destroy) ( OSet* os );
+extern OSet* VG_(OSetWord_Create)       ( OSetAlloc_t alloc, const HChar* cc, 
+                                          OSetFree_t _free );
+extern void  VG_(OSetWord_Destroy)      ( OSet* os );
 
 /*--------------------------------------------------------------------*/
 /*--- Operations on OSets (UWord)                                  ---*/
@@ -147,9 +148,9 @@ extern void  VG_(OSetWord_Destroy) ( OSet* os );
 //   they will return False if VG_(OSetWord_Next)() is called without an
 //   intervening call to VG_(OSetWord_ResetIter)().
 
-extern Word  VG_(OSetWord_Size)         ( const OSet* os );
+extern Word  VG_(OSetWord_Size)         ( OSet* os );
 extern void  VG_(OSetWord_Insert)       ( OSet* os, UWord val );
-extern Bool  VG_(OSetWord_Contains)     ( const OSet* os, UWord val );
+extern Bool  VG_(OSetWord_Contains)     ( OSet* os, UWord val );
 extern Bool  VG_(OSetWord_Remove)       ( OSet* os, UWord val );
 extern void  VG_(OSetWord_ResetIter)    ( OSet* os );
 extern Bool  VG_(OSetWord_Next)         ( OSet* os, /*OUT*/UWord* val );
@@ -159,20 +160,17 @@ extern Bool  VG_(OSetWord_Next)         ( OSet* os, /*OUT*/UWord* val );
 /*--- Creating and destroying OSets and OSet members (Gen)         ---*/
 /*--------------------------------------------------------------------*/
 
-// * Create: allocates and initialises the OSet. Never returns NULL.
-//   Parameters:
+// * Create: allocates and initialises the OSet.  Arguments:
 //   - keyOff    The offset of the key within the element.
 //   - cmp       The comparison function between keys and elements, or NULL
 //               if the OSet should use fast comparisons.
-//   - alloc_fn  The allocation function used for allocating the OSet itself;
-//               It must not return NULL (that is, if it returns it must
-//               have succeeded.)
+//   - alloc     The allocation function used for allocating the OSet itself;
 //               If a pool allocator is used, it's called to allocate pool of
 //               nodes.
 //               If no pool allocator is used, it's called for each
 //               invocation of VG_(OSetGen_AllocNode)().
 //   - cc        Cost centre string used by 'alloc'.
-//   - free_fn   If no pool allocator is used, this is the deallocation
+//   - free      If no pool allocator is used, this is the deallocation
 //               function used by VG_(OSetGen_FreeNode)() and
 //               VG_(OSetGen_Destroy)().
 //               If a pool allocator is used, the memory used by the nodes is
@@ -204,14 +202,14 @@ extern Bool  VG_(OSetWord_Next)         ( OSet* os, /*OUT*/UWord* val );
 //   lead to assertions in Valgrind's allocator.
 
 extern OSet* VG_(OSetGen_Create)    ( PtrdiffT keyOff, OSetCmp_t cmp,
-                                      OSetAlloc_t alloc_fn, const HChar* cc,
-                                      OSetFree_t free_fn);
+                                      OSetAlloc_t alloc, const HChar* cc,
+                                      OSetFree_t _free);
 
 
 extern OSet* VG_(OSetGen_Create_With_Pool)    ( PtrdiffT keyOff, OSetCmp_t cmp,
-                                                OSetAlloc_t alloc_fn,
+                                                OSetAlloc_t alloc,
                                                 const HChar* cc,
-                                                OSetFree_t free_fn,
+                                                OSetFree_t _free,
                                                 SizeT poolSize,
                                                 SizeT maxEltSize);
 // Same as VG_(OSetGen_Create) but created OSet will use a pool allocator to
@@ -225,11 +223,11 @@ extern OSet* VG_(OSetGen_Create_With_Pool)    ( PtrdiffT keyOff, OSetCmp_t cmp,
 // always <= than a (small) maximum value.
 // In such a case, allocating the nodes in pools reduces significantly
 // the memory overhead needed by each node.
-// When a node is freed (i.e. OSetGen_Freenode is called), the node is
+// When a node is freed (i.e. OsetGen_Freenode is called), the node is
 // put back in the pool allocator free list (for sub-sequent re-use by
-// OSetGen_AllocNode). Note that the pool memory is only released when
+// Osetgen_Allocnode). Note that the pool memory is only released when
 // the pool is destroyed : calls to VG_(OSetGen_Free) do not cause
-// any calls to OSetFree_t _free function.
+// any calls to OsetFree_t _free function.
 // If there are several OSet managing similar such elements, it might be
 // interesting to use a shared pool for these OSet.
 // To have multiple OSets sharing a pool allocator, create the first OSet
@@ -237,10 +235,10 @@ extern OSet* VG_(OSetGen_Create_With_Pool)    ( PtrdiffT keyOff, OSetCmp_t cmp,
 // VG_(OSetGen_EmptyClone).
 
 extern void  VG_(OSetGen_Destroy)   ( OSet* os );
-extern void* VG_(OSetGen_AllocNode) ( const OSet* os, SizeT elemSize );
-extern void  VG_(OSetGen_FreeNode)  ( const OSet* os, void* elem );
+extern void* VG_(OSetGen_AllocNode) ( OSet* os, SizeT elemSize );
+extern void  VG_(OSetGen_FreeNode)  ( OSet* os, void* elem );
 
-extern OSet* VG_(OSetGen_EmptyClone) (const OSet* os);
+extern OSet* VG_(OSetGen_EmptyClone) (OSet* os);
 // Creates a new empty OSet.
 // The new OSet will have the same characteristics as os.
 // If os uses a pool allocator, this pool allocator will be shared with

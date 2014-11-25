@@ -595,11 +595,13 @@ static void initialise_data_structures ( Thr* hbthr_root )
 
    tl_assert(map_threads == NULL);
    map_threads = HG_(zalloc)( "hg.ids.1", VG_N_THREADS * sizeof(Thread*) );
+   tl_assert(map_threads != NULL);
 
    tl_assert(sizeof(Addr) == sizeof(UWord));
    tl_assert(map_locks == NULL);
    map_locks = VG_(newFM)( HG_(zalloc), "hg.ids.2", HG_(free), 
                            NULL/*unboxed Word cmp*/);
+   tl_assert(map_locks != NULL);
 
    tl_assert(univ_lsets == NULL);
    univ_lsets = HG_(newWordSetU)( HG_(zalloc), "hg.ids.4", HG_(free),
@@ -2169,6 +2171,7 @@ static void map_cond_to_CVInfo_INIT ( void ) {
    if (UNLIKELY(map_cond_to_CVInfo == NULL)) {
       map_cond_to_CVInfo = VG_(newFM)( HG_(zalloc),
                                        "hg.mctCI.1", HG_(free), NULL );
+      tl_assert(map_cond_to_CVInfo != NULL);
    }
 }
 
@@ -2651,6 +2654,7 @@ static void map_sem_to_SO_stack_INIT ( void ) {
    if (map_sem_to_SO_stack == NULL) {
       map_sem_to_SO_stack = VG_(newFM)( HG_(zalloc), "hg.mstSs.1",
                                         HG_(free), NULL );
+      tl_assert(map_sem_to_SO_stack != NULL);
    }
 }
 
@@ -2849,6 +2853,7 @@ typedef
 
 static Bar* new_Bar ( void ) {
    Bar* bar = HG_(zalloc)( "hg.nB.1 (new_Bar)", sizeof(Bar) );
+   tl_assert(bar);
    /* all fields are zero */
    tl_assert(bar->initted == False);
    return bar;
@@ -2870,6 +2875,7 @@ static void map_barrier_to_Bar_INIT ( void ) {
    if (UNLIKELY(map_barrier_to_Bar == NULL)) {
       map_barrier_to_Bar = VG_(newFM)( HG_(zalloc),
                                        "hg.mbtBI.1", HG_(free), NULL );
+      tl_assert(map_barrier_to_Bar != NULL);
    }
 }
 
@@ -2946,6 +2952,7 @@ static void evh__HG_PTHREAD_BARRIER_INIT_PRE ( ThreadId tid,
                                  sizeof(Thread*) );
    }
 
+   tl_assert(bar->waiting);
    tl_assert(VG_(sizeXA)(bar->waiting) == 0);
    bar->initted   = True;
    bar->resizable = resizable == 1 ? True : False;
@@ -3200,6 +3207,7 @@ static void map_usertag_to_SO_INIT ( void ) {
    if (UNLIKELY(map_usertag_to_SO == NULL)) {
       map_usertag_to_SO = VG_(newFM)( HG_(zalloc),
                                       "hg.mutS.1", HG_(free), NULL );
+      tl_assert(map_usertag_to_SO != NULL);
    }
 }
 
@@ -3379,6 +3387,8 @@ static void laog__init ( void )
 
    laog_exposition = VG_(newFM)( HG_(zalloc), "hg.laog__init.2", HG_(free), 
                                  cmp_LAOGLinkExposition );
+   tl_assert(laog);
+   tl_assert(laog_exposition);
 }
 
 static void laog__show ( const HChar* who ) {
@@ -3974,7 +3984,7 @@ typedef
 
 /* A hash table of MallocMetas, used to track malloc'd blocks
    (obviously). */
-static VgHashTable *hg_mallocmeta_table = NULL;
+static VgHashTable hg_mallocmeta_table = NULL;
 
 /* MallocMeta are small elements. We use a pool to avoid
    the overhead of malloc for each MallocMeta. */
@@ -4478,9 +4488,9 @@ static Bool is_in_dynamic_linker_shared_object( Addr64 ga )
 static
 IRSB* hg_instrument ( VgCallbackClosure* closure,
                       IRSB* bbIn,
-                      const VexGuestLayout* layout,
-                      const VexGuestExtents* vge,
-                      const VexArchInfo* archinfo_host,
+                      VexGuestLayout* layout,
+                      VexGuestExtents* vge,
+                      VexArchInfo* archinfo_host,
                       IRType gWordTy, IRType hWordTy )
 {
    Int     i;
@@ -4737,6 +4747,7 @@ static void map_pthread_t_to_Thread_INIT ( void ) {
    if (UNLIKELY(map_pthread_t_to_Thread == NULL)) {
       map_pthread_t_to_Thread = VG_(newFM)( HG_(zalloc), "hg.mpttT.1", 
                                             HG_(free), NULL );
+      tl_assert(map_pthread_t_to_Thread != NULL);
    }
 }
 

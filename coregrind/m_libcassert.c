@@ -298,7 +298,7 @@ void VG_(client_exit)( Int status )
 static void show_sched_status_wrk ( Bool host_stacktrace,
                                     Bool stack_usage,
                                     Bool exited_threads,
-                                    const UnwindStartRegs* startRegsIN)
+                                    UnwindStartRegs* startRegsIN)
 {
    Int i; 
    if (host_stacktrace) {
@@ -385,7 +385,7 @@ void VG_(show_sched_status) ( Bool host_stacktrace,
 
 __attribute__ ((noreturn))
 static void report_and_quit ( const HChar* report,
-                              const UnwindStartRegs* startRegsIN )
+                              UnwindStartRegs* startRegsIN )
 {
    show_sched_status_wrk (True,  // host_stacktrace
                           False, // stack_usage
@@ -410,7 +410,8 @@ static void report_and_quit ( const HChar* report,
 void VG_(assert_fail) ( Bool isCore, const HChar* expr, const HChar* file, 
                         Int line, const HChar* fn, const HChar* format, ... )
 {
-   va_list vargs, vargs_copy;
+   va_list vargs;
+   HChar buf[512];
    const HChar* component;
    const HChar* bugs_to;
    UInt written;
@@ -419,6 +420,15 @@ void VG_(assert_fail) ( Bool isCore, const HChar* expr, const HChar* file,
    if (entered) 
       VG_(exit)(2);
    entered = True;
+
+   va_start(vargs, format);
+   written = VG_(vsnprintf) ( buf, sizeof(buf), format, vargs );
+   va_end(vargs);
+
+   if (written >= sizeof(buf)) {
+      VG_(printf)("\nvalgrind: %s: buf is too small, sizeof(buf) = %u, "
+                  "written = %d\n", __func__, (unsigned)sizeof(buf), written);
+   }
 
    if (isCore) {
       component = "valgrind";
@@ -439,26 +449,15 @@ void VG_(assert_fail) ( Bool isCore, const HChar* expr, const HChar* file,
       VG_(printf)("\n%s: %s:%d (%s): Assertion '%s' failed.\n",
                   component, file, line, fn, expr );
    }
-
-   /* Check whether anything will be written */
-   HChar buf[5];
-   va_start(vargs, format);
-   va_copy(vargs_copy, vargs);
-   written = VG_(vsnprintf) ( buf, sizeof(buf), format, vargs );
-   va_end(vargs);
-
-   if (written > 0) {
-      VG_(printf)("%s: ", component);
-      VG_(vprintf)(format, vargs_copy);
-      VG_(printf)("\n");
-   }
+   if (!VG_STREQ(buf, ""))
+      VG_(printf)("%s: %s\n", component, buf );
 
    report_and_quit(bugs_to, NULL);
 }
 
 __attribute__ ((noreturn))
 static void panic ( const HChar* name, const HChar* report, const HChar* str,
-                    const UnwindStartRegs* startRegs )
+                    UnwindStartRegs* startRegs )
 {
    if (VG_(clo_xml))
       VG_(printf_xml)("</valgrindoutput>\n");
@@ -466,7 +465,7 @@ static void panic ( const HChar* name, const HChar* report, const HChar* str,
    report_and_quit(report, startRegs);
 }
 
-void VG_(core_panic_at) ( const HChar* str, const UnwindStartRegs* startRegs )
+void VG_(core_panic_at) ( const HChar* str, UnwindStartRegs* startRegs )
 {
    panic("valgrind", VG_BUGS_TO, str, startRegs);
 }

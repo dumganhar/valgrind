@@ -62,14 +62,14 @@ void sg_instrument_fini ( struct _SGEnv * env );
 void sg_instrument_IRStmt ( /*MOD*/struct _SGEnv * env, 
                             /*MOD*/IRSB* sbOut,
                             IRStmt* st,
-                            const VexGuestLayout* layout,
+                            VexGuestLayout* layout,
                             IRType gWordTy, IRType hWordTy );
 
 void sg_instrument_final_jump ( /*MOD*/struct _SGEnv * env, 
                                 /*MOD*/IRSB* sbOut,
                                 IRExpr* next,
                                 IRJumpKind jumpkind,
-                                const VexGuestLayout* layout,
+                                VexGuestLayout* layout,
                                 IRType gWordTy, IRType hWordTy );
 #endif
 
