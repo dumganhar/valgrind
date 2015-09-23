@@ -855,18 +855,8 @@ PRE(sys_rt_sigreturn)
 // (unknown).
 
 static SyscallTableEntry syscall_main_table[] = {
-   LINX_(__NR_setxattr,          sys_setxattr),          // 5
-   LINX_(__NR_lsetxattr,         sys_lsetxattr),         // 6
-   LINX_(__NR_fsetxattr,         sys_fsetxattr),         // 7
    LINXY(__NR_getxattr,          sys_getxattr),          // 8
    LINXY(__NR_lgetxattr,         sys_lgetxattr),         // 9
-   LINXY(__NR_fgetxattr,         sys_fgetxattr),         // 10
-   LINXY(__NR_listxattr,         sys_listxattr),         // 11
-   LINXY(__NR_llistxattr,        sys_llistxattr),        // 12
-   LINXY(__NR_flistxattr,        sys_flistxattr),        // 13
-   LINX_(__NR_removexattr,       sys_removexattr),       // 14
-   LINX_(__NR_lremovexattr,      sys_lremovexattr),      // 15
-   LINX_(__NR_fremovexattr,      sys_fremovexattr),      // 16
    GENXY(__NR_getcwd,            sys_getcwd),            // 17
    LINXY(__NR_eventfd2,          sys_eventfd2),          // 19
    LINXY(__NR_epoll_create1,     sys_epoll_create1),     // 20
@@ -959,7 +949,6 @@ static SyscallTableEntry syscall_main_table[] = {
    LINX_(__NR_rt_sigsuspend,     sys_rt_sigsuspend),     // 133
    LINXY(__NR_rt_sigaction,      sys_rt_sigaction),      // 134
    LINXY(__NR_rt_sigprocmask,    sys_rt_sigprocmask),    // 135
-   LINXY(__NR_rt_sigpending,     sys_rt_sigpending),     // 136
    LINXY(__NR_rt_sigtimedwait,   sys_rt_sigtimedwait),   // 137
    LINXY(__NR_rt_sigqueueinfo,   sys_rt_sigqueueinfo),   // 138
    PLAX_(__NR_rt_sigreturn,      sys_rt_sigreturn),      // 139
@@ -1232,6 +1221,7 @@ static SyscallTableEntry syscall_main_table[] = {
 //ZZ    LINXY(__NR_prctl,             sys_prctl),          // 172
 //ZZ    LINXY(__NR_rt_sigaction,      sys_rt_sigaction),   // 174
 //ZZ 
+//ZZ    LINXY(__NR_rt_sigpending,     sys_rt_sigpending),  // 176
 //ZZ    LINXY(__NR_rt_sigtimedwait,   sys_rt_sigtimedwait),// 177
 //ZZ 
 //ZZ    LINX_(__NR_chown,             sys_chown16),        // 182
@@ -1277,6 +1267,18 @@ static SyscallTableEntry syscall_main_table[] = {
 //ZZ //   GENX_(222,                    sys_ni_syscall),     // 222
 //ZZ //   PLAXY(223,                    sys_syscall223),     // 223 // sys_bproc?
 //ZZ 
+//ZZ    LINX_(__NR_setxattr,          sys_setxattr),       // 226
+//ZZ    LINX_(__NR_lsetxattr,         sys_lsetxattr),      // 227
+//ZZ    LINX_(__NR_fsetxattr,         sys_fsetxattr),      // 228
+//ZZ 
+//ZZ    LINXY(__NR_fgetxattr,         sys_fgetxattr),      // 231
+//ZZ    LINXY(__NR_listxattr,         sys_listxattr),      // 232
+//ZZ    LINXY(__NR_llistxattr,        sys_llistxattr),     // 233
+//ZZ    LINXY(__NR_flistxattr,        sys_flistxattr),     // 234
+//ZZ 
+//ZZ    LINX_(__NR_removexattr,       sys_removexattr),    // 235
+//ZZ    LINX_(__NR_lremovexattr,      sys_lremovexattr),   // 236
+//ZZ    LINX_(__NR_fremovexattr,      sys_fremovexattr),   // 237
 //ZZ    LINXY(__NR_tkill,             sys_tkill),          // 238 */Linux
 //ZZ    LINXY(__NR_sendfile64,        sys_sendfile64),     // 239
 //ZZ 
